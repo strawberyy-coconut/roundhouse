@@ -7,6 +7,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Logs go to stderr so `serve --openapi` can write clean JSON to stdout.
         .with_writer(std::io::stderr)
         .init();
+
+    // Resolve the contract before constructing production state. `roundhouse openapi` and
+    // `roundhouse routes` invoke this path.
+    if roundhouse::document_requested() {
+        return Ok(auth_example::document().emit_from_env()?);
+    }
+
     auth_example::app(AppState::default())
         .serve("0.0.0.0:3006")
         .await?;

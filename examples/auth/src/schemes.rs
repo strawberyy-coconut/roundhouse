@@ -15,6 +15,9 @@ use crate::AppState;
 pub struct User {
     pub name: String,
     pub admin: bool,
+    /// Projects this user may read. The scope says "may read posts"; membership is resource
+    /// policy and is checked in the handler.
+    pub projects: Vec<String>,
 }
 
 /// `Authorization: Bearer reader` or `Authorization: Bearer admin`.

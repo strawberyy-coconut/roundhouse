@@ -46,6 +46,10 @@ pub struct Param {
     pub required: bool,
     pub schema: utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
     pub description: Option<String>,
+    /// OpenAPI serialization style. `None` leaves the spec default for `location`.
+    pub style: Option<utoipa::openapi::path::ParameterStyle>,
+    /// Whether array/object values are exploded into repeated keys. `None` leaves the default.
+    pub explode: Option<bool>,
 }
 
 impl Param {
@@ -60,11 +64,23 @@ impl Param {
             required: location == ParamIn::Path,
             schema,
             description: None,
+            style: None,
+            explode: None,
         }
     }
 
     pub fn required(mut self, required: bool) -> Self {
         self.required = required;
+        self
+    }
+
+    pub fn style(mut self, style: utoipa::openapi::path::ParameterStyle) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    pub fn explode(mut self, explode: bool) -> Self {
+        self.explode = Some(explode);
         self
     }
 

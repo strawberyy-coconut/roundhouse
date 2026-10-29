@@ -176,12 +176,22 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     docs.body = ::core::option::Option::Some(#krate::doc::binary_body());
                 });
             }
-            "Extension" if !handled && is_wrapper_type(&ty) => {
-                statements.push(quote! {
-                    docs.failures.extend(#krate::doc::extension_failures());
-                });
+            "Extension" => {
+                if is_wrapper_type(&ty) {
+                    statements.push(quote! {
+                        docs.failures.extend(#krate::doc::extension_failures());
+                    });
+                } else {
+                    // axum's own `Extension` rejects with a bare 500 that is not a `Problem`;
+                    // the document cannot honestly describe it. Mark it instead of guessing.
+                    statements.push(quote! { docs.unverified_extractor = true; });
+                }
             }
-            _ => {}
+            other => {
+                if !is_known_extractor(other) {
+                    statements.push(quote! { docs.unverified_extractor = true; });
+                }
+            }
         }
     }
 
@@ -235,6 +245,34 @@ pub fn expand(item: ItemFn) -> TokenStream {
             }
         }
     }
+}
+
+fn is_known_extractor(name: &str) -> bool {
+    matches!(
+        name,
+        "State"
+            | "Path"
+            | "Query"
+            | "Json"
+            | "Form"
+            | "Multipart"
+            | "Auth"
+            | "Extension"
+            | "Bytes"
+            | "Body"
+            | "Request"
+            | "Parts"
+            | "HeaderMap"
+            | "Method"
+            | "Uri"
+            | "OriginalUri"
+            | "ConnectInfo"
+            | "Extensions"
+            | "Host"
+            | "WebSocketUpgrade"
+            | "Option"
+            | "Result"
+    )
 }
 
 fn auth_types(ty: &Type) -> Option<(Type, Option<Type>, bool)> {

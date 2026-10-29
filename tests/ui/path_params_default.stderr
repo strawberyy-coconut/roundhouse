@@ -1,0 +1,6 @@
+error: `#[serde(default)]` is not valid on a path parameter: a path capture is always present
+ --> tests/ui/path_params_default.rs:6:5
+  |
+6 | /     #[serde(default)]
+7 | |     pub id: u64,
+  | |_______________^

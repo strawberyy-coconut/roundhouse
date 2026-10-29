@@ -173,7 +173,9 @@ where
 
     /// Serve a Swagger UI page at `/docs` over the generated document.
     ///
-    /// This implies the document route: a UI without a document is a broken page.
+    /// This implies the document route: a UI without a document is a broken page. The UI assets
+    /// are pinned (and SRI-checked) but loaded from unpkg, so the page needs browser network
+    /// access; serve your own UI at the document route for an air-gapped deployment.
     pub fn docs(mut self) -> Self {
         self.docs_route = Some("/docs");
         if self.openapi_route.is_none() {
@@ -481,232 +483,15 @@ where
         &self,
         diagnostics: &mut Vec<crate::build_error::Diagnostic>,
     ) -> Result<Vec<ResolvedRoute>, BuildError> {
-        let mounts: Vec<&'static MountRecord> = inventory::iter::<registry::MountRecord>
-            .into_iter()
-            .filter(|mount| self.selected(mount.module_path))
-            .collect();
-        let records: Vec<&'static RouteRecord> = inventory::iter::<registry::RouteRecord>
-            .into_iter()
-            .filter(|route| self.selected(route.module_path))
-            .collect();
-
-        for mount in &mounts {
-            if let Err(reason) = prefix::validate_mount_prefix(mount.prefix) {
-                return Err(BuildError::InvalidMountPrefix {
-                    prefix: mount.prefix.to_string(),
-                    reason,
-                    source: crate::build_error::Source::new(
-                        mount.module_path,
-                        mount.file,
-                        mount.line,
-                    ),
-                });
-            }
-            let used = records
-                .iter()
-                .any(|route| prefix::is_ancestor(mount.module_path, route.module_path));
-            if !used {
-                crate::build_error::report(
-                    diagnostics,
-                    self.strict,
-                    crate::build_error::Diagnostic::new(
-                        crate::build_error::Source::new(mount.module_path, mount.file, mount.line),
-                        format!("mount! `{}` has no routes below it", mount.prefix),
-                    ),
-                )?;
-            }
-        }
-
-        let mut resolved = Vec::new();
-
-        for scope in &self.scopes {
-            let matches = inventory::iter::<registry::RouteRecord>
-                .into_iter()
-                .any(|route| prefix::is_ancestor(scope, route.module_path))
-                || inventory::iter::<registry::MountRecord>
-                    .into_iter()
-                    .any(|mount| prefix::is_ancestor(scope, mount.module_path));
-            if !matches {
-                return Err(BuildError::EmptyScope { scope });
-            }
-        }
-
-        let mut seen: HashMap<(Method, String), &'static RouteRecord> = HashMap::new();
-
-        for record in records {
-            if let Some(expected) = (record.state)()
-                && expected != TypeId::of::<S>()
-            {
-                return Err(BuildError::StateMismatch {
-                    operation_id: record
-                        .operation_id
-                        .unwrap_or(record.handler_name)
-                        .to_string(),
-                    expected: (record.state_name)(),
-                    actual: std::any::type_name::<S>(),
-                    source: record.source_ref(),
-                });
-            }
-            if let Err(reason) = prefix::validate_template(record.path) {
-                return Err(BuildError::InvalidTemplate {
-                    reason,
-                    source: record.source_ref(),
-                });
-            }
-
-            let ancestors: Vec<&'static MountRecord> = mounts
-                .iter()
-                .copied()
-                .filter(|mount| prefix::is_ancestor(mount.module_path, record.module_path))
-                .collect();
-
-            let mut ancestors = ancestors;
-            ancestors.sort_by_key(|mount| prefix::depth(mount.module_path));
-
-            let mut layer_docs: Vec<crate::doc::layer::LayerDoc> = if record.absolute {
-                Vec::new()
-            } else {
-                ancestors
-                    .iter()
-                    .filter_map(|mount| mount.doc)
-                    .map(|doc| doc())
-                    .collect()
-            };
-            layer_docs.extend(self.global_layer_docs.iter().map(|doc| doc()));
-
-            let (path, tags, security, hidden) = if record.absolute {
-                (
-                    prefix::join("", record.path),
-                    Vec::new(),
-                    Vec::new(),
-                    record.hidden,
-                )
-            } else {
-                let path =
-                    prefix::join_all(ancestors.iter().map(|mount| mount.prefix), record.path);
-                let tags = ancestors
-                    .iter()
-                    .flat_map(|mount| mount.tags.iter().copied())
-                    .collect();
-                let security = ancestors
-                    .iter()
-                    .flat_map(|mount| mount.security.iter().copied())
-                    .collect();
-                let hidden = record.hidden || ancestors.iter().any(|mount| mount.hidden);
-                (path, tags, security, hidden)
-            };
-
-            let normalised = prefix::normalise_template(&path);
-            let mut captures = prefix::captures(&path);
-            let total = captures.len();
-            captures.sort();
-            captures.dedup();
-            if captures.len() != total {
-                return Err(BuildError::InvalidTemplate {
-                    reason: format!("`{path}` declares the same capture name more than once"),
-                    source: record.source_ref(),
-                });
-            }
-            let operation_id = record
-                .operation_id
-                .map(str::to_string)
-                .unwrap_or_else(|| default_operation_id(record, &path));
-            let key = (record.method, normalised.clone());
-            if let Some(previous) = seen.get(&key) {
-                return Err(BuildError::DuplicateRoute {
-                    method: record.method,
-                    path,
-                    first: previous.source_ref(),
-                    second: record.source_ref(),
-                });
-            }
-            for ((existing_method, existing_path), previous) in &seen {
-                if *existing_path == normalised
-                    && (*existing_method == Method::Any || record.method == Method::Any)
-                    && *existing_method != record.method
-                {
-                    return Err(BuildError::DuplicateRoute {
-                        method: record.method,
-                        path,
-                        first: previous.source_ref(),
-                        second: record.source_ref(),
-                    });
-                }
-            }
-            seen.insert(key, record);
-
-            resolved.push(ResolvedRoute {
-                method: record.method,
-                path,
-                operation_id,
-                module_path: record.module_path,
-                record,
-                tags,
-                security,
-                hidden,
-                layer_docs,
-            });
-        }
-
-        resolved.sort_by(|a, b| {
-            a.path
-                .cmp(&b.path)
-                .then_with(|| a.method.cmp(&b.method))
-                .then_with(|| a.operation_id.cmp(&b.operation_id))
-        });
-
-        // `try_build` is meant to be total: probe the same matchit tree axum will build so a
-        // shape conflict (e.g. `/{a}` next to `/{*rest}`) is a `BuildError`, not a panic during
-        // assembly. One path may legitimately carry several methods, so insert each path once.
-        let mut probe = matchit::Router::<()>::new();
-        let mut previous_path: Option<&str> = None;
-        for route in &resolved {
-            if previous_path == Some(route.path.as_str()) {
-                continue;
-            }
-            previous_path = Some(route.path.as_str());
-            // A mount and leaf that are valid alone can still combine into a template the router
-            // cannot serve (for example more captures than matchit can name). Re-check the full
-            // path before handing it to matchit, which panics past its own limit.
-            if let Err(reason) = prefix::validate_template(route.path.as_str()) {
-                return Err(BuildError::InvalidTemplate {
-                    reason,
-                    source: route.record.source_ref(),
-                });
-            }
-            if let Err(error) = probe.insert(route.path.as_str(), ()) {
-                return Err(BuildError::RouteConflict {
-                    path: route.path.clone(),
-                    reason: error.to_string(),
-                    source: route.record.source_ref(),
-                });
-            }
-        }
-
-        let mut operations: HashMap<&str, &'static RouteRecord> = HashMap::new();
-        for route in &resolved {
-            if let Some(previous) = operations.insert(route.operation_id.as_str(), route.record) {
-                return Err(BuildError::DuplicateOperationId {
-                    operation_id: route.operation_id.clone(),
-                    first: previous.source_ref(),
-                    second: route.record.source_ref(),
-                });
-            }
-        }
-
-        if resolved.is_empty() && self.merges.is_empty() {
-            return Err(BuildError::EmptyApp);
-        }
-
-        Ok(resolved)
-    }
-
-    fn selected(&self, module: &str) -> bool {
-        self.scopes.is_empty()
-            || self
-                .scopes
-                .iter()
-                .any(|scope| prefix::in_scope(scope, module))
+        resolve_routes(
+            &self.scopes,
+            self.strict,
+            &self.global_layer_docs,
+            Some(TypeId::of::<S>()),
+            std::any::type_name::<S>(),
+            self.merges.len(),
+            diagnostics,
+        )
     }
 
     fn assemble(&self, resolved: &[ResolvedRoute]) -> Result<Router<()>, BuildError> {
@@ -714,10 +499,9 @@ where
 
         let mut mounts_by_module: BTreeMap<&'static str, &'static MountRecord> = BTreeMap::new();
         for mount in inventory::iter::<registry::MountRecord>.into_iter() {
-            if self.selected(mount.module_path)
-                && roots
-                    .iter()
-                    .any(|root| prefix::is_ancestor(root, mount.module_path))
+            if roots
+                .iter()
+                .any(|root| prefix::is_ancestor(root, mount.module_path))
             {
                 mounts_by_module.insert(mount.module_path, mount);
             }
@@ -803,20 +587,9 @@ where
     }
 
     fn roots(&self, resolved: &[ResolvedRoute]) -> Vec<&'static str> {
-        if !self.scopes.is_empty() {
-            let mut roots: Vec<&'static str> = self.scopes.clone();
-            roots.sort_by_key(|scope| prefix::depth(scope));
-            roots.dedup();
-            // A nested scope is already covered by its ancestor; including both would duplicate
-            // every route in the smaller subtree.
-            let candidates = roots.clone();
-            roots.retain(|scope| {
-                !candidates
-                    .iter()
-                    .any(|other| other != scope && prefix::is_ancestor(other, scope))
-            });
-            return roots;
-        }
+        // The tree is flat and already filtered to this app's scopes; rooting it at the first
+        // module segment lets ancestor mounts (including ones above a `scope`) contribute their
+        // layers to the selected routes without pulling in any unselected route.
         let mut roots: Vec<&'static str> = resolved
             .iter()
             .map(|route| first_segment(route.module_path))
@@ -825,6 +598,435 @@ where
         roots.dedup();
         roots
     }
+}
+
+/// Build an OpenAPI document without constructing application state.
+///
+/// Resolution and document building are pure functions of the declarations. Only router
+/// assembly needs `S`, so doc generation (CI, build artifacts, `roundhouse openapi`) can run
+/// before a database pool, config or token store exists:
+///
+/// ```ignore
+/// let document = roundhouse::Document::new()
+///     .scope(module_path!())
+///     .openapi(|| roundhouse::openapi::Info::new("API", "1.0.0"))
+///     .document();
+/// ```
+pub struct Document {
+    scopes: Vec<&'static str>,
+    global_layer_docs: Vec<fn() -> crate::doc::layer::LayerDoc>,
+    info: Option<Box<dyn Fn() -> Info + Send + Sync>>,
+    document_rejections: DocumentRejections,
+    strict: bool,
+}
+
+impl Default for Document {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Document {
+    pub fn new() -> Self {
+        Self {
+            scopes: Vec::new(),
+            global_layer_docs: Vec::new(),
+            info: None,
+            document_rejections: DocumentRejections::Auto,
+            strict: false,
+        }
+    }
+
+    /// Restrict discovery to a module path (and its descendants, on `::` boundaries).
+    pub fn scope(mut self, scope: &'static str) -> Self {
+        self.scopes.push(scope);
+        self
+    }
+
+    /// Alias for [`Document::scope`].
+    pub fn include(self, scope: &'static str) -> Self {
+        self.scope(scope)
+    }
+
+    /// Set the document info. Defaults to `API`/`0.1.0` when omitted.
+    pub fn openapi<F>(mut self, info: F) -> Self
+    where
+        F: Fn() -> Info + Send + Sync + 'static,
+    {
+        self.info = Some(Box::new(info));
+        self
+    }
+
+    /// Add the parameters/responses an already-documented global layer guarantees.
+    pub fn layer_documented(mut self, doc: fn() -> crate::doc::layer::LayerDoc) -> Self {
+        self.global_layer_docs.push(doc);
+        self
+    }
+
+    /// Add or suppress extractor rejection responses (`Auto` by default).
+    pub fn document_rejections(mut self, mode: impl Into<DocumentRejections>) -> Self {
+        self.document_rejections = mode.into();
+        self
+    }
+
+    /// Turn the loud-derivation warnings into build errors.
+    pub fn strict(mut self) -> Self {
+        self.strict = true;
+        self
+    }
+
+    fn resolve(
+        &self,
+        diagnostics: &mut Vec<crate::build_error::Diagnostic>,
+    ) -> Result<Vec<ResolvedRoute>, BuildError> {
+        resolve_routes(
+            &self.scopes,
+            self.strict,
+            &self.global_layer_docs,
+            None,
+            "",
+            0,
+            diagnostics,
+        )
+    }
+
+    /// Resolve the route table and build the document, without a state value.
+    pub fn try_document(self) -> Result<OpenApi, BuildError> {
+        let mut diagnostics = Vec::new();
+        let resolved = self.resolve(&mut diagnostics)?;
+        let info = self
+            .info
+            .as_ref()
+            .map(|info| info())
+            .unwrap_or_else(|| Info::new("API", "0.1.0"));
+        let mut bodies = Vec::new();
+        doc::build::build_with_observations(
+            info,
+            &resolved,
+            self.document_rejections == DocumentRejections::Auto,
+            self.strict,
+            &mut diagnostics,
+            &mut bodies,
+        )
+    }
+
+    /// Build the document, panicking with the same report `try_document` returns.
+    pub fn document(self) -> OpenApi {
+        self.try_document()
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// The resolved route table, without assembling a router.
+    pub fn routes(self) -> Result<Vec<ResolvedRoute>, BuildError> {
+        let mut diagnostics = Vec::new();
+        self.resolve(&mut diagnostics)
+    }
+
+    /// The resolved route table as text, without assembling a router.
+    pub fn route_listing(self) -> Result<String, BuildError> {
+        let routes = self.routes()?;
+        let mut out = String::new();
+        for route in &routes {
+            out.push_str(&format!(
+                "{:<7} {:<40} {}\n",
+                route.method,
+                route.path,
+                route.record.source()
+            ));
+        }
+        Ok(out)
+    }
+
+    /// The OpenAPI 3.1 document as pretty JSON.
+    pub fn document_json(self) -> Result<String, BuildError> {
+        Ok(self
+            .document()
+            .to_pretty_json()
+            .expect("OpenAPI document serializes"))
+    }
+
+    /// The OpenAPI 3.0-shaped document as pretty JSON.
+    pub fn document_30_json(self) -> Result<String, BuildError> {
+        let document = self.document();
+        Ok(
+            serde_json::to_string_pretty(&doc::downgrade::to_openapi_30(&document))
+                .expect("JSON serializes"),
+        )
+    }
+
+    /// Emit whatever the process arguments asked for (`--openapi`, `--openapi-30`, `--routes`,
+    /// `--output <path>`). Intended for an app's `main` before it constructs production state.
+    pub fn emit_from_env(self) -> std::io::Result<()> {
+        let args: Vec<String> = std::env::args().collect();
+        let output = output_path(&args);
+        let contents = if args.iter().any(|arg| arg == "--routes") {
+            self.route_listing().map_err(build_io_error)?
+        } else if args.iter().any(|arg| arg == "--openapi-30") {
+            self.document_30_json().map_err(build_io_error)?
+        } else {
+            self.document_json().map_err(build_io_error)?
+        };
+        match output {
+            Some(path) => std::fs::write(path, contents),
+            None => {
+                println!("{contents}");
+                Ok(())
+            }
+        }
+    }
+}
+
+fn build_io_error(error: BuildError) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, error.to_string())
+}
+
+/// Whether the process was invoked to dump a document or the route table.
+///
+/// Check this before constructing state in `main`; `--openapi` and friends are otherwise
+/// intercepted by `App::serve`, after state already exists.
+pub fn document_requested() -> bool {
+    std::env::args().any(|arg| {
+        arg == "--openapi"
+            || arg == "--openapi-30"
+            || arg == "--routes"
+            || arg.starts_with("--output")
+    })
+}
+
+fn selected(scopes: &[&'static str], module: &str) -> bool {
+    scopes.is_empty() || scopes.iter().any(|scope| prefix::in_scope(scope, module))
+}
+
+fn resolve_routes(
+    scopes: &[&'static str],
+    strict: bool,
+    global_layer_docs: &[fn() -> crate::doc::layer::LayerDoc],
+    expected_state: Option<TypeId>,
+    expected_state_name: &'static str,
+    merges: usize,
+    diagnostics: &mut Vec<crate::build_error::Diagnostic>,
+) -> Result<Vec<ResolvedRoute>, BuildError> {
+    let records: Vec<&'static RouteRecord> = inventory::iter::<registry::RouteRecord>
+        .into_iter()
+        .filter(|route| selected(scopes, route.module_path))
+        .collect();
+    // A scope selects a subtree, not a new root. Mounts above the scope still provide the
+    // structural prefix, tags, security and layers for every route inside it.
+    let mounts: Vec<&'static MountRecord> = inventory::iter::<registry::MountRecord>
+        .into_iter()
+        .filter(|mount| {
+            selected(scopes, mount.module_path)
+                || records
+                    .iter()
+                    .any(|route| prefix::is_ancestor(mount.module_path, route.module_path))
+        })
+        .collect();
+
+    for mount in &mounts {
+        if let Err(reason) = prefix::validate_mount_prefix(mount.prefix) {
+            return Err(BuildError::InvalidMountPrefix {
+                prefix: mount.prefix.to_string(),
+                reason,
+                source: crate::build_error::Source::new(mount.module_path, mount.file, mount.line),
+            });
+        }
+        let used = records
+            .iter()
+            .any(|route| prefix::is_ancestor(mount.module_path, route.module_path));
+        if !used && selected(scopes, mount.module_path) {
+            crate::build_error::report(
+                diagnostics,
+                strict,
+                crate::build_error::Diagnostic::new(
+                    crate::build_error::Source::new(mount.module_path, mount.file, mount.line),
+                    format!("mount! `{}` has no routes below it", mount.prefix),
+                ),
+            )?;
+        }
+    }
+
+    let mut resolved = Vec::new();
+
+    for scope in scopes {
+        let matches = inventory::iter::<registry::RouteRecord>
+            .into_iter()
+            .any(|route| prefix::is_ancestor(scope, route.module_path))
+            || inventory::iter::<registry::MountRecord>
+                .into_iter()
+                .any(|mount| prefix::is_ancestor(scope, mount.module_path));
+        if !matches {
+            return Err(BuildError::EmptyScope { scope });
+        }
+    }
+
+    let mut seen: HashMap<(Method, String), &'static RouteRecord> = HashMap::new();
+
+    for record in records {
+        if let Some(expected) = expected_state
+            && let Some(actual) = (record.state)()
+            && actual != expected
+        {
+            return Err(BuildError::StateMismatch {
+                operation_id: record
+                    .operation_id
+                    .unwrap_or(record.handler_name)
+                    .to_string(),
+                expected: (record.state_name)(),
+                actual: expected_state_name,
+                source: record.source_ref(),
+            });
+        }
+        if let Err(reason) = prefix::validate_template(record.path) {
+            return Err(BuildError::InvalidTemplate {
+                reason,
+                source: record.source_ref(),
+            });
+        }
+
+        let ancestors: Vec<&'static MountRecord> = mounts
+            .iter()
+            .copied()
+            .filter(|mount| prefix::is_ancestor(mount.module_path, record.module_path))
+            .collect();
+
+        let mut ancestors = ancestors;
+        ancestors.sort_by_key(|mount| prefix::depth(mount.module_path));
+
+        let mut layer_docs: Vec<crate::doc::layer::LayerDoc> = if record.absolute {
+            Vec::new()
+        } else {
+            ancestors
+                .iter()
+                .filter_map(|mount| mount.doc)
+                .map(|doc| doc())
+                .collect()
+        };
+        layer_docs.extend(global_layer_docs.iter().map(|doc| doc()));
+
+        let (path, tags, security, hidden) = if record.absolute {
+            (
+                prefix::join("", record.path),
+                Vec::new(),
+                Vec::new(),
+                record.hidden,
+            )
+        } else {
+            let path = prefix::join_all(ancestors.iter().map(|mount| mount.prefix), record.path);
+            let tags = ancestors
+                .iter()
+                .flat_map(|mount| mount.tags.iter().copied())
+                .collect();
+            let security = ancestors
+                .iter()
+                .flat_map(|mount| mount.security.iter().copied())
+                .collect();
+            let hidden = record.hidden || ancestors.iter().any(|mount| mount.hidden);
+            (path, tags, security, hidden)
+        };
+
+        let normalised = prefix::normalise_template(&path);
+        let mut captures = prefix::captures(&path);
+        let total = captures.len();
+        captures.sort();
+        captures.dedup();
+        if captures.len() != total {
+            return Err(BuildError::InvalidTemplate {
+                reason: format!("`{path}` declares the same capture name more than once"),
+                source: record.source_ref(),
+            });
+        }
+        let operation_id = record
+            .operation_id
+            .map(str::to_string)
+            .unwrap_or_else(|| default_operation_id(record, &path));
+        let key = (record.method, normalised.clone());
+        if let Some(previous) = seen.get(&key) {
+            return Err(BuildError::DuplicateRoute {
+                method: record.method,
+                path,
+                first: previous.source_ref(),
+                second: record.source_ref(),
+            });
+        }
+        for ((existing_method, existing_path), previous) in &seen {
+            if *existing_path == normalised
+                && (*existing_method == Method::Any || record.method == Method::Any)
+                && *existing_method != record.method
+            {
+                return Err(BuildError::DuplicateRoute {
+                    method: record.method,
+                    path,
+                    first: previous.source_ref(),
+                    second: record.source_ref(),
+                });
+            }
+        }
+        seen.insert(key, record);
+
+        resolved.push(ResolvedRoute {
+            method: record.method,
+            path,
+            operation_id,
+            module_path: record.module_path,
+            record,
+            tags,
+            security,
+            hidden,
+            layer_docs,
+        });
+    }
+
+    resolved.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then_with(|| a.method.cmp(&b.method))
+            .then_with(|| a.operation_id.cmp(&b.operation_id))
+    });
+
+    // `try_build` is meant to be total: probe the same matchit tree axum will build so a
+    // shape conflict (e.g. `/{a}` next to `/{*rest}`) is a `BuildError`, not a panic during
+    // assembly. One path may legitimately carry several methods, so insert each path once.
+    let mut probe = matchit::Router::<()>::new();
+    let mut previous_path: Option<&str> = None;
+    for route in &resolved {
+        if previous_path == Some(route.path.as_str()) {
+            continue;
+        }
+        previous_path = Some(route.path.as_str());
+        // A mount and leaf that are valid alone can still combine into a template the router
+        // cannot serve (for example more captures than matchit can name). Re-check the full
+        // path before handing it to matchit, which panics past its own limit.
+        if let Err(reason) = prefix::validate_template(route.path.as_str()) {
+            return Err(BuildError::InvalidTemplate {
+                reason,
+                source: route.record.source_ref(),
+            });
+        }
+        if let Err(error) = probe.insert(route.path.as_str(), ()) {
+            return Err(BuildError::RouteConflict {
+                path: route.path.clone(),
+                reason: error.to_string(),
+                source: route.record.source_ref(),
+            });
+        }
+    }
+
+    let mut operations: HashMap<&str, &'static RouteRecord> = HashMap::new();
+    for route in &resolved {
+        if let Some(previous) = operations.insert(route.operation_id.as_str(), route.record) {
+            return Err(BuildError::DuplicateOperationId {
+                operation_id: route.operation_id.clone(),
+                first: previous.source_ref(),
+                second: route.record.source_ref(),
+            });
+        }
+    }
+
+    if resolved.is_empty() && merges == 0 {
+        return Err(BuildError::EmptyApp);
+    }
+
+    Ok(resolved)
 }
 
 const NO_OPENAPI: &str = "this app did not call App::openapi(..)";

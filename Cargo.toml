@@ -55,6 +55,7 @@ roundhouse-multipart = { path = "roundhouse-multipart", optional = true }
 roundhouse-problem = { path = "roundhouse-problem" }
 roundhouse-schema = { path = "roundhouse-schema" }
 serde = { version = "1", features = ["derive"] }
+serde_html_form = "0.2"
 serde_json = "1"
 tokio = { version = "1", features = ["net", "rt"] }
 tracing = "0.1"
@@ -67,6 +68,7 @@ http-body-util = "0.1"
 thiserror = "2"
 tower = { version = "0.5", features = ["util"] }
 trybuild = "1"
+uuid = { version = "1", features = ["serde"] }
 
 [[test]]
 name = "files"

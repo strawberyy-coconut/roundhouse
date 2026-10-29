@@ -2,6 +2,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, LitStr, Result};
 
+use crate::serde_shape::{container as serde_container, field as serde_field, field_name};
+
 pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let krate = crate::util::krate();
     if !input.generics.params.is_empty() {
@@ -11,6 +13,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         ));
     }
     let ident = input.ident;
+    let container = serde_container(&input.attrs)?;
     let Data::Struct(data) = &input.data else {
         return Err(syn::Error::new_spanned(
             &ident,
@@ -32,10 +35,28 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         let Some(field_ident) = &field.ident else {
             continue;
         };
-        let mut name = field_ident.to_string();
-        if let Some(stripped) = name.strip_prefix("r#") {
-            name = stripped.to_string();
+        let field_serde = serde_field(&field.attrs)?;
+        if field_serde.skipped_on_input() {
+            return Err(syn::Error::new_spanned(
+                field,
+                "`#[serde(skip)]` is not valid on a path parameter: a path capture is always \
+                 present and must be deserialized",
+            ));
         }
+        if field_serde.default || container.default {
+            return Err(syn::Error::new_spanned(
+                field,
+                "`#[serde(default)]` is not valid on a path parameter: a path capture is always \
+                 present",
+            ));
+        }
+        if field_serde.flatten {
+            return Err(syn::Error::new_spanned(
+                field,
+                "`#[serde(flatten)]` is not valid on a path parameter: path captures are flat",
+            ));
+        }
+        let name = field_name(field, &field_serde, container.rename_all)?;
         let name_lit = LitStr::new(&name, field_ident.span());
         let ty = &field.ty;
         let schema = crate::api_schema::schema_attrs(&field.attrs)?;

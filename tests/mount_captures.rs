@@ -654,13 +654,17 @@ fn the_route_listing_uses_full_paths() {
     assert!(listing.contains("mount_captures.rs"));
 }
 
-#[test]
-fn a_scope_below_a_mount_drops_the_ancestor_prefix() {
-    // `scope` selects declarations, not a URL subtree. A scope inside a mounted module therefore
-    // does not inherit the mount; the route is served at its leaf path. Documented in the README.
+#[tokio::test]
+async fn a_scope_below_a_mount_keeps_the_ancestor_prefix() {
+    // `scope` selects declarations, not a new URL root. The mount above the scope still supplies
+    // the structural prefix (and its tags, security and layers) for every selected route.
     let app = scoped(concat!(module_path!(), "::scoped_below::issues")).build();
     assert_eq!(app.routes().len(), 1);
-    assert_eq!(app.routes()[0].path, "/");
+    assert_eq!(app.routes()[0].path, "/api/v1");
+    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    assert!(document["paths"]["/api/v1"].is_object());
+    let response = app.oneshot_get("/api/v1").await;
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[cfg(feature = "schema-engine")]

@@ -110,6 +110,9 @@ pub struct HandlerDocs {
     /// A body extractor the framework can see syntactically but cannot verify at runtime
     /// (`axum::Json`, `axum::Form`, `axum::extract::Multipart`).
     pub unverified: bool,
+    /// An extractor whose documented contribution the macro cannot infer (a custom `Tenant`,
+    /// a bare `HeaderMap`, a typed header, ...).
+    pub unverified_extractor: bool,
     /// A `Result<_, E>` whose `E` registered no documented responses.
     pub undocumented_error: Option<&'static str>,
     /// The schema of a scalar `Path<T>`; the parameter's name comes from the template.
@@ -331,6 +334,22 @@ pub trait QueryParams {
             Ok(())
         } else {
             Err(errors)
+        }
+    }
+}
+
+impl<T: QueryParams> QueryParams for Option<T> {
+    fn params(components: &mut Components) -> Vec<Param> {
+        let mut params = T::params(components);
+        for param in &mut params {
+            param.required = false;
+        }
+        params
+    }
+
+    fn validate_at(&self, pointer: &str, errors: &mut crate::validate::ValidationErrors) {
+        if let Some(value) = self {
+            value.validate_at(pointer, errors);
         }
     }
 }

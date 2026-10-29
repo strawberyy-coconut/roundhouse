@@ -6,6 +6,7 @@ mod multipart;
 mod path_params;
 mod query_params;
 mod routes;
+mod serde_shape;
 mod util;
 
 use proc_macro::TokenStream;

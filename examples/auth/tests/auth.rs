@@ -124,6 +124,39 @@ async fn scopes_and_optional_auth_are_documented_and_enforced() {
 }
 
 #[tokio::test]
+async fn a_scope_gate_does_not_replace_resource_policy() {
+    let app = built();
+
+    // `read:posts` is satisfied, but membership is a resource check in the handler.
+    let response = request(
+        &app,
+        "/projects/alpha",
+        &[(header::AUTHORIZATION.as_str(), "Bearer reader")],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = request(
+        &app,
+        "/projects/beta",
+        &[(header::AUTHORIZATION.as_str(), "Bearer reader")],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    // The route-level gate still runs first.
+    let response = request(&app, "/projects/alpha", &[]).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // The document can only describe the scope, not membership.
+    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    assert_eq!(
+        document["paths"]["/projects/{project_id}"]["get"]["security"][0]["bearer"],
+        serde_json::json!(["read:posts"])
+    );
+}
+
+#[tokio::test]
 async fn two_required_extractors_and_into_one_requirement() {
     let app = built();
 

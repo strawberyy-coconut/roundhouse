@@ -8,6 +8,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr)
         .init();
 
+    // Resolve the contract before constructing production state. `roundhouse openapi` and
+    // `roundhouse routes` invoke this path.
+    if roundhouse::document_requested() {
+        return Ok(blog_example::document().emit_from_env()?);
+    }
+
     blog_example::app(AppState::default())
         .serve("0.0.0.0:3001")
         .await?;

@@ -25,3 +25,10 @@ pub fn app(state: AppState) -> roundhouse::App<AppState> {
         .docs()
         .validate_responses()
 }
+
+/// The same declarations as [`app`], resolved without constructing `AppState`.
+pub fn document() -> roundhouse::Document {
+    roundhouse::Document::new()
+        .scope(module_path!())
+        .openapi(|| Info::new("Showcase API", env!("CARGO_PKG_VERSION")))
+}

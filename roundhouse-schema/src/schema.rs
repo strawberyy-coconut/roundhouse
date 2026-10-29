@@ -470,6 +470,31 @@ scalar_path_names!(
     bool, char, String, i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, f32, f64
 );
 
+#[cfg(feature = "uuid")]
+scalar_path_names!(uuid::Uuid);
+
+#[cfg(feature = "chrono")]
+scalar_path_names!(
+    chrono::NaiveDate,
+    chrono::NaiveDateTime,
+    chrono::DateTime<chrono::Utc>,
+);
+
+#[cfg(feature = "time")]
+scalar_path_names!(time::Date, time::OffsetDateTime, time::PrimitiveDateTime,);
+
+#[cfg(feature = "jiff")]
+scalar_path_names!(
+    jiff::Timestamp,
+    jiff::Zoned,
+    jiff::civil::Date,
+    jiff::civil::DateTime,
+    jiff::civil::Time,
+);
+
+#[cfg(feature = "decimal")]
+scalar_path_names!(rust_decimal::Decimal);
+
 impl<K, V, S> PathNames for HashMap<K, V, S> {}
 impl<K, V, S> PathValidate for HashMap<K, V, S> {}
 

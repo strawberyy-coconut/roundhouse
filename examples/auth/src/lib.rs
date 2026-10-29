@@ -21,6 +21,7 @@ impl Default for AppState {
                 User {
                     name: "reader".to_string(),
                     admin: false,
+                    projects: vec!["alpha".to_string()],
                 },
             ),
             (
@@ -28,6 +29,7 @@ impl Default for AppState {
                 User {
                     name: "admin".to_string(),
                     admin: true,
+                    projects: vec!["alpha".to_string(), "beta".to_string()],
                 },
             ),
         ]);
@@ -52,4 +54,11 @@ pub fn app(state: AppState) -> roundhouse::App<AppState> {
     roundhouse::app!(state)
         .openapi(|| Info::new("Auth API", env!("CARGO_PKG_VERSION")))
         .docs()
+}
+
+/// The same declarations as [`app`], resolved without constructing `AppState`.
+pub fn document() -> roundhouse::Document {
+    roundhouse::Document::new()
+        .scope(module_path!())
+        .openapi(|| Info::new("Auth API", env!("CARGO_PKG_VERSION")))
 }

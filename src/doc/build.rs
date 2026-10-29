@@ -171,6 +171,7 @@ fn operation(
     )>,
 ) -> Result<utoipa::openapi::path::Operation, BuildError> {
     let unverified = docs.unverified;
+    let unverified_extractor = docs.unverified_extractor;
     let mut docs = docs;
     for layer in &route.layer_docs {
         docs.params.extend(layer.parameters.clone());
@@ -181,6 +182,21 @@ fn operation(
         docs.required_auth.extend(layer.required_auth.clone());
         docs.optional_auth.extend(layer.optional_auth.clone());
         docs.schemes.extend(layer.schemes.clone());
+    }
+
+    if unverified_extractor {
+        crate::build_error::report(
+            diagnostics,
+            strict,
+            Diagnostic::new(
+                route.record.source_ref(),
+                format!(
+                    "operation `{}` takes an extractor whose parameters the document cannot \
+                     infer; it is marked `x-roundhouse-unverified-extractor`",
+                    route.operation_id
+                ),
+            ),
+        )?;
     }
 
     let mut parameters: Vec<Param> = Vec::new();
@@ -405,6 +421,9 @@ fn operation(
     if unverified {
         extensions = extensions.add("x-roundhouse-unverified-body", true);
     }
+    if unverified_extractor {
+        extensions = extensions.add("x-roundhouse-unverified-extractor", true);
+    }
     if overridden {
         extensions = extensions.add("x-roundhouse-overridden-response", true);
     }
@@ -442,6 +461,8 @@ fn build_param(param: Param) -> utoipa::openapi::path::Parameter {
         })
         .schema(Some(param.schema))
         .description(param.description)
+        .style(param.style)
+        .explode(param.explode)
         .build()
 }
 

@@ -284,19 +284,21 @@ where
 {
     type Rejection = Problem;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let skip = parts.extensions.get::<SkipValidation>().is_some();
         let config = validation_config(&parts.extensions);
-        let value = axum::extract::Query::<T>::from_request_parts(parts, state)
-            .await
-            .map_err(|rejection| rejection_problem(rejection.status(), rejection.body_text()))?;
+        // `axum::extract::Query` uses `serde_urlencoded`, which cannot represent repeated keys.
+        // The document describes arrays as `style: form, explode: true`, so the extractor must
+        // accept `?tag=a&tag=b` rather than the last value or an error.
+        let query = parts.uri.query().unwrap_or_default();
+        let value: T = serde_html_form::from_str(query)
+            .map_err(|error| rejection_problem(StatusCode::BAD_REQUEST, error.to_string()))?;
         if !skip && config.mode != Validation::Off {
             value
-                .0
                 .validate()
                 .map_err(|errors| problem_from_validation(errors, config.status))?;
         }
-        Ok(Self(value.0))
+        Ok(Self(value))
     }
 }
 

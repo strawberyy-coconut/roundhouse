@@ -2,7 +2,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, LitStr, Result};
 
-use crate::util::is_option;
+use crate::serde_shape::{container as serde_container, field as serde_field, field_name};
+use crate::util::{is_option, is_vec};
 
 pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let krate = crate::util::krate();
@@ -13,6 +14,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         ));
     }
     let ident = input.ident;
+    let container = serde_container(&input.attrs)?;
     let Data::Struct(data) = &input.data else {
         return Err(syn::Error::new_spanned(
             &ident,
@@ -32,26 +34,26 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         let Some(field_ident) = &field.ident else {
             continue;
         };
-        let mut name = field_ident.to_string();
-        if let Some(stripped) = name.strip_prefix("r#") {
-            name = stripped.to_string();
+        let field_serde = serde_field(&field.attrs)?;
+        if field_serde.skipped_on_input() {
+            continue;
         }
-        // Honor `#[serde(rename = "...")]` when present.
-        for attr in &field.attrs {
-            if attr.path().is_ident("serde") {
-                let _ = attr.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("rename") {
-                        let value: LitStr = meta.value()?.parse()?;
-                        name = value.value();
-                    }
-                    Ok(())
-                });
-            }
-        }
-        let name_lit = LitStr::new(&name, field_ident.span());
         let ty = &field.ty;
-        let required = is_option(ty).is_none();
         let schema = crate::api_schema::schema_attrs(&field.attrs)?;
+
+        if field_serde.flatten {
+            // Serde flattens the inner keys into this struct's own namespace. The inner
+            // `QueryParams` impl owns both its parameter list and its validation pass.
+            params.push(quote! {
+                params.extend(<#ty as #krate::doc::QueryParams>::params(components));
+            });
+            validations.push(flatten_validation(field_ident, ty));
+            continue;
+        }
+
+        let name = field_name(field, &field_serde, container.rename_all)?;
+        let name_lit = LitStr::new(&name, field_ident.span());
+        let required = is_option(ty).is_none() && !field_serde.default && !container.default;
         let schema_expr = crate::api_schema::field_schema_expr(ty, &schema.constraints);
         validations.push(crate::api_schema::field_validation(
             index,
@@ -62,15 +64,28 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             false,
             quote!(pointer),
         ));
+        let array = is_vec(ty).is_some()
+            || is_option(ty)
+                .as_ref()
+                .is_some_and(|inner| is_vec(inner).is_some());
+        let style = if array {
+            quote! {
+                .style(#krate::utoipa::openapi::path::ParameterStyle::Form)
+                .explode(true)
+            }
+        } else {
+            quote!()
+        };
         params.push(quote! {
-            {
-                <#ty as #krate::doc::ApiSchema>::register(components);
+            params.push(
                 #krate::doc::Param::new(
                     #name_lit,
                     #krate::doc::ParamIn::Query,
                     #schema_expr,
-                ).required(#required)
-            }
+                )
+                .required(#required)
+                #style
+            );
         });
     }
 
@@ -80,7 +95,9 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         fn #fn_name(
             components: &mut #krate::utoipa::openapi::schema::Components,
         ) -> ::std::vec::Vec<#krate::doc::Param> {
-            ::std::vec![#(#params),*]
+            let mut params = ::std::vec::Vec::new();
+            #(#params)*
+            params
         }
 
         impl #krate::doc::QueryParams for #ident {
@@ -106,4 +123,19 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             )
         }
     })
+}
+
+fn flatten_validation(field_ident: &syn::Ident, ty: &syn::Type) -> TokenStream {
+    let krate = crate::util::krate();
+    if is_option(ty).is_some() {
+        quote! {
+            if let ::core::option::Option::Some(value) = &self.#field_ident {
+                #krate::doc::QueryParams::validate_at(value, pointer, errors);
+            }
+        }
+    } else {
+        quote! {
+            #krate::doc::QueryParams::validate_at(&self.#field_ident, pointer, errors);
+        }
+    }
 }

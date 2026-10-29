@@ -109,6 +109,13 @@ impl AuthScopes for NoScopes {}
 /// A scope marker is published to the document in a security requirement. Implementing this
 /// trait is the handler's proof that the requirement is enforced: `Auth<A, Scopes>` does not
 /// compile without it. `NoScopes` is the only built-in implementation and grants everything.
+///
+/// This is a **route-level gate over the identity**, not a resource policy: the method receives
+/// only `A::Identity`, so it can check roles, scopes or whether the principal is active, but it
+/// cannot see the path parameters or the state that would answer "is this user a member of
+/// project X?". Do that check in the handler once the typed path is extracted and return a
+/// `403 Problem`; the document still publishes the route's scope, because scopes and row-level
+/// membership are different claims.
 pub trait Authorize<A: AuthScheme>: AuthScopes {
     /// Return `Ok(())` when `identity` may exercise this route, or the rejection to send.
     #[allow(clippy::result_large_err)]

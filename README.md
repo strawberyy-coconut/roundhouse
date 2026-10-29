@@ -199,10 +199,20 @@ cargo run -q -p roundhouse-cli -- openapi -p notes-example -o target/openapi.jso
 Install it with `cargo install --path roundhouse-cli` and invoke `roundhouse` directly.
 
 `-o/--output` writes to a file instead of stdout. The examples send tracing to stderr, so a
-document on stdout stays parseable; `App::document_json()` and `App::route_listing()` are the
-non-serving API the CLI uses. One caveat remains: the app value is constructed before the document
-is emitted, so state setup (environment validation, pool creation) still runs. Keep expensive or
-side-effecting startup behind a flag if you dump documents in CI.
+document on stdout stays parseable. Document resolution does not need application state: the
+examples check `roundhouse::document_requested()` in `main` and call a state-free
+`example::document().emit_from_env()` before constructing `AppState`, so CI does not need a
+database, token store or environment validation. The builder is also available directly:
+
+```rust
+let json = roundhouse::Document::new()
+    .scope(module_path!())
+    .openapi(|| roundhouse::openapi::Info::new("API", "1.0.0"))
+    .document_json()?;
+```
+
+`App::document_json()` and `App::route_listing()` remain the convenience methods after state
+exists.
 
 ## What works (v0.2)
 
@@ -221,8 +231,9 @@ side-effecting startup behind a flag if you dump documents in CI.
   Group mounts, module layers (full/route), entry layers, `absolute`, `hidden`, `#[cfg]` entries,
   grouped method tables, scoped discovery (`scope` / `include`), `App::layer`,
   `App::layer_documented` for layers that terminate requests, `App::merge`, custom fallbacks, and
-  a JSON `404 Problem` default. `scope(..)` selects declarations, not a URL subtree: scoping below
-  a mounted module does not inherit that ancestor mount.
+  a JSON `404 Problem` default. `scope(..)` selects declarations; mounts above the scope still
+  provide the structural prefix (and their tags, security and layers), so scoping below
+  `mount!("/api/v1")` keeps `/api/v1` in routes and documents.
 - **Fidelity** — `App::router()` returns a real `axum::Router<S>`, `Result<T, E>` works whenever
   both sides are `IntoResponse`, and the example's fidelity test runs the same requests against a
   hand-written router and the discovered one, asserting status, headers and body are equal.
@@ -231,7 +242,9 @@ side-effecting startup behind a flag if you dump documents in CI.
   documentation half plus a compile-time marker, so a handler listed in `routes!` without
   `#[handler]` fails at the table line. Derivation is loud: a route that derives no 2xx/3xx
   response and declares none is a build error, a foreign `axum::Json` body marks the operation
-  `x-roundhouse-unverified-body` (a warning by default, a `BuildError` under `App::strict()`), and
+  `x-roundhouse-unverified-body` (a warning by default, a `BuildError` under `App::strict()`), a
+  custom extractor whose parameters the macro cannot infer is marked
+  `x-roundhouse-unverified-extractor` (also a warning by default), and
   `-> StatusCode` or `(StatusCode, Json<T>)` documents a `default` response. `responses(200 = Post)`
   uses `Post`'s schema; replacing an inferred body needs `override` and emits
   `x-roundhouse-overridden-response`. `deprecated` and `public` emit `deprecated: true` and
@@ -241,13 +254,20 @@ side-effecting startup behind a flag if you dump documents in CI.
   lookups use app state instead of hiding a store in request extensions. `Auth<A>` yields the
   identity; `Auth<A, Scopes>` publishes the scope in the security requirement and only compiles
   when `Scopes: Authorize<A>`, so a scope marker cannot be documented without an authorization
-  decision. Several required `Auth<A>` extractors AND into one OpenAPI requirement; an
+  decision. `Authorize` is a route-level gate over the identity: it can answer role/scope
+  questions but cannot see a path resource, so row-level membership checks belong in the handler
+  (see `examples/auth`'s admin check). Several required `Auth<A>` extractors AND into one OpenAPI
+  requirement; an
   `Option<Auth<A>>` adds the unauthenticated alternative, and a present-but-invalid token is a
   rejection rather than anonymous access. `Auth<A>::State` pins the handler the same way
   `State<T>` does. `mount!(security = [...])` is accepted only when the operation also enforces
   that scheme; scheme kinds are never guessed from names.
 - **Extractor docs** — `#[derive(QueryParams)]` and `#[derive(PathParams)]` publish query/path
-  parameters with the same `#[schema(..)]` constraints the runtime enforces. Auth publishes the
+  parameters with the same `#[schema(..)]` constraints the runtime enforces. Both derives share the
+  `ApiSchema` serde parser: `rename`, container and field `rename_all`, `default` (field and
+  container), `skip`, `skip_deserializing` and `flatten` produce the same names and requiredness
+  serde does. `Vec<T>` query parameters are documented as `style: form, explode: true` and the
+  extractor uses `serde_html_form`, so `?tag=a&tag=b` parses. Auth publishes the
   scheme, 401/403 responses, `WWW-Authenticate`, optional-auth alternatives, and scope metadata.
 - **Files and streams** — with the `multipart` feature, `#[derive(Multipart)]` with a generated
   field table: parts are routed by name as they arrive, `FilePart` buffers under the field's
@@ -262,7 +282,9 @@ side-effecting startup behind a flag if you dump documents in CI.
   and headers.
 - **Module-local tables** — a leaf module can keep its `routes!` table beside its handler and needs
   no `mount!`; only the module that owns the subtree declares the prefix. Descendants inherit its
-  prefix, tags, security, and layers.
+  prefix, tags, security, and layers. `mount!` is once per module, so serving `/v1` and `/v2` over
+  the same handlers currently means duplicated route tables (or `absolute` entries); merged
+  routers are served but not discovered for the document.
 - **Erased-style handlers** — a handler that takes `Extension<Arc<T>>` instead of `State<T>` is
   stateless, so it works with unit app state; no feature flag or new request context is needed.
 - **OpenAPI 3.1** — paths, operations, path parameters, JSON/form bodies, success and error
@@ -294,8 +316,10 @@ side-effecting startup behind a flag if you dump documents in CI.
 - **Errors** — `Problem` is the default error body; `#[derive(ApiError)]` / `#[derive(ApiResponse)]`
   generate both `IntoResponse` and the documented response set (statuses, bodies, headers,
   `Location`, `Problem`). Data-carrying enum variants validate their fields with the same pointers.
-- **Tooling** — `App::docs()` implies `/openapi.json` and serves a pinned Swagger UI (with SRI);
-  `App::validate_responses()` checks JSON responses with the same schema engine (so `minLength`,
+- **Tooling** — `App::docs()` implies `/openapi.json` and serves a pinned Swagger UI (with SRI).
+  The UI assets are loaded from unpkg, so `docs()` needs browser network access; an air-gapped
+  deployment should serve its own copy at the document route instead. `App::validate_responses()`
+  checks JSON responses with the same schema engine (so `minLength`,
   `pattern`, numeric bounds and `uniqueItems` are no longer ignored); `Built::openapi_30()` (and
   the CLI's `--format 3.0`) produces a 3.0.3-shaped document. Components with the same simple name
   are disambiguated by module path automatically; `#[schema(name = "..")]` overrides it.
@@ -313,7 +337,9 @@ identities, or an API gateway that authenticates at the edge and forwards a veri
 The framework guarantees the contract around a scheme: `Authenticate` runs at the extractor,
 `presents_credentials` separates missing credentials (`None`) from invalid ones (a rejection),
 `Authorize` is required before a scope is documented, and 401/403 responses carry the documented
-`WWW-Authenticate` challenge. Your scheme must guarantee the identity itself: verify signatures
+`WWW-Authenticate` challenge. `Authorize` sees only the identity and is a route-level gate; check
+resource membership (project, tenant, row ownership) in the handler after extracting the path.
+Your scheme must guarantee the identity itself: verify signatures
 and expiry, compare secrets in constant time, check the token's audience and issuer rather than
 only that it parses, and return `presents_credentials = false` only when credentials are absent.
 

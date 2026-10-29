@@ -2,23 +2,9 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Expr, Fields, LitStr, Result, Type};
 
-#[derive(Default, Clone)]
-struct SerdeContainer {
-    rename_all: Option<RenameRule>,
-    tag: Option<String>,
-    content: Option<String>,
-    untagged: bool,
-    deny_unknown_fields: bool,
-}
-
-#[derive(Default, Clone)]
-struct SerdeField {
-    rename: Option<String>,
-    skip: bool,
-    skip_serializing_if: bool,
-    default: bool,
-    flatten: bool,
-}
+use crate::serde_shape::{
+    SerdeContainer, container as serde_container, field as serde_field, field_name,
+};
 
 #[derive(Default, Clone)]
 pub(crate) struct Constraints {
@@ -42,157 +28,6 @@ pub(crate) struct SchemaAttrs {
     pub(crate) name: Option<String>,
     pub(crate) via_utoipa: bool,
     pub(crate) constraints: Constraints,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RenameRule {
-    Lower,
-    Upper,
-    Camel,
-    Snake,
-    Pascal,
-    ScreamingSnake,
-    Kebab,
-    ScreamingKebab,
-}
-
-impl RenameRule {
-    fn parse(value: &str) -> Result<Self> {
-        Ok(match value {
-            "lowercase" => RenameRule::Lower,
-            "UPPERCASE" => RenameRule::Upper,
-            "camelCase" => RenameRule::Camel,
-            "snake_case" => RenameRule::Snake,
-            "PascalCase" => RenameRule::Pascal,
-            "SCREAMING_SNAKE_CASE" => RenameRule::ScreamingSnake,
-            "kebab-case" => RenameRule::Kebab,
-            "SCREAMING-KEBAB-CASE" => RenameRule::ScreamingKebab,
-            other => {
-                return Err(syn::Error::new(
-                    proc_macro2::Span::call_site(),
-                    format!("unsupported serde rename_all rule `{other}`"),
-                ));
-            }
-        })
-    }
-
-    fn apply(self, name: &str) -> String {
-        let words = split_words(name);
-        match self {
-            RenameRule::Lower => words.join("").to_lowercase(),
-            RenameRule::Upper => words.join("").to_uppercase(),
-            RenameRule::Snake => words.join("_").to_lowercase(),
-            RenameRule::ScreamingSnake => words.join("_").to_uppercase(),
-            RenameRule::Kebab => words.join("-").to_lowercase(),
-            RenameRule::ScreamingKebab => words.join("-").to_uppercase(),
-            RenameRule::Pascal => words
-                .iter()
-                .map(|word| capitalize(word))
-                .collect::<String>(),
-            RenameRule::Camel => words
-                .iter()
-                .enumerate()
-                .map(|(index, word)| {
-                    if index == 0 {
-                        word.to_lowercase()
-                    } else {
-                        capitalize(word)
-                    }
-                })
-                .collect::<String>(),
-        }
-    }
-}
-
-fn split_words(name: &str) -> Vec<String> {
-    let mut words: Vec<String> = Vec::new();
-    let mut current = String::new();
-    let mut previous_lower = false;
-    for ch in name.chars() {
-        if ch == '_' || ch == '-' || ch == ' ' {
-            if !current.is_empty() {
-                words.push(std::mem::take(&mut current));
-            }
-            previous_lower = false;
-            continue;
-        }
-        if ch.is_uppercase() && previous_lower && !current.is_empty() {
-            words.push(std::mem::take(&mut current));
-        }
-        previous_lower = ch.is_lowercase() || ch.is_ascii_digit();
-        current.push(ch);
-    }
-    if !current.is_empty() {
-        words.push(current);
-    }
-    if words.is_empty() {
-        words.push(name.to_string());
-    }
-    words
-}
-
-fn capitalize(word: &str) -> String {
-    let mut chars = word.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
-        None => String::new(),
-    }
-}
-
-fn serde_container(attrs: &[syn::Attribute]) -> Result<SerdeContainer> {
-    let mut container = SerdeContainer::default();
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("rename_all") {
-                let value: LitStr = meta.value()?.parse()?;
-                container.rename_all = Some(RenameRule::parse(&value.value())?);
-            } else if meta.path.is_ident("tag") {
-                let value: LitStr = meta.value()?.parse()?;
-                container.tag = Some(value.value());
-            } else if meta.path.is_ident("content") {
-                let value: LitStr = meta.value()?.parse()?;
-                container.content = Some(value.value());
-            } else if meta.path.is_ident("untagged") {
-                container.untagged = true;
-            } else if meta.path.is_ident("deny_unknown_fields") {
-                container.deny_unknown_fields = true;
-            }
-            Ok(())
-        })?;
-    }
-    Ok(container)
-}
-
-fn serde_field(attrs: &[syn::Attribute]) -> Result<SerdeField> {
-    let mut field = SerdeField::default();
-    for attr in attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("rename") {
-                let value: LitStr = meta.value()?.parse()?;
-                field.rename = Some(value.value());
-            } else if meta.path.is_ident("skip")
-                || meta.path.is_ident("skip_serializing")
-                || meta.path.is_ident("skip_deserializing")
-            {
-                field.skip = true;
-            } else if meta.path.is_ident("skip_serializing_if") {
-                let _: Expr = meta.value()?.parse()?;
-                field.skip_serializing_if = true;
-            } else if meta.path.is_ident("default") {
-                field.default = true;
-            } else if meta.path.is_ident("flatten") {
-                field.flatten = true;
-            }
-            Ok(())
-        })?;
-    }
-    Ok(field)
 }
 
 pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
@@ -384,7 +219,7 @@ fn struct_parts(fields: &Fields, container: &SerdeContainer) -> Result<(TokenStr
         register_calls.push(quote! {
             <#ty as #krate::doc::ApiSchema>::register(components);
         });
-        if field_serde.skip {
+        if field_serde.hidden() {
             continue;
         }
         {
@@ -649,7 +484,7 @@ fn variant_validation(
                 let Some(ident) = &field.ident else { continue };
                 let field_serde = serde_field(&field.attrs)?;
                 let field_schema = schema_attrs(&field.attrs)?;
-                if field_serde.skip {
+                if field_serde.hidden() {
                     continue;
                 }
                 let property_name = field_name(field, &field_serde, container.rename_all)?;
@@ -676,7 +511,7 @@ fn variant_validation(
             for (field_index, field) in unnamed.unnamed.iter().enumerate() {
                 let binding = format_ident!("__field_{field_index}");
                 let field_serde = serde_field(&field.attrs)?;
-                if field_serde.skip {
+                if field_serde.hidden() {
                     bindings.push(quote!(_));
                     continue;
                 }
@@ -744,7 +579,7 @@ fn object_expr_with(
         let ty = &field.ty;
         let field_serde = serde_field(&field.attrs)?;
         let field_schema = schema_attrs(&field.attrs)?;
-        if field_serde.skip {
+        if field_serde.hidden() {
             continue;
         }
         let name = field_name(field, &field_serde, container.rename_all)?;
@@ -757,7 +592,11 @@ fn object_expr_with(
             builder = builder.property(#name, #schema_expr);
         });
         let optional = crate::util::is_option(ty).is_some();
-        if !optional && !field_serde.default && !field_serde.skip_serializing_if {
+        if !optional
+            && !field_serde.default
+            && !container.default
+            && !field_serde.skip_serializing_if
+        {
             required.push(quote! {
                 builder = builder.required(#name);
             });
@@ -858,21 +697,6 @@ fn named_fields(fields: &Fields) -> Result<Vec<&syn::Field>> {
             "ApiSchema requires named struct fields, or derive it on an enum",
         )),
     }
-}
-
-fn field_name(field: &syn::Field, serde: &SerdeField, rule: Option<RenameRule>) -> Result<String> {
-    if let Some(rename) = &serde.rename {
-        return Ok(rename.clone());
-    }
-    let ident = field
-        .ident
-        .as_ref()
-        .ok_or_else(|| syn::Error::new_spanned(field, "expected a named field"))?;
-    let raw = ident.to_string();
-    let raw = raw.strip_prefix("r#").unwrap_or(&raw);
-    Ok(rule
-        .map(|rule| rule.apply(raw))
-        .unwrap_or_else(|| raw.to_string()))
 }
 
 pub(crate) fn field_schema_expr(ty: &Type, constraints: &Constraints) -> TokenStream {
