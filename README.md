@@ -260,7 +260,9 @@ The router construction itself is a one-time `App::new(..)`/`mount!` rewrite.
 - **Handlers** — `#[handler]` reads `State<T>`, `Path<T>`, `Query<T>`, `Json<T>`, `Form<T>`,
   `Multipart<F>`, `Auth<A>`, `Option<Auth<A>>` and `Extension<T>` from the signature. It emits the
   documentation half plus a compile-time marker, so a handler listed in `routes!` without
-  `#[handler]` fails at the table line. Derivation is loud: a route that derives no 2xx/3xx
+  `#[handler]` fails at the table line. Extractors are resolved by type, not identifier: an alias
+  or re-export of `axum::Json` is still marked unverified rather than inheriting the validating
+  extractor's promises. Derivation is loud: a route that derives no 2xx/3xx
   response and declares none is a build error, a foreign `axum::Json` body marks the operation
   `x-roundhouse-unverified-body` (a warning by default, a `BuildError` under `App::strict()`) and
   is still documented from `T` when `T: utoipa::ToSchema` (the marker means *unenforced*, not
@@ -272,7 +274,9 @@ The router construction itself is a one-time `App::new(..)`/`mount!` rewrite.
   `x-roundhouse-overridden-response`. `deprecated` and `public` emit `deprecated: true` and
   `x-roundhouse-public: true`. A `doc = |docs| ..` hook on a table entry fills the gap for anything
   inference cannot see; it runs before the parameter conflict and capture checks, so hand-written
-  documentation is checked like derived documentation.
+  documentation is checked like derived documentation. `path = "/resolved/{id}"` on a table entry
+  asserts the full module prefix chain, so a move fails the build instead of silently changing
+  public URLs.
 - **Auth** — `AuthScheme` is pure metadata (`NAME`, `KIND`, failure statuses, `type Identity`);
   `Authenticate` receives `&Self::State` (normally `&AppState`) and returns the identity, so token
   lookups use app state instead of hiding a store in request extensions. `Auth<A>` yields the
@@ -348,8 +352,11 @@ The router construction itself is a one-time `App::new(..)`/`mount!` rewrite.
   `pattern`, numeric bounds and `uniqueItems` are no longer ignored); `Built::openapi_30()`
   produces a 3.0.3-shaped document. Components with the same simple name
   are disambiguated by module path automatically; `#[schema(name = "..")]` overrides it.
-  `App::max_body` sets the global request limit; with the `multipart` feature, `App::max_parts`
-  bounds multipart part counts. `Built::routes()` exposes the resolved table with each
+  `App::server`/`App::servers` populate the document's `servers` array, and
+  `App::document(|d| ..)` supplies metadata such as tag descriptions. `App::serve_with(addr,
+  shutdown)` drives axum's graceful shutdown. `App::max_body` sets the global request limit; with
+  the `multipart` feature, `App::max_parts` bounds multipart part counts. `Built::routes()`
+  exposes the resolved table with each
   declaration's source. `roundhouse::openapi::{Info, OpenApi, Components}` is the stable facade over
   the document model; `as_utoipa()`/`into_utoipa()` are the explicit interop escape hatch.
 
