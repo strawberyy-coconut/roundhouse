@@ -73,6 +73,9 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     path_type = Some(inner.clone());
                     statements.push(quote! {
                         docs.params.extend(::roundhouse::doc::path_params::<#inner>());
+                        docs.path_schema = ::core::option::Option::Some(
+                            <#inner as ::roundhouse::doc::PathNames>::scalar_schema,
+                        );
                     });
                 }
                 if !handled {

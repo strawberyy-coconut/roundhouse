@@ -167,6 +167,34 @@ fn operation(
         parameters.push(param);
     }
 
+    // OpenAPI 3.1 requires a parameter object for every `{capture}` in the template. A scalar or
+    // foreign `Path<T>` cannot supply a name, so fill in the template's own name with the scalar's
+    // schema (a string when even that is unknown) instead of emitting an invalid document.
+    let captures = crate::prefix::captures(&route.path);
+    for name in &captures {
+        if parameters
+            .iter()
+            .any(|param| param.location == ParamIn::Path && &param.name == name)
+        {
+            continue;
+        }
+        let schema = docs
+            .path_schema
+            .and_then(|schema| schema())
+            .unwrap_or_else(super::schema::string);
+        parameters.push(Param::new(name.clone(), ParamIn::Path, schema));
+    }
+    // ... and a path parameter that no capture uses is equally invalid.
+    for param in &parameters {
+        if param.location == ParamIn::Path && !captures.contains(&param.name) {
+            return Err(BuildError::UnknownPathParameter {
+                name: param.name.clone(),
+                path: route.path.clone(),
+                source: route.record.source_ref(),
+            });
+        }
+    }
+
     let mut responses: BTreeMap<u16, ResponseDoc> = BTreeMap::new();
     let failures = if include_rejections {
         docs.failures

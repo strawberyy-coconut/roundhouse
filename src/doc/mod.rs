@@ -110,6 +110,8 @@ pub struct HandlerDocs {
     pub unverified: bool,
     /// A `Result<_, E>` whose `E` registered no documented responses.
     pub undocumented_error: Option<&'static str>,
+    /// The schema of a scalar `Path<T>`; the parameter's name comes from the template.
+    pub path_schema: Option<fn() -> Option<utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>>>,
 }
 
 /// Implemented by the marker type `#[handler]` emits beside each handler.

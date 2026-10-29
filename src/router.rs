@@ -435,6 +435,16 @@ where
             .collect();
 
         for mount in &mounts {
+            if !prefix::captures(mount.prefix).is_empty() {
+                return Err(BuildError::MountCapture {
+                    prefix: mount.prefix.to_string(),
+                    source: crate::build_error::Source::new(
+                        mount.module_path,
+                        mount.file,
+                        mount.line,
+                    ),
+                });
+            }
             let used = records
                 .iter()
                 .any(|route| prefix::is_ancestor(mount.module_path, route.module_path));
@@ -504,6 +514,16 @@ where
             };
 
             let normalised = prefix::normalise_template(&path);
+            let mut captures = prefix::captures(&path);
+            let total = captures.len();
+            captures.sort();
+            captures.dedup();
+            if captures.len() != total {
+                return Err(BuildError::InvalidTemplate {
+                    reason: format!("`{path}` declares the same capture name more than once"),
+                    source: record.source_ref(),
+                });
+            }
             let key = (record.method, normalised.clone());
             if let Some(previous) = seen.get(&key) {
                 return Err(BuildError::DuplicateRoute {

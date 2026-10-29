@@ -76,6 +76,14 @@ pub enum BuildError {
         status: u16,
         source: Source,
     },
+    /// A capture in a mount prefix, which the leaf table cannot validate or document.
+    MountCapture { prefix: String, source: Source },
+    /// A documented path parameter that no template capture uses.
+    UnknownPathParameter {
+        name: String,
+        path: String,
+        source: Source,
+    },
     /// Two extractors declare the same parameter with different schemas.
     ConflictingParameter {
         name: String,
@@ -150,6 +158,16 @@ impl fmt::Display for BuildError {
                 "error: operation `{operation_id}` declares a different response for status {status} than \
                  its handler derives\n  {source}\n\
                  hint: make the declared type match, or add `override` to the entry"
+            ),
+            BuildError::MountCapture { prefix, source } => write!(
+                f,
+                "error: mount prefix `{prefix}` contains a capture\n  {source}\n\
+                 hint: captures belong in a route table entry, where `Path<T>` can document them"
+            ),
+            BuildError::UnknownPathParameter { name, path, source } => write!(
+                f,
+                "error: path parameter `{name}` is documented for `{path}` but the template has no \
+                 such capture\n  {source}"
             ),
             BuildError::ConflictingParameter {
                 name,

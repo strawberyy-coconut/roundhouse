@@ -56,6 +56,11 @@ pub trait PathValidate {
 pub trait PathNames {
     const NAMES: &'static [&'static str] = &[];
 
+    /// The schema of a scalar `Path<T>` whose name can only come from the template.
+    fn scalar_schema() -> Option<RefOr<Schema>> {
+        None
+    }
+
     fn params() -> Vec<super::Param> {
         Vec::new()
     }
@@ -446,13 +451,16 @@ impl<T: ApiSchema> ApiSchema for &T {
 
 /// `PathNames` for scalar path params.
 ///
-/// Scalar `Path<i64>` works at runtime; the empty `NAMES` means the template check is skipped and
-/// the parameter is not documented (a name cannot be recovered from the type). Prefer a
-/// `#[derive(PathParams)]` struct when documentation matters.
+/// The type carries its schema but not a name: `routes!` fills the template's capture names in,
+/// so `Path<u64>` produces a documented integer parameter instead of an invalid document.
 macro_rules! scalar_path_names {
     ($($ty:ty),* $(,)?) => {
         $(
-            impl PathNames for $ty {}
+            impl PathNames for $ty {
+                fn scalar_schema() -> Option<RefOr<Schema>> {
+                    Some(<$ty as ApiSchema>::schema())
+                }
+            }
             impl PathValidate for $ty {}
         )*
     };
@@ -493,6 +501,10 @@ impl<T: PathValidate> PathValidate for Option<T> {
 
 impl<T: PathNames> PathNames for Option<T> {
     const NAMES: &'static [&'static str] = T::NAMES;
+
+    fn scalar_schema() -> Option<RefOr<Schema>> {
+        T::scalar_schema()
+    }
 
     fn params() -> Vec<super::Param> {
         let mut params = T::params();
