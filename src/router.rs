@@ -491,9 +491,10 @@ where
             .collect();
 
         for mount in &mounts {
-            if !prefix::captures(mount.prefix).is_empty() {
-                return Err(BuildError::MountCapture {
+            if let Err(reason) = prefix::validate_mount_prefix(mount.prefix) {
+                return Err(BuildError::InvalidMountPrefix {
                     prefix: mount.prefix.to_string(),
+                    reason,
                     source: crate::build_error::Source::new(
                         mount.module_path,
                         mount.file,
@@ -654,6 +655,34 @@ where
                 .then_with(|| a.operation_id.cmp(&b.operation_id))
         });
 
+        // `try_build` is meant to be total: probe the same matchit tree axum will build so a
+        // shape conflict (e.g. `/{a}` next to `/{*rest}`) is a `BuildError`, not a panic during
+        // assembly. One path may legitimately carry several methods, so insert each path once.
+        let mut probe = matchit::Router::<()>::new();
+        let mut previous_path: Option<&str> = None;
+        for route in &resolved {
+            if previous_path == Some(route.path.as_str()) {
+                continue;
+            }
+            previous_path = Some(route.path.as_str());
+            // A mount and leaf that are valid alone can still combine into a template the router
+            // cannot serve (for example more captures than matchit can name). Re-check the full
+            // path before handing it to matchit, which panics past its own limit.
+            if let Err(reason) = prefix::validate_template(route.path.as_str()) {
+                return Err(BuildError::InvalidTemplate {
+                    reason,
+                    source: route.record.source_ref(),
+                });
+            }
+            if let Err(error) = probe.insert(route.path.as_str(), ()) {
+                return Err(BuildError::RouteConflict {
+                    path: route.path.clone(),
+                    reason: error.to_string(),
+                    source: route.record.source_ref(),
+                });
+            }
+        }
+
         let mut operations: HashMap<&str, &'static RouteRecord> = HashMap::new();
         for route in &resolved {
             if let Some(previous) = operations.insert(route.operation_id.as_str(), route.record) {
@@ -694,10 +723,8 @@ where
             }
         }
 
-        let mut routes_by_module: BTreeMap<
-            &'static str,
-            Vec<(&'static RouteRecord, MethodRouter<()>)>,
-        > = BTreeMap::new();
+        let mut routes_by_module: BTreeMap<&'static str, Vec<(String, MethodRouter<()>)>> =
+            BTreeMap::new();
         let mut absolute: Vec<(&'static RouteRecord, MethodRouter<()>)> = Vec::new();
 
         for route in resolved {
@@ -708,7 +735,7 @@ where
                 routes_by_module
                     .entry(route.module_path)
                     .or_default()
-                    .push((route.record, method_router));
+                    .push((route.path.clone(), method_router));
             }
         }
 
@@ -757,22 +784,15 @@ where
             }
         }
         for root in built_roots {
-            let built = build_module(
+            // Every module registers its routes at the full resolved path, so the tree is flat:
+            // a root and its descendants are one router merged into the app.
+            router = router.merge(build_module(
                 root,
                 &all_modules,
                 &children,
                 &routes_by_module,
                 &mounts_by_module,
-            );
-            let nest = mounts_by_module
-                .get(root)
-                .map(|mount| nest_path(mount.prefix))
-                .unwrap_or_default();
-            if nest.is_empty() {
-                router = router.merge(built);
-            } else {
-                router = router.nest(&nest, built);
-            }
+            ));
         }
 
         for (record, method_router) in absolute {
@@ -898,23 +918,35 @@ fn sanitize(input: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
-fn nest_path(prefix: &str) -> String {
-    let joined = prefix::join("", prefix);
-    if joined == "/" { String::new() } else { joined }
-}
-
 fn build_module(
     module: &'static str,
     modules: &BTreeSet<&'static str>,
     children: &BTreeMap<&'static str, Vec<&'static str>>,
-    routes: &BTreeMap<&'static str, Vec<(&'static RouteRecord, MethodRouter<()>)>>,
+    routes: &BTreeMap<&'static str, Vec<(String, MethodRouter<()>)>>,
     mounts: &BTreeMap<&'static str, &'static MountRecord>,
 ) -> Router<()> {
+    let (router, _) = build_module_inner(module, modules, children, routes, mounts);
+    router
+}
+
+/// Build one module router, returning whether it contains any routes.
+///
+/// The flag lets `build_module` skip a `route_layer` on a module whose routes were all filtered
+/// out; axum panics when a route layer is added to a router with no routes.
+fn build_module_inner(
+    module: &'static str,
+    modules: &BTreeSet<&'static str>,
+    children: &BTreeMap<&'static str, Vec<&'static str>>,
+    routes: &BTreeMap<&'static str, Vec<(String, MethodRouter<()>)>>,
+    mounts: &BTreeMap<&'static str, &'static MountRecord>,
+) -> (Router<()>, bool) {
     let mut router = Router::<()>::new();
+    let mut has_routes = false;
 
     if let Some(items) = routes.get(module) {
-        for (record, method_router) in items {
-            router = router.route(record.path, method_router.clone());
+        for (path, method_router) in items {
+            router = router.route(path, method_router.clone());
+            has_routes = true;
         }
     }
 
@@ -923,26 +955,21 @@ fn build_module(
             if !modules.contains(child) {
                 continue;
             }
-            let child_router = build_module(child, modules, children, routes, mounts);
-            let nest = mounts
-                .get(child)
-                .map(|mount| nest_path(mount.prefix))
-                .unwrap_or_default();
-            if nest.is_empty() {
-                router = router.merge(child_router);
-            } else {
-                router = router.nest(&nest, child_router);
-            }
+            let (child_router, child_has_routes) =
+                build_module_inner(child, modules, children, routes, mounts);
+            has_routes |= child_has_routes;
+            router = router.merge(child_router);
         }
     }
 
-    if let Some(mount) = mounts.get(module)
+    if has_routes
+        && let Some(mount) = mounts.get(module)
         && let Some(layer) = mount.layer
     {
         router = apply_mount_layer(router, layer);
     }
 
-    router
+    (router, has_routes)
 }
 
 fn apply_mount_layer(router: Router<()>, layer: MountLayer) -> Router<()> {

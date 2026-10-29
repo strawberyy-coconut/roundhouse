@@ -1280,6 +1280,7 @@ dependencies = [
  "http-body-util",
  "inventory",
  "jiff",
+ "matchit",
  "regex",
  "roundhouse-macros",
  "roundhouse-multipart",

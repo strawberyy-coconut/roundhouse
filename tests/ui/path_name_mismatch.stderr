@@ -1,0 +1,18 @@
+error[E0080]: evaluation panicked: roundhouse: Path<T> does not declare a capture named in the route's path template
+  --> tests/ui/path_name_mismatch.rs:10:1
+   |
+10 | routes! { get("/{id}", show) }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_::_` failed inside this call
+   |
+note: inside `assert_path_names`
+  --> $RUST/core/src/panic.rs
+   |
+   |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/prefix.rs
+   |
+   | /                 panic!(
+   | |                     "roundhouse: Path<T> does not declare a capture named in the route's path template"
+   | |                 );
+   | |_________________- in this macro invocation

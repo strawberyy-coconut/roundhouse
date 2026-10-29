@@ -15,7 +15,8 @@ The opinions are deliberate:
   or documented layer that checks it.
 - **Loud by default.** Missing success responses, duplicate routes, drifting parameter names,
   undocumented error types and unsupported state are build diagnostics — errors under
-  `App::strict()`, and `App::try_build()` never panics.
+  `App::strict()`, and `App::try_build()` never panics. A path capture that no `Path<T>` covers is
+  documented as a string and reported the same way, so the document never silently guesses.
 - **The document is a build artifact.** `Built::openapi_json()` and the `roundhouse` binary expose
   the same document the server serves, so CI can diff it.
 
@@ -68,7 +69,8 @@ parameter that `Path<String>` cannot name by itself.
 
 The nearest neighbours are `aide`, `utoipa-axum`, `poem-openapi` and `okapi`. They attach
 annotations to routes; roundhouse derives the route table itself, so a subtree declares its prefix,
-tags, security and layers once in `mount!` and module nesting is router nesting. The differences
+tags, security and layers once in `mount!`, and the module tree groups declarations while every
+route is registered at its full resolved path. The differences
 that matter are:
 
 - **Mount inheritance.** The tree is the composition unit; there is no `router()` function to keep
@@ -211,10 +213,16 @@ side-effecting startup behind a flag if you dump documents in CI.
   conflicting parameters and security-scheme kinds, undeclared success responses, state mismatches,
   empty scopes and apps with no routes. `App::build()` is the panicking convenience over it, and
   prints collected diagnostics to stderr.
-- **Routing** — module nesting is Rust module nesting; `mount!` prefixes, group mounts, module
-  layers (full/route), entry layers, `absolute`, `hidden`, `#[cfg]` entries, grouped method tables,
-  scoped discovery (`scope` / `include`), `App::layer`, `App::layer_documented` for layers that
-  terminate requests, `App::merge`, custom fallbacks, and a JSON `404 Problem` default.
+- **Routing** — every operation is registered at its full resolved path and the module routers are
+  merged, so handlers and layers see the full request URI and `MatchedPath` is the document path.
+  `mount!` prefixes may contain named captures: `mount!("/{project_id}/issues")` with a leaf
+  `/{issue_id}` produces `/{project_id}/issues/{issue_id}`, and one `Path<T>` sees both captures.
+  A mount prefix cannot contain a catch-all; a final `{*rest}` belongs in the leaf route.
+  Group mounts, module layers (full/route), entry layers, `absolute`, `hidden`, `#[cfg]` entries,
+  grouped method tables, scoped discovery (`scope` / `include`), `App::layer`,
+  `App::layer_documented` for layers that terminate requests, `App::merge`, custom fallbacks, and
+  a JSON `404 Problem` default. `scope(..)` selects declarations, not a URL subtree: scoping below
+  a mounted module does not inherit that ancestor mount.
 - **Fidelity** — `App::router()` returns a real `axum::Router<S>`, `Result<T, E>` works whenever
   both sides are `IntoResponse`, and the example's fidelity test runs the same requests against a
   hand-written router and the discovered one, asserting status, headers and body are equal.
@@ -320,9 +328,10 @@ ROUNDHOUSE_BLESS=1 cargo test -p roundhouse --test spine openapi_golden
 ```
 
 The suite covers route resolution, grouped tables, leaf-module table inheritance, `#[cfg]`,
-absolute routes, layer ordering, security/Auth documentation and enforcement, path-capture
-documentation (including scalar and foreign `Path`), query/path constraints, enum and struct
-schemas, recursive schemas and component-name collisions, multipart/files/SSE, `ApiResponse`
+absolute routes, layer ordering, captures in `mount!` prefixes (including full-path layers,
+`MatchedPath`, 405s and conflict diagnostics), security/Auth documentation and enforcement,
+path-capture documentation (including scalar and foreign `Path`), query/path constraints, enum and
+struct schemas, recursive schemas and component-name collisions, multipart/files/SSE, `ApiResponse`
 headers, rejection suppression, validation status, `validate = false`, layer docs, docs UI, 3.0
 downgrade, response validation, scope selection, duplicate-route, duplicate-operation-id,
 normalised-template, undeclared-success, state-mismatch, empty-scope and empty-app diagnostics, the

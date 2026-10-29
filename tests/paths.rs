@@ -167,12 +167,13 @@ fn a_derived_path_struct_documents_its_fields() {
 }
 
 #[test]
-fn a_capture_in_a_mount_prefix_is_a_build_error() {
-    let error = scoped(concat!(module_path!(), "::capture_in_mount"))
+fn a_capture_in_a_mount_prefix_is_supported() {
+    let app = scoped(concat!(module_path!(), "::capture_in_mount"))
         .try_build()
-        .err()
-        .expect("mount captures are not supported");
-    assert!(matches!(error, BuildError::MountCapture { .. }));
+        .expect("mount captures are supported");
+    let route = &app.routes()[0];
+    assert_eq!(route.path, "/orgs/{org}/members");
+    assert_eq!(route.operation_id, "mount_capture_list");
 }
 
 #[test]

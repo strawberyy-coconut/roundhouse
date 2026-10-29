@@ -48,6 +48,7 @@ bytes = "1"
 http = "1"
 jiff = { version = "0.2", optional = true, features = ["serde"] }
 inventory = "0.3"
+matchit = "0.8"
 regex = "1"
 roundhouse-macros = { path = "roundhouse-macros", optional = true }
 roundhouse-multipart = { path = "roundhouse-multipart", optional = true }

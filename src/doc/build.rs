@@ -212,10 +212,32 @@ fn operation(
         {
             continue;
         }
-        let schema = docs
-            .path_schema
-            .and_then(|schema| schema())
-            .unwrap_or_else(super::schema::string);
+        let schema = if captures.len() == 1 {
+            // A scalar `Path<T>` carries one schema and no name; it can only describe a template
+            // with one capture. With several captures (a mount plus a leaf, say) a string is the
+            // honest fallback, and the diagnostic below asks for a typed extractor.
+            docs.path_schema.and_then(|schema| schema())
+        } else {
+            None
+        };
+        let schema = match schema {
+            Some(schema) => schema,
+            None => {
+                crate::build_error::report(
+                    diagnostics,
+                    strict,
+                    Diagnostic::new(
+                        route.record.source_ref(),
+                        format!(
+                            "path capture `{name}` in `{}` is documented as a string because no \
+                             `Path<T>` covers it; add a Path extractor or declare its type",
+                            route.path
+                        ),
+                    ),
+                )?;
+                super::schema::string()
+            }
+        };
         parameters.push(Param::new(name.clone(), ParamIn::Path, schema));
     }
     // ... and a path parameter that no capture uses is equally invalid.

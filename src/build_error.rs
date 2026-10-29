@@ -73,8 +73,18 @@ pub enum BuildError {
         status: u16,
         source: Source,
     },
-    /// A capture in a mount prefix, which the leaf table cannot validate or document.
-    MountCapture { prefix: String, source: Source },
+    /// A mount prefix axum cannot serve, or one that ends in a catch-all.
+    InvalidMountPrefix {
+        prefix: String,
+        reason: String,
+        source: Source,
+    },
+    /// A full resolved path that conflicts with another route in the assembled router.
+    RouteConflict {
+        path: String,
+        reason: String,
+        source: Source,
+    },
     /// A documented path parameter that no template capture uses.
     UnknownPathParameter {
         name: String,
@@ -175,10 +185,24 @@ impl fmt::Display for BuildError {
                  its handler derives\n  {source}\n\
                  hint: make the declared type match, or add `override` to the entry"
             ),
-            BuildError::MountCapture { prefix, source } => write!(
+            BuildError::InvalidMountPrefix {
+                prefix,
+                reason,
+                source,
+            } => write!(
                 f,
-                "error: mount prefix `{prefix}` contains a capture\n  {source}\n\
-                 hint: captures belong in a route table entry, where `Path<T>` can document them"
+                "error: mount prefix `{prefix}` is not valid\n  {reason}\n  {source}\n\
+                 hint: a mount may contain `{{name}}` captures, but not a catch-all"
+            ),
+            BuildError::RouteConflict {
+                path,
+                reason,
+                source,
+            } => write!(
+                f,
+                "error: route `{path}` conflicts with another route in the assembled router\n  \
+                 {reason}\n  {source}\n\
+                 hint: two routes that match the same request cannot share the tree"
             ),
             BuildError::UnknownPathParameter { name, path, source } => write!(
                 f,
