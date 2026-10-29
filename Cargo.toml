@@ -20,7 +20,7 @@ edition = "2024"
 description = "An opinionated axum metaframework: declarations in, router and OpenAPI document out."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/roundhouse/roundhouse"
-rust-version = "1.85"
+rust-version = "1.88"
 keywords = ["axum", "openapi", "web", "framework", "router"]
 categories = ["web-programming::http-server"]
 
@@ -31,6 +31,8 @@ path = "src/bin/roundhouse.rs"
 [features]
 default = ["macros"]
 macros = ["dep:roundhouse-macros"]
+# Execute the emitted JSON Schema (`Validation::Schema`, `validate_responses()`).
+schema-engine = ["roundhouse-schema/schema-engine"]
 uuid = ["roundhouse-schema/uuid"]
 chrono = ["roundhouse-schema/chrono"]
 time = ["roundhouse-schema/time"]

@@ -308,20 +308,30 @@ where
         if self.validate_responses
             && let Some(document) = &document
         {
-            let validator = Arc::new(doc::response::ResponseValidator::new(document).map_err(
-                |error| BuildError::SchemaCompilation {
-                    message: error.to_string(),
-                },
-            )?);
-            let layer = axum::middleware::from_fn_with_state::<
-                _,
-                _,
-                (
-                    axum::extract::State<Arc<doc::response::ResponseValidator>>,
-                    axum::extract::Request,
-                ),
-            >(validator, doc::response::validate_response);
-            router = router.layer(layer);
+            #[cfg(not(feature = "schema-engine"))]
+            {
+                let _ = document;
+                return Err(BuildError::SchemaCompilation {
+                    message: "response validation requires the `schema-engine` feature".to_string(),
+                });
+            }
+            #[cfg(feature = "schema-engine")]
+            {
+                let validator = Arc::new(doc::response::ResponseValidator::new(document).map_err(
+                    |error| BuildError::SchemaCompilation {
+                        message: error.to_string(),
+                    },
+                )?);
+                let layer = axum::middleware::from_fn_with_state::<
+                    _,
+                    _,
+                    (
+                        axum::extract::State<Arc<doc::response::ResponseValidator>>,
+                        axum::extract::Request,
+                    ),
+                >(validator, doc::response::validate_response);
+                router = router.layer(layer);
+            }
         }
 
         if let Some(fallback) = self.fallback {

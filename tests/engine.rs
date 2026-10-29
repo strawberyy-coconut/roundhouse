@@ -1,5 +1,7 @@
 //! Schema execution, the opt-in engine, and the conformance checks behind §7.7.
 
+#![cfg(feature = "schema-engine")]
+
 use axum::http::StatusCode;
 use roundhouse::prelude::*;
 use roundhouse::schema::engine;

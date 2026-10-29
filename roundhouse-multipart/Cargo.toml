@@ -5,7 +5,7 @@ edition = "2024"
 description = "Typed multipart extraction for roundhouse."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/roundhouse/roundhouse"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [dependencies]
 axum = { version = "0.8", features = ["multipart"] }

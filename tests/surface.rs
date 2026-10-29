@@ -983,6 +983,7 @@ async fn complex_recursive_enums_terminate() {
     );
 }
 
+#[cfg(feature = "schema-engine")]
 #[tokio::test]
 async fn response_validation_catches_a_document_that_lies() {
     let app = App::new(State)

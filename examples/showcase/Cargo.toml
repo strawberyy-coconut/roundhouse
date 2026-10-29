@@ -11,7 +11,7 @@ extras = []
 
 [dependencies]
 axum = "0.8"
-roundhouse = { path = "../.." }
+roundhouse = { path = "../..", features = ["schema-engine"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1"

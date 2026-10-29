@@ -5,13 +5,13 @@ edition = "2024"
 description = "Schema derivation, constraints and validation for roundhouse."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/roundhouse/roundhouse"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [dependencies]
 bytes = "1"
 chrono = { version = "0.4", optional = true, default-features = false }
 jiff = { version = "0.2", optional = true, features = ["serde"] }
-jsonschema = { version = "0.60", default-features = false }
+jsonschema = { version = "0.60", default-features = false, optional = true }
 regex = "1"
 rust_decimal = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
@@ -22,6 +22,8 @@ uuid = { version = "1", optional = true }
 
 [features]
 default = []
+# Compile and execute the emitted JSON Schema. Adds the `jsonschema` dependency.
+schema-engine = ["dep:jsonschema"]
 uuid = ["dep:uuid"]
 chrono = ["dep:chrono"]
 time = ["dep:time"]

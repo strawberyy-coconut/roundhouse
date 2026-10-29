@@ -4,10 +4,15 @@
 //! build script, an SDK or a test without compiling a server. The `roundhouse` facade re-exports
 //! everything here, so user imports stay `roundhouse::…`.
 
+#[cfg(feature = "schema-engine")]
+pub mod engine;
+#[cfg(not(feature = "schema-engine"))]
+#[path = "engine_disabled.rs"]
 pub mod engine;
 pub mod schema;
 pub mod validate;
 
+#[cfg(feature = "schema-engine")]
 pub use jsonschema;
 pub use schema::{ApiSchema, PathNames, PathValidate};
 pub use utoipa;

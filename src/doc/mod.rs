@@ -2,6 +2,7 @@
 
 pub mod build;
 pub mod downgrade;
+#[cfg(feature = "schema-engine")]
 pub mod response;
 pub use build::{build, build_with_options};
 pub mod layer;
