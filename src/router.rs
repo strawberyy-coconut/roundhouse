@@ -22,6 +22,53 @@ use crate::registry::{self, Method, MountLayer, MountRecord, RouteRecord};
 
 type RouterLayer = Box<dyn Fn(Router<()>) -> Router<()> + Send + Sync>;
 
+/// A typed handle to a module's route declarations, exported by `mount!` as `MOUNT`.
+///
+/// `App::scope`, `App::include` and `App::mount` accept this instead of a raw module path, so a
+/// partial move across a crate boundary fails to compile rather than silently selecting fewer
+/// routes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MountHandle {
+    scope: &'static str,
+    prefix: &'static str,
+}
+
+impl MountHandle {
+    pub const fn new(scope: &'static str, prefix: &'static str) -> Self {
+        Self { scope, prefix }
+    }
+
+    pub const fn scope(self) -> &'static str {
+        self.scope
+    }
+
+    pub const fn prefix(self) -> &'static str {
+        self.prefix
+    }
+}
+
+/// A module scope for [`App::scope`], [`App::include`] and [`App::mount`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Scope(&'static str);
+
+impl Scope {
+    pub const fn module_path(self) -> &'static str {
+        self.0
+    }
+}
+
+impl From<&'static str> for Scope {
+    fn from(scope: &'static str) -> Self {
+        Self(scope)
+    }
+}
+
+impl From<MountHandle> for Scope {
+    fn from(handle: MountHandle) -> Self {
+        Self(handle.scope)
+    }
+}
+
 /// A hand-written router merged with `App::merge`, plus where it was merged.
 struct MergeRecord {
     router: Router<()>,
@@ -127,13 +174,15 @@ where
     }
 
     /// Restrict discovery to a module path (and its descendants, on `::` boundaries).
-    pub fn scope(mut self, scope: &'static str) -> Self {
-        self.scopes.push(scope);
+    ///
+    /// Accepts a `mount!` handle (`other_crate::routes::MOUNT`) as well as a string module path.
+    pub fn scope(mut self, scope: impl Into<Scope>) -> Self {
+        self.scopes.push(scope.into().module_path());
         self
     }
 
     /// Alias for [`App::scope`], for routes supplied by a library crate.
-    pub fn include(self, scope: &'static str) -> Self {
+    pub fn include(self, scope: impl Into<Scope>) -> Self {
         self.scope(scope)
     }
 
@@ -195,11 +244,11 @@ where
     /// table at more than one versioned prefix. The selected declarations go through the same
     /// state, conflict, capture, security and response checks as every other route.
     #[track_caller]
-    pub fn mount(mut self, prefix: &'static str, scope: &'static str) -> Self {
+    pub fn mount(mut self, prefix: &'static str, scope: impl Into<Scope>) -> Self {
         let location = std::panic::Location::caller();
         self.mounts.push(MountBinding {
             prefix,
-            scope,
+            scope: scope.into().module_path(),
             source: crate::build_error::Source::new("App::mount", location.file(), location.line()),
         });
         self

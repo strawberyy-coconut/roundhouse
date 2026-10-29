@@ -180,8 +180,10 @@ pub fn expand(input: MountInput) -> TokenStream {
     };
 
     quote! {
-        // A second `mount!` in this module collides with this item: the right compile error.
-        const __ROUNDHOUSE_MOUNT: () = ();
+        // A second `mount!` in this module collides with this handle: the right compile error.
+        /// The module's route table, for `App::scope`, `App::include` and `App::mount`.
+        pub const MOUNT: #krate::MountHandle =
+            #krate::MountHandle::new(module_path!(), #prefix_lit);
 
         #[allow(non_upper_case_globals)]
         const _: () = {

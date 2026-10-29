@@ -276,3 +276,23 @@ fn the_facade_covers_info_openapi_and_components() {
     let document: &roundhouse::openapi::OpenApi = built.document();
     assert_eq!(document.as_utoipa().info.title, "Facade");
 }
+
+#[tokio::test]
+async fn a_mount_handle_replaces_the_string_module_path() {
+    let built = App::new(State)
+        .scope(mounted::MOUNT)
+        .mount("/v3", mounted::MOUNT)
+        .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
+        .build();
+
+    assert_eq!(mounted::MOUNT.prefix(), "/inner");
+    assert_eq!(
+        built.oneshot_get("/inner/x/7").await.status(),
+        axum::http::StatusCode::OK
+    );
+    assert_eq!(
+        built.oneshot_get("/v3/inner/x/7").await.status(),
+        axum::http::StatusCode::OK
+    );
+    assert!(document(&built)["paths"]["/v3/inner/x/{id}"]["get"].is_object());
+}

@@ -45,7 +45,7 @@ pub use multipart::TempFile;
 pub use multipart::{FilePart, Multipart, MultipartForm};
 pub use problem::Problem;
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
-pub use router::{App, Built, DocumentRejections, ResolvedRoute};
+pub use router::{App, Built, DocumentRejections, MountHandle, ResolvedRoute, Scope};
 
 pub use axum;
 pub use http;
