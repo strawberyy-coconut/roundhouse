@@ -7,7 +7,7 @@ routes! {
     get("/health", health, summary = "Internal health"),
 }
 
-#[derive(Serialize, ApiSchema)]
+#[derive(Serialize, ToSchema, ApiSchema)]
 pub struct InternalHealth {
     pub ok: bool,
     pub queue_depth: usize,

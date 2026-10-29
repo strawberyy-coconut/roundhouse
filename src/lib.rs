@@ -21,7 +21,7 @@
 //! ```no_run
 //! use roundhouse::prelude::*;
 //!
-//! #[derive(serde::Serialize, ApiSchema)]
+//! #[derive(serde::Serialize, ToSchema, ApiSchema)]
 //! pub struct Hello {
 //!     pub message: String,
 //! }
@@ -87,7 +87,11 @@
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 //! | `schema-engine` | `Validation::Schema` and `App::validate_responses()` |
-//! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | `ApiSchema` impls for those types |
+//! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | `ToSchema`/`ApiSchema` support for those types |
+//!
+//! `ToSchema` is re-exported by [`prelude`], so the usual `use roundhouse::prelude::*;` makes the
+//! derive available. The derived code refers to `utoipa` by name; importing the prelude brings
+//! `utoipa` into scope, or use `use roundhouse::utoipa;` when importing items individually.
 //!
 //! ## Examples
 //!
@@ -134,6 +138,7 @@ pub use multipart::{FilePart, Multipart, MultipartForm};
 pub use problem::Problem;
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
 pub use router::{App, Built, DocumentRejections, MergeRecord, MountHandle, ResolvedRoute, Scope};
+pub use utoipa::{PartialSchema, ToSchema};
 
 pub use axum;
 pub use http;
@@ -173,8 +178,9 @@ pub mod prelude {
     pub use crate::doc::PathNames;
     pub use crate::extract::{Extension, Form, Json, Path, Query};
     pub use crate::problem::Problem;
+    pub use crate::utoipa;
     pub use crate::validate::{ValidationError, ValidationErrors};
-    pub use crate::{ApiError, ApiResponse, ApiSchema, app};
+    pub use crate::{ApiError, ApiResponse, ApiSchema, ToSchema, app};
     #[cfg(feature = "multipart")]
     pub use crate::{FilePart, Multipart};
     #[cfg(feature = "macros")]

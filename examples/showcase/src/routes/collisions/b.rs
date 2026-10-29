@@ -5,7 +5,8 @@ routes! {
     get("/b/thing", thing, summary = "A Thing from module b", operation_id = "thing_b"),
 }
 
-#[derive(Serialize, Deserialize, ApiSchema)]
+#[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
+#[schema(as = showcase_example::routes::collisions::b::Thing)]
 pub struct Thing {
     pub beta: i64,
 }

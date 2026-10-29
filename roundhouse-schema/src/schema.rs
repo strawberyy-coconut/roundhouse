@@ -16,6 +16,9 @@ use crate::validate::ValidationErrors;
 /// `schema()` returns the inline schema for primitive types and a `$ref` for named types;
 /// `register()` fills the component table (it is a no-op for primitives). Both are called from
 /// the same declaration, so the document cannot drift from the wire format.
+///
+/// `#[derive(ApiSchema)]` pairs with `utoipa::ToSchema`: utoipa owns the wire shape and component
+/// name, while this trait adds constraint validation and the registration hook.
 pub trait ApiSchema {
     fn schema() -> RefOr<Schema>;
 
@@ -652,6 +655,38 @@ pub fn with_extension(schema: RefOr<Schema>, key: &str, value: Value) -> RefOr<S
             RefOr::T(Schema::Array(array))
         }
         other => other,
+    }
+}
+
+/// Apply a roundhouse-only constraint (`unique_items`, `x-validate-with`) to a property of an
+/// already-built utoipa schema.
+///
+/// Schema shape comes from `utoipa::ToSchema`; these keywords are not part of utoipa's derive
+/// attribute set, so they are patched in after the component is built. The search descends into
+/// `oneOf`/`allOf` so a named field in an enum variant is still reachable.
+pub fn patch_property(
+    schema: &mut RefOr<Schema>,
+    name: &str,
+    update: &mut dyn FnMut(RefOr<Schema>) -> RefOr<Schema>,
+) {
+    match schema {
+        RefOr::T(Schema::Object(object)) => {
+            if let Some(property) = object.properties.get_mut(name) {
+                let current = property.clone();
+                *property = update(current);
+            }
+        }
+        RefOr::T(Schema::OneOf(one_of)) => {
+            for item in &mut one_of.items {
+                patch_property(item, name, update);
+            }
+        }
+        RefOr::T(Schema::AllOf(all_of)) => {
+            for item in &mut all_of.items {
+                patch_property(item, name, update);
+            }
+        }
+        _ => {}
     }
 }
 

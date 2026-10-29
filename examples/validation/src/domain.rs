@@ -1,7 +1,7 @@
 use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Address {
     #[schema(min_length = 2, max_length = 80)]
@@ -10,7 +10,7 @@ pub struct Address {
     pub postal_code: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, ApiSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     Reader,
@@ -18,7 +18,7 @@ pub enum Role {
     Admin,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Profile {
     #[schema(
@@ -38,7 +38,8 @@ pub struct Profile {
     pub age: u8,
     #[schema(exclusive_minimum = 0, exclusive_maximum = 10)]
     pub score: f64,
-    #[schema(min_items = 1, max_items = 5, unique_items)]
+    #[schema(min_items = 1, max_items = 5)]
+    #[roundhouse(unique_items)]
     pub tags: Vec<String>,
     pub address: Address,
     pub nickname: Option<String>,

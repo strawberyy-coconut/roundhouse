@@ -238,7 +238,8 @@ mod collision_a {
 
     routes! { get("/collision-a", show, operation_id = "collision_a_show") }
 
-    #[derive(Serialize, Deserialize, ApiSchema)]
+    #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
+    #[schema(as = surface::collision_a::Collision)]
     pub struct Collision {
         pub a: String,
     }
@@ -255,7 +256,8 @@ mod collision_b {
 
     routes! { get("/collision-b", show, operation_id = "collision_b_show") }
 
-    #[derive(Serialize, Deserialize, ApiSchema)]
+    #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
+    #[schema(as = surface::collision_b::Collision)]
     pub struct Collision {
         pub b: String,
     }
@@ -315,23 +317,23 @@ mod shapes {
         get("/lying", lying),
     }
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     #[serde(rename_all = "kebab-case")]
     pub enum Color {
         Red,
         DarkBlue,
     }
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     #[serde(tag = "kind", rename_all = "snake_case")]
     pub enum Event {
         Created { id: i64 },
         Deleted { id: i64 },
     }
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     pub struct Even {
-        #[schema(validate_with = validate_even)]
+        #[roundhouse(validate_with = validate_even)]
         pub value: i64,
     }
 
@@ -350,7 +352,6 @@ mod shapes {
     }
 
     #[derive(Debug, Serialize, Deserialize, ApiSchema)]
-    #[schema(via = utoipa)]
     pub struct FromUtoipa {
         pub name: String,
     }
@@ -368,7 +369,7 @@ mod shapes {
 
     impl ::roundhouse::utoipa::ToSchema for FromUtoipa {}
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     #[serde(tag = "kind", rename_all = "snake_case")]
     pub enum ConstrainedEvent {
         Created {
@@ -378,7 +379,7 @@ mod shapes {
         Deleted,
     }
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
     pub struct Note {
         pub id: i64,
@@ -403,32 +404,32 @@ mod shapes {
         Conflict,
     }
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     pub struct Contact {
         #[schema(format = "email")]
         pub email: String,
     }
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     pub struct Nested {
         #[schema(min_length = 2)]
         pub name: String,
     }
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     pub struct Envelope {
         pub nested: Nested,
         #[schema(min_items = 1, max_items = 2)]
         pub tags: Vec<String>,
     }
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     pub struct Node {
         pub value: String,
         pub children: Vec<Node>,
     }
 
-    #[derive(Debug, Serialize, Deserialize, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     #[serde(tag = "kind", rename_all = "snake_case")]
     pub enum Tree {
         Leaf { value: String },
@@ -927,7 +928,11 @@ async fn schema_can_delegate_to_utoipa() {
     let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["paths"]["/shapes/utoipa"]["get"]["responses"]["200"]["content"]["application/json"]
-            ["schema"]["type"],
+            ["schema"]["$ref"],
+        "#/components/schemas/FromUtoipa"
+    );
+    assert_eq!(
+        document["components"]["schemas"]["FromUtoipa"]["type"],
         "string"
     );
 }

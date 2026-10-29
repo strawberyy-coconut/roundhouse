@@ -13,9 +13,9 @@ routes! {
     get("/extras", extras, summary = "Compiled only with the extras feature"),
 }
 
-#[derive(Debug, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
 pub struct Even {
-    #[schema(validate_with = validate_even)]
+    #[roundhouse(validate_with = validate_even)]
     pub value: i64,
 }
 
@@ -39,7 +39,6 @@ pub async fn even(Json(value): Json<Even>) -> Json<Even> {
 }
 
 #[derive(Debug, Serialize, Deserialize, ApiSchema)]
-#[schema(via = utoipa)]
 pub struct External {
     pub name: String,
 }

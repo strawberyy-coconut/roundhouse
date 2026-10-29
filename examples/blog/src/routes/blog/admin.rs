@@ -12,7 +12,7 @@ routes! {
     ),
 }
 
-#[derive(Serialize, ApiSchema)]
+#[derive(Serialize, ToSchema, ApiSchema)]
 pub struct AuditReport {
     pub posts: usize,
     pub secured: bool,

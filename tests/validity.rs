@@ -61,7 +61,7 @@ mod invalid_pattern {
 
     routes! { post("/", create, operation_id = "invalid_pattern_create") }
 
-    #[derive(serde::Serialize, serde::Deserialize, ApiSchema)]
+    #[derive(serde::Serialize, serde::Deserialize, ToSchema, ApiSchema)]
     pub struct Payload {
         #[schema(pattern = "(")]
         pub value: String,

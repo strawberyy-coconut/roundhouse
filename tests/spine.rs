@@ -31,13 +31,13 @@ impl TestState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
 pub struct Note {
     pub id: i64,
     pub title: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
 pub struct NewNote {
     #[schema(min_length = 1, max_length = 120)]
     pub title: String,

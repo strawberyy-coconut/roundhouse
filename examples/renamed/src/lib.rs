@@ -15,7 +15,7 @@ pub mod routes {
 
     routes! { get("/x", x, operation_id = "renamed_x") }
 
-    #[derive(serde::Serialize, ApiSchema)]
+    #[derive(serde::Serialize, ToSchema, ApiSchema)]
     pub struct Out {
         pub value: i64,
     }

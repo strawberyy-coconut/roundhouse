@@ -18,7 +18,7 @@ fn app(module: &'static str) -> roundhouse::Built {
         .build()
 }
 
-#[derive(Debug, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
 pub struct Contact {
     #[schema(min_length = 3)]
     pub title: String,

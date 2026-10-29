@@ -2,7 +2,7 @@ use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// A note as it is stored and returned.
-#[derive(Debug, Clone, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
 pub struct Note {
     pub id: i64,
     #[schema(min_length = 1, max_length = 200)]
@@ -12,7 +12,7 @@ pub struct Note {
 }
 
 /// The writable half of a note.
-#[derive(Debug, Deserialize, ApiSchema)]
+#[derive(Debug, Deserialize, ToSchema, ApiSchema)]
 pub struct NewNote {
     #[schema(min_length = 1, max_length = 200)]
     pub title: String,

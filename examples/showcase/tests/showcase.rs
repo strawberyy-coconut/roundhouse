@@ -74,8 +74,10 @@ async fn validate_with_and_utoipa_interop_work() {
     let document = serde_json::to_value(app.document()).unwrap();
     let schema = &document["paths"]["/utoipa"]["get"]["responses"]["200"]["content"]["application/json"]
         ["schema"];
-    assert_eq!(schema["type"], "object");
-    assert_eq!(schema["properties"]["name"]["type"], "string");
+    assert_eq!(schema["$ref"], "#/components/schemas/External");
+    let external = &document["components"]["schemas"]["External"];
+    assert_eq!(external["type"], "object");
+    assert_eq!(external["properties"]["name"]["type"], "string");
 }
 
 #[tokio::test]

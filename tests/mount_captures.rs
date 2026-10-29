@@ -351,7 +351,7 @@ mod validated {
         pub report_id: u64,
     }
 
-    #[derive(Serialize, ApiSchema)]
+    #[derive(Serialize, ToSchema, ApiSchema)]
     pub struct Report {
         pub project_id: u64,
         pub report_id: u64,
@@ -370,7 +370,7 @@ mod validated {
         })
     }
 
-    #[derive(Serialize, ApiSchema)]
+    #[derive(Serialize, ToSchema, ApiSchema)]
     pub struct Lying {
         #[schema(min_length = 3)]
         pub name: String,

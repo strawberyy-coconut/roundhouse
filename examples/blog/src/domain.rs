@@ -1,7 +1,7 @@
 use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, ApiSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PostStatus {
     Draft,
@@ -9,7 +9,7 @@ pub enum PostStatus {
     Archived,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Post {
     pub id: i64,
@@ -20,24 +20,26 @@ pub struct Post {
     pub status: PostStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NewPost {
     pub author_id: i64,
     #[schema(min_length = 3, max_length = 100)]
     pub title: String,
     pub body: String,
-    #[schema(min_items = 1, max_items = 5, unique_items)]
+    #[schema(min_items = 1, max_items = 5)]
+    #[roundhouse(unique_items)]
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdatePost {
     #[schema(min_length = 3, max_length = 100)]
     pub title: String,
     pub body: String,
-    #[schema(min_items = 1, max_items = 5, unique_items)]
+    #[schema(min_items = 1, max_items = 5)]
+    #[roundhouse(unique_items)]
     pub tags: Vec<String>,
 }
 

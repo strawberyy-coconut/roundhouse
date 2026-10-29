@@ -1,7 +1,7 @@
 //! The documentation half: schema derivation, parameter tables and response declarations.
 //!
 //! Most applications use this module through the derives re-exported at the crate root:
-//! `#[derive(ApiSchema)]`, `#[derive(QueryParams)]`, `#[derive(PathParams)]`,
+//! `#[derive(ToSchema, ApiSchema)]`, `#[derive(QueryParams)]`, `#[derive(PathParams)]`,
 //! `#[derive(ApiResponse)]` and `#[derive(ApiError)]`, plus `#[derive(Multipart)]` with the
 //! `multipart` feature.
 //!
@@ -13,9 +13,9 @@
 //! - [`ResponseDoc`] and [`layer`] — hand-written responses and documented layer guarantees.
 //! - [`validate_document`] — the structural check every build runs over the finished document.
 //!
-//! Schemas are registered with a two-phase placeholder, so recursive types terminate. Component
-//! names are derived from the module path, which keeps two `Config` types in different modules
-//! distinct; `#[schema(name = "…")]` overrides it.
+//! Schemas are derived by `utoipa::ToSchema`; `#[derive(ToSchema, ApiSchema)]` adds the runtime checks.
+//! Component names therefore follow utoipa: unique names stay simple, and a collision is
+//! disambiguated with `#[schema(as = module::Type)]`.
 
 pub mod build;
 pub mod downgrade;
@@ -585,36 +585,6 @@ pub fn problem_schema() -> RefOr<Schema> {
         .required("title")
         .required("status")
         .into()
-}
-
-/// Resolve a component name. Unique type names stay simple; collisions get the module path
-/// (`blog.Post` style) so two `Post`s from different modules cannot overwrite each other.
-pub fn component_name(simple: &'static str, module: &'static str) -> String {
-    use std::collections::HashMap;
-    use std::sync::OnceLock;
-
-    static COUNTS: OnceLock<HashMap<&'static str, usize>> = OnceLock::new();
-    let counts = COUNTS.get_or_init(|| {
-        let mut counts = HashMap::new();
-        for record in inventory::iter::<crate::registry::ComponentTypeRecord> {
-            *counts.entry(record.simple).or_insert(0) += 1;
-        }
-        counts
-    });
-
-    if counts.get(simple).copied().unwrap_or(1) > 1 {
-        format!("{}.{}", module.replace("::", "."), simple)
-    } else {
-        simple.to_string()
-    }
-}
-
-/// The component name actually used by a registered type.
-pub fn record_component_name(record: &crate::registry::ComponentTypeRecord) -> String {
-    match record.name {
-        Some(name) => name.to_string(),
-        None => component_name(record.simple, record.module),
-    }
 }
 
 pub fn canonical_reason(status: u16) -> &'static str {

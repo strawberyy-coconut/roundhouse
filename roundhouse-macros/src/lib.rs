@@ -16,7 +16,7 @@
 //! ```ignore
 //! use roundhouse::prelude::*;
 //!
-//! #[derive(serde::Serialize, ApiSchema)]
+//! #[derive(serde::Serialize, ToSchema, ApiSchema)]
 //! struct Greeting {
 //!     message: String,
 //! }
@@ -331,49 +331,38 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     handler::expand(item).into()
 }
 
-/// Derive an OpenAPI schema and runtime validation for a struct or enum.
+/// Derive the runtime half of a schema: registration and constraint validation.
 ///
-/// `ApiSchema` implements `roundhouse::doc::ApiSchema`: it registers a reusable component and
-/// validates the value against the same constraints it publishes. The derive follows serde's
-/// wire shape so the document matches what `serde` actually sends and accepts.
+/// Wire shape and component naming come from `utoipa::ToSchema`, so this derive must be paired
+/// with it:
 ///
-/// # Serde attributes
+/// ```ignore
+/// #[derive(serde::Serialize, serde::Deserialize, roundhouse::ToSchema, roundhouse::ApiSchema)]
+/// pub struct Signup { .. }
+/// ```
 ///
-/// The derive honors `#[serde(rename = "..")]`, `rename_all = ".."`, `skip`,
-/// `skip_serializing`, `skip_deserializing`, `skip_serializing_if`, `default`, `flatten`,
-/// `deny_unknown_fields`, `tag`, `content` and `untagged`. A `skip_serializing_if` field is
-/// omitted from the schema's `required` list. Supported `rename_all` rules are serde's: `lowercase`, `UPPERCASE`,
-/// `camelCase`, `snake_case`, `PascalCase`, `SCREAMING_SNAKE_CASE`, `kebab-case` and
-/// `SCREAMING-KEBAB-CASE`.
+/// `ApiSchema` implements `roundhouse::doc::ApiSchema`: it registers the utoipa component and
+/// validates the value against the constraints it publishes. Using utoipa for the shape means
+/// serde's `rename_all`, `skip`, `flatten`, tagging and recursion rules are implemented in one
+/// place, not two. Component names follow utoipa as well; use `#[schema(as = module::Name)]` when
+/// two types share a simple name.
 ///
-/// Structs must have named fields (a unit struct is an empty object). Enums are supported as:
+/// # Constraints
 ///
-/// - an all-unit enum without a tag — a string enum;
-/// - an internally tagged enum (`#[serde(tag = "kind")]`) — a `oneOf` with a discriminator;
-/// - an adjacently tagged enum (`tag` plus `content`) — a `oneOf` of tagged objects;
-/// - an untagged enum — a `oneOf` of the variant payloads.
+/// Constraints are read from `#[schema(..)]` where utoipa understands them, and from
+/// `#[roundhouse(..)]` for the roundhouse-only checks:
 ///
-/// Generic structs and enums are supported; every type parameter receives an `ApiSchema` bound.
-/// Recursive types work as long as the recursion goes through a pointer or collection that
-/// breaks the type's size cycle.
-///
-/// # Schema attributes
-///
-/// Field and container attributes are read from `#[schema(..)]`:
-///
-/// - `name = "Name"` — use a fixed component name instead of the module-qualified name.
-/// - `min_length = n` / `max_length = n` — character-count bounds for strings.
-/// - `pattern = "regex"` — a regular expression the string must match.
-/// - `minimum = n`, `maximum = n`, `exclusive_minimum = n`, `exclusive_maximum = n` —
+/// - `#[schema(min_length = n)]` / `max_length = n` — character-count bounds for strings.
+/// - `#[schema(pattern = "regex")]` — a regular expression the string must match.
+/// - `#[schema(minimum = n, maximum = n)]`, `exclusive_minimum`, `exclusive_maximum` —
 ///   numeric bounds.
-/// - `min_items = n`, `max_items = n`, `unique_items` — collection bounds and uniqueness.
-/// - `format = "email" | "uuid" | "url" | "uri" | ...` — an OpenAPI format. `email`, `uuid`,
-///   `url` and `uri` are also checked at runtime; other formats are documentation only.
-/// - `example = expression` — an example value for the schema.
-/// - `validate_with = path` — a function `fn(&T) -> Result<(), ValidationErrors>` run in addition
-///   to the declared constraints. Its errors keep the field's JSON Pointer.
-/// - `via = utoipa` — delegate schema generation to a hand-written `utoipa::ToSchema` /
-///   `utoipa::PartialSchema` implementation instead of deriving the shape.
+/// - `#[schema(min_items = n, max_items = n)]` — collection bounds.
+/// - `#[schema(format = "email" | "uuid" | "url" | "uri" | ...)]` — an OpenAPI format. `email`,
+///   `uuid`, `url` and `uri` are also checked at runtime; other formats are documentation only.
+/// - `#[schema(example = expression)]` — an example value for the schema.
+/// - `#[roundhouse(unique_items)]` — uniqueness for a collection.
+/// - `#[roundhouse(validate_with = path)]` — a function `fn(&T) -> Result<(), ValidationErrors>`
+///   run in addition to the declared constraints. Its errors keep the field's JSON Pointer.
 ///
 /// Constraints are published **and** enforced. `#[schema(skip_validation)]` was removed on
 /// purpose: opt out for a whole route with `validate = false` in `routes!` instead.
@@ -381,17 +370,18 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// # Example
 ///
 /// ```ignore
-/// use roundhouse::{ApiSchema, ValidationErrors};
+/// use roundhouse::{ApiSchema, ToSchema, ValidationErrors};
 /// use serde::{Deserialize, Serialize};
 ///
-/// #[derive(Serialize, Deserialize, ApiSchema)]
+/// #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
 /// #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// pub struct Signup {
 ///     #[schema(min_length = 3, max_length = 32)]
 ///     pub user_name: String,
 ///     #[schema(format = "email")]
 ///     pub email: String,
-///     #[schema(minimum = 18, validate_with = validate_age)]
+///     #[schema(minimum = 18)]
+///     #[roundhouse(validate_with = validate_age)]
 ///     pub age: u8,
 /// }
 ///
@@ -400,7 +390,7 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///     # Ok(())
 /// }
 /// ```
-#[proc_macro_derive(ApiSchema, attributes(schema, serde))]
+#[proc_macro_derive(ApiSchema, attributes(schema, serde, roundhouse))]
 pub fn derive_api_schema(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     api_schema::expand(input)
@@ -439,7 +429,7 @@ pub fn derive_api_schema(input: TokenStream) -> TokenStream {
 /// - `#[serde(flatten)]` delegates to the inner type's `QueryParams` implementation.
 /// - `Vec<T>` and `Option<Vec<T>>` are documented as exploded form-style arrays.
 /// - `#[schema(..)]` constraints are published and validated with JSON Pointers.
-#[proc_macro_derive(QueryParams, attributes(serde, schema))]
+#[proc_macro_derive(QueryParams, attributes(serde, schema, roundhouse))]
 pub fn derive_query_params(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     query_params::expand(input)
@@ -479,7 +469,7 @@ pub fn derive_query_params(input: TokenStream) -> TokenStream {
 /// - `#[serde(skip)]`, `#[serde(skip_deserializing)]`, `#[serde(default)]` and
 ///   `#[serde(flatten)]` are rejected: a path capture is always present and path names are flat.
 /// - `#[schema(..)]` constraints are published and validated for the extracted values.
-#[proc_macro_derive(PathParams, attributes(serde, schema))]
+#[proc_macro_derive(PathParams, attributes(serde, schema, roundhouse))]
 pub fn derive_path_params(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     path_params::expand(input)

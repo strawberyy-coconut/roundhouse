@@ -489,7 +489,7 @@ where
             let components = document.as_utoipa().components.clone().unwrap_or_default();
             let types = inventory::iter::<registry::ComponentTypeRecord>
                 .into_iter()
-                .map(|record| ((record.type_id)(), doc::record_component_name(record)));
+                .map(|record| ((record.type_id)(), (record.name)()));
             Some(Arc::new(
                 roundhouse_schema::engine::SchemaEngine::from_components_and_bodies(
                     &components,

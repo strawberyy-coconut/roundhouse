@@ -31,7 +31,7 @@ mod files {
         pub caption: Option<String>,
     }
 
-    #[derive(Serialize, ApiSchema)]
+    #[derive(Serialize, ToSchema, ApiSchema)]
     pub struct UploadSummary {
         pub file_name: Option<String>,
         pub file_len: usize,

@@ -5,7 +5,7 @@ routes! {
     post("/events", create, summary = "Validate a tagged event"),
 }
 
-#[derive(Debug, Serialize, Deserialize, ApiSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Event {
     Created {

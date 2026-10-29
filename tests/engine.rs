@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone)]
 pub struct State;
 
-#[derive(Debug, Deserialize, ApiSchema)]
+#[derive(Debug, Deserialize, ToSchema, ApiSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Note {
     #[schema(min_length = 1, max_length = 5)]
@@ -36,19 +36,19 @@ fn check_value(value: &String) -> Result<(), ValidationErrors> {
     }
 }
 
-#[derive(Debug, Deserialize, ApiSchema)]
+#[derive(Debug, Deserialize, ToSchema, ApiSchema)]
 pub struct Checked {
-    #[schema(validate_with = check_value)]
+    #[roundhouse(validate_with = check_value)]
     pub value: String,
 }
 
-#[derive(Debug, Deserialize, ApiSchema)]
+#[derive(Debug, Deserialize, ToSchema, ApiSchema)]
 pub struct Link {
     #[schema(format = "url")]
     pub url: String,
 }
 
-#[derive(Debug, Serialize, ApiSchema)]
+#[derive(Debug, Serialize, ToSchema, ApiSchema)]
 pub struct NoteOut {
     pub ok: bool,
 }
@@ -74,7 +74,7 @@ mod lying {
         get("/x", x, operation_id = "lying_x"),
     }
 
-    #[derive(Serialize, ApiSchema)]
+    #[derive(Serialize, ToSchema, ApiSchema)]
     pub struct Out {
         #[schema(min_length = 3)]
         pub name: String,

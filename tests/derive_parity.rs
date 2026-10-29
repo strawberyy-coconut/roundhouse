@@ -363,7 +363,7 @@ mod body_container_default {
 
     routes! { post("/", create, operation_id = "body_default_create") }
 
-    #[derive(Serialize, Deserialize, ApiSchema)]
+    #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
     #[serde(default)]
     pub struct Body {
         pub name: String,

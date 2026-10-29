@@ -24,8 +24,8 @@ uuid = { version = "1", optional = true, features = ["serde"] }
 default = []
 # Compile and execute the emitted JSON Schema. Adds the `jsonschema` dependency.
 schema-engine = ["dep:jsonschema"]
-uuid = ["dep:uuid"]
-chrono = ["dep:chrono"]
-time = ["dep:time"]
-decimal = ["dep:rust_decimal"]
-jiff = ["dep:jiff"]
+uuid = ["dep:uuid", "utoipa/uuid"]
+chrono = ["dep:chrono", "utoipa/chrono"]
+time = ["dep:time", "utoipa/time"]
+decimal = ["dep:rust_decimal", "utoipa/decimal"]
+jiff = ["dep:jiff", "utoipa/jiff_0_2"]

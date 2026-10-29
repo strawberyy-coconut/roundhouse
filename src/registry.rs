@@ -287,29 +287,17 @@ impl QueryDocRecord {
 
 inventory::collect!(QueryDocRecord);
 
-/// Type names used to disambiguate components that share a simple name.
+/// Type names used by the schema engine to find the component for a Rust type.
 pub struct ComponentTypeRecord {
-    pub(crate) simple: &'static str,
-    pub(crate) module: &'static str,
     pub(crate) type_id: fn() -> TypeId,
-    /// `#[schema(name = "..")]`, which overrides the derived component name.
-    pub(crate) name: Option<&'static str>,
+    /// The component name utoipa uses for this type, including `#[schema(as = ..)]`.
+    pub(crate) name: fn() -> String,
 }
 
 impl ComponentTypeRecord {
     #[doc(hidden)]
-    pub const fn __new(
-        simple: &'static str,
-        module: &'static str,
-        type_id: fn() -> TypeId,
-        name: Option<&'static str>,
-    ) -> Self {
-        Self {
-            simple,
-            module,
-            type_id,
-            name,
-        }
+    pub const fn __new(type_id: fn() -> TypeId, name: fn() -> String) -> Self {
+        Self { type_id, name }
     }
 }
 

@@ -46,7 +46,7 @@ mod declared {
     }
 }
 
-#[derive(Serialize, ApiSchema)]
+#[derive(Serialize, ToSchema, ApiSchema)]
 pub struct Payload {
     pub value: i64,
 }
@@ -66,7 +66,7 @@ mod typed {
     }
 }
 
-#[derive(Serialize, ApiSchema)]
+#[derive(Serialize, ToSchema, ApiSchema)]
 pub struct OtherPayload {
     pub other: i64,
 }
