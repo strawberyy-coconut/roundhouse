@@ -65,6 +65,7 @@ utoipa = { version = "6", features = ["non_strict_integers"] }
 futures-util = "0.3"
 http-body-util = "0.1"
 thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tower = { version = "0.5", features = ["util"] }
 trybuild = "1"
 uuid = { version = "1", features = ["serde"] }
@@ -73,3 +74,6 @@ uuid = { version = "1", features = ["serde"] }
 name = "files"
 path = "tests/files.rs"
 required-features = ["multipart", "multipart-tempfile"]
+
+[package.metadata.docs.rs]
+all-features = true

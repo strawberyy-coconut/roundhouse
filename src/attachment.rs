@@ -1,4 +1,9 @@
-//! Attachment, File and SSE response helpers.
+//! Download and streaming responses with documented headers.
+//!
+//! [`Attachment`] adds `Content-Disposition: attachment`, [`File`] serves bytes with an explicit
+//! content type, and axum's [`Sse`](crate::Sse) is re-exported at the crate root with a documented
+//! `text/event-stream` response. The documentation functions here are what `#[handler]` uses to
+//! describe those return types.
 
 use axum::body::Body;
 use axum::http::{HeaderValue, header};

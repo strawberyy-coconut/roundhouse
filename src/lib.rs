@@ -1,17 +1,103 @@
 //! # roundhouse
 //!
-//! An OpenAPI-first framework for axum: declarations become a `Router` and an OpenAPI document.
+//! An OpenAPI-first framework for [axum]. You declare routes, parameters, schemas, auth and errors
+//! once; roundhouse builds the `axum::Router` **and** the OpenAPI 3.1 document from those same
+//! declarations. There is no separate wiring step and no hand-maintained spec.
 //!
-//! ```ignore
-//! mount!("/blog", tags = ["blog"]);
+//! [axum]: https://docs.rs/axum
 //!
-//! routes! {
-//!     get("/{id}", get, summary = "Read a post"),
+//! ## Getting started
+//!
+//! ```toml
+//! [dependencies]
+//! roundhouse = "0.1"
+//! axum = "0.8"
+//! serde = { version = "1", features = ["derive"] }
+//! ```
+//!
+//! A route lives beside its handler in a `routes!` table, and the module that owns a subtree
+//! declares its prefix once in `mount!`:
+//!
+//! ```no_run
+//! use roundhouse::prelude::*;
+//!
+//! #[derive(serde::Serialize, ApiSchema)]
+//! pub struct Hello {
+//!     pub message: String,
 //! }
 //!
+//! mount!("/v1", tags = ["hello"]);
+//! routes! { get("/hello/{name}", hello) }
+//!
 //! #[handler]
-//! async fn get(Path(PostId { id }): Path<PostId>) -> Result<Json<Post>, Problem> { .. }
+//! pub async fn hello(Path(name): Path<String>) -> Json<Hello> {
+//!     Json(Hello { message: format!("hello {name}") })
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     roundhouse::app!(())
+//!         .openapi(|| roundhouse::openapi::Info::new("Hello", "0.1.0"))
+//!         .serve("0.0.0.0:3000")
+//!         .await?;
+//!     Ok(())
+//! }
 //! ```
+//!
+//! `GET /v1/hello/world` answers JSON, and `GET /openapi.json` describes the same route,
+//! including the `name` path parameter that `Path<String>` cannot name by itself.
+//!
+//! ## How it fits together
+//!
+//! 1. **Declare.** `routes!` records each operation, `mount!` records a prefix plus the tags,
+//!    security and layers descendants inherit, and `#[handler]` derives the documentation half
+//!    from the handler signature.
+//! 2. **Build.** [`App::build`](router::App::build) joins every declaration in scope into a
+//!    [`Built`]: the `axum::Router`, the resolved route table, and the document.
+//!    Duplicate routes, state mismatches and unenforced security are found here, not by
+//!    `cargo check`; [`App::try_build`](router::App::try_build) reports them without panicking.
+//! 3. **Enforce.** The extractors in [`extract`] enforce the constraints they publish, and
+//!    [`auth`] enforces the security requirements it publishes. Rejections are [`Problem`].
+//!
+//! ## Where to look next
+//!
+//! | Module | What it covers |
+//! |---|---|
+//! | [`prelude`] | everything a route module normally imports |
+//! | [`router`] | `App`, `Built`, `Scope`, `MountHandle` |
+//! | [`extract`] | `Json`, `Form`, `Path`, `Query`, `Extension`, `Validation` |
+//! | [`doc`] | `ApiSchema`, parameter tables, response docs, layer docs |
+//! | [`auth`] | `Auth<A>`, `AuthScheme`, `Authenticate`, `Authorize` |
+//! | [`problem`] | the RFC 9457 `Problem` body |
+//! | [`attachment`] | `Attachment`, `File`, SSE responses |
+//! | [`openapi`] | `Info`, `OpenApi`, `Components` |
+//! | [`build_error`] | `BuildError` and its source locations |
+//! | [`schema`] | schema derivation and validation without axum |
+//! | `multipart` | `Multipart<F>`, `FilePart`, `TempFile` (feature-gated) |
+//!
+//! The derive macros and `routes!`/`mount!` are re-exported at the crate root; [`prelude`] is the
+//! usual import for application code.
+//!
+//! ## Feature flags
+//!
+//! The default build includes the macros. Everything else is opt-in:
+//!
+//! | Feature | Enables |
+//! |---|---|
+//! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
+//! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
+//! | `schema-engine` | `Validation::Schema` and `App::validate_responses()` |
+//! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | `ApiSchema` impls for those types |
+//!
+//! ## Examples
+//!
+//! The repository ships runnable examples for routing, mounts and layers, validation, uploads,
+//! auth and utoipa interop (see the `examples/` directory). `examples/notes` is the smallest and
+//! the best starting point.
+//!
+//! ## Minimum supported Rust version
+//!
+//! Rust 1.88. The MSRV is checked in CI.
 
 pub mod attachment;
 pub mod auth;
@@ -19,8 +105,10 @@ pub mod build_error;
 pub mod doc;
 pub mod extract;
 pub mod openapi;
+#[doc(hidden)]
 pub mod prefix;
 pub mod problem;
+#[doc(hidden)]
 pub mod registry;
 pub mod router;
 
@@ -72,7 +160,11 @@ macro_rules! app {
     };
 }
 
-/// The crate's axum-shaped surface. Import this in every route module.
+/// The crate's axum-shaped surface: extractors, response types, routing macros and the traits a
+/// route module needs. Import it with `use roundhouse::prelude::*;`.
+///
+/// It re-exports axum's `State`, `StatusCode`, `HeaderMap`, `IntoResponse`, `Response`, the
+/// extractor traits and SSE types, so a handler module rarely needs a second `use axum::…` line.
 pub mod prelude {
     #[cfg(feature = "multipart-tempfile")]
     pub use crate::TempFile;

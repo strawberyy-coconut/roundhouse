@@ -1,9 +1,16 @@
 //! The stable facade over utoipa's document model.
 //!
-//! Applications configure an app with [`Info`] and read a [`OpenApi`] document. Both are
+//! Applications configure an app with [`Info`] and read an [`OpenApi`] document. Both are
 //! roundhouse types; `as_utoipa`/`into_utoipa` are the explicit escape hatch for code that needs
 //! utoipa itself. The rest of the document model (schemas, paths, responses) is re-exported or
 //! accepted through utoipa-compatible values by the derives.
+//!
+//! ```no_run
+//! use roundhouse::openapi::Info;
+//!
+//! let app = roundhouse::app!(())
+//!     .openapi(|| Info::new("Notes API", "0.1.0").description("A small example"));
+//! ```
 //!
 //! [`Components`] is the component table passed to low-level `ApiSchema`/`ApiResponse`
 //! implementations. It is currently the utoipa table so hand-written schema code stays

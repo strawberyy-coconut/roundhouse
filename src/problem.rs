@@ -1,4 +1,9 @@
 //! RFC 9457 `application/problem+json` responses.
+//!
+//! [`Problem`] is the one error body the framework produces: malformed JSON, a wrong
+//! `Content-Type`, a missing query parameter and a failed constraint all arrive in this shape, so
+//! a client needs exactly one parser. A `Result<_, Problem>` therefore documents a `default`
+//! response instead of only its success status.
 
 pub use roundhouse_problem::{Problem, problem_schema, problem_value};
 

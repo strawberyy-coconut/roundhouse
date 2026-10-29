@@ -1,4 +1,29 @@
-//! `App`, route resolution, and router assembly.
+//! The application builder, route resolution and router assembly.
+//!
+//! [`App`] starts from application state. In application code, prefer the [`app!`](crate::app!)
+//! macro, which also scopes discovery to the calling crate so routes from linked dependencies do
+//! not join by accident. Builder methods then configure mounts, layers, the document, validation
+//! and request limits. [`App::build`] resolves every declaration in scope into a [`Built`]:
+//!
+//! - [`Built::router`] — the ready `axum::Router`;
+//! - [`Built::document`] and [`Built::openapi_json`] — the OpenAPI 3.1 document;
+//! - [`Built::routes`] — the resolved table, with each declaration's source location.
+//!
+//! Resolution is fallible at build time, not at `cargo check`: the route tables are link-time
+//! records. Use [`App::try_build`] in a test or a check binary so CI can fail without starting a
+//! server. [`App::router`] is the escape hatch that returns a plain `axum::Router<S>` for
+//! embedding in a larger axum application.
+//!
+//! ```no_run
+//! # use roundhouse::prelude::*;
+//! # fn state() -> () {}
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let built = roundhouse::app!(state()).build();
+//! std::fs::write("target/openapi.json", built.openapi_json())?;
+//! // built.router() is the axum router; built.routes() has the source locations.
+//! # Ok(())
+//! # }
+//! ```
 
 use std::any::TypeId;
 use std::collections::{BTreeMap, BTreeSet, HashMap};

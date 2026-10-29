@@ -1,4 +1,21 @@
-//! OpenAPI: utoipa's document model, roundhouse's derivation.
+//! The documentation half: schema derivation, parameter tables and response declarations.
+//!
+//! Most applications use this module through the derives re-exported at the crate root:
+//! `#[derive(ApiSchema)]`, `#[derive(QueryParams)]`, `#[derive(PathParams)]`,
+//! `#[derive(ApiResponse)]` and `#[derive(ApiError)]`, plus `#[derive(Multipart)]` with the
+//! `multipart` feature.
+//!
+//! The traits here are the manual escape hatch for types the derives cannot see:
+//!
+//! - [`ApiSchema`] — a type's JSON Schema together with its runtime checks.
+//! - [`ApiResponse`] — the documented responses a return type produces; `ApiError` is re-exported
+//!   from the macros.
+//! - [`ResponseDoc`] and [`layer`] — hand-written responses and documented layer guarantees.
+//! - [`validate_document`] — the structural check every build runs over the finished document.
+//!
+//! Schemas are registered with a two-phase placeholder, so recursive types terminate. Component
+//! names are derived from the module path, which keeps two `Config` types in different modules
+//! distinct; `#[schema(name = "…")]` overrides it.
 
 pub mod build;
 pub mod downgrade;

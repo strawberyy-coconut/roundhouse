@@ -1,4 +1,20 @@
-//! `Auth<A>` extractors and the security-scheme registry.
+//! Authentication and authorization: `Auth<A>` extractors and the security-scheme registry.
+//!
+//! An [`AuthScheme`] is pure metadata: its name, kind, failure statuses and identity type. Its
+//! [`Authenticate`] implementation reads credentials — with access to `Self::State`, normally the
+//! app state — and returns an identity or a rejection.
+//!
+//! `Auth<A>` extracts that identity. `Auth<A, Scopes>` additionally publishes `Scopes` in the
+//! operation's security requirement and only compiles when `Scopes: Authorize<A>`, so a scope
+//! cannot be documented without an enforcement decision. Several required `Auth<A>` extractors
+//! AND into one requirement; `Option<Auth<A>>` adds the unauthenticated alternative.
+//!
+//! `mount!(security = [...])` is accepted only when the operation also enforces that scheme.
+//! Scheme kinds are never guessed from names.
+//!
+//! The schemes in `examples/auth` are a reference implementation, not a supported backend. See
+//! the crate README for production guidance, and use a maintained library or gateway for token
+//! verification.
 
 use axum::extract::{FromRequestParts, OptionalFromRequestParts};
 use axum::http::StatusCode;

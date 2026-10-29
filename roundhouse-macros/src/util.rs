@@ -10,6 +10,14 @@ use syn::{LitInt, LitStr, Path};
 pub fn krate() -> TokenStream {
     use proc_macro_crate::{FoundCrate, crate_name};
 
+    // Rustdoc compiles doctests as a temporary crate but reads this package's manifest, so
+    // `proc_macro_crate` reports `Itself`. The doctest still links the real crate by name, and
+    // `crate` would point at the temporary crate. Rustdoc marks those compilations with
+    // `UNSTABLE_RUSTDOC_TEST_PATH`.
+    if std::env::var_os("UNSTABLE_RUSTDOC_TEST_PATH").is_some() {
+        return quote!(::roundhouse);
+    }
+
     match crate_name("roundhouse") {
         Ok(FoundCrate::Itself) => quote!(crate),
         Ok(FoundCrate::Name(name)) => {
