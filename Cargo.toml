@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "roundhouse-cli",
     "roundhouse-macros",
     "roundhouse-schema",
     "roundhouse-multipart",
@@ -24,10 +25,6 @@ repository = "https://github.com/axum-roundhouse/axum-roundhouse"
 rust-version = "1.88"
 keywords = ["axum", "openapi", "web", "framework", "router"]
 categories = ["web-programming::http-server"]
-
-[[bin]]
-name = "roundhouse"
-path = "src/bin/roundhouse.rs"
 
 [features]
 default = ["macros"]

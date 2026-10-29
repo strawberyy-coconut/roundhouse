@@ -85,6 +85,7 @@ The repository is a Cargo workspace with `roundhouse` as the root package:
 | `roundhouse-schema/` | `ApiSchema`, path/query declarations, `ValidationErrors` — no routes and no axum |
 | `roundhouse-multipart/` | `Multipart<F>`, `FilePart`, `TempFile` and the multipart rejection |
 | `roundhouse-macros/` | `routes!`, `mount!`, `#[handler]`, `#[derive(ApiSchema / PathParams / QueryParams / Multipart / ApiResponse / ApiError)]` |
+| `roundhouse-cli/` | the `roundhouse` binary: `openapi` and `routes` commands over a linked example app |
 | `examples/notes/` | module-local route tables and inherited `mount!` |
 | `examples/blog/` | nested mounts, grouped tables, `hidden`/`absolute`, auth, response enums |
 | `examples/layers/` | global/module/entry layers, fallback, `App::merge`, embedding |
@@ -182,11 +183,13 @@ The `roundhouse` binary builds and runs an app package with its `--openapi` flag
 the resolved table instead (each line carries the declaration's module and source location):
 
 ```sh
-cargo run -q --bin roundhouse -- openapi -p notes-example
-cargo run -q --bin roundhouse -- openapi -p validation-example --format 3.0
-cargo run -q --bin roundhouse -- routes -p notes-example
-cargo run -q --bin roundhouse -- openapi -p notes-example -o target/openapi.json
+cargo run -q -p roundhouse-cli -- openapi -p notes-example
+cargo run -q -p roundhouse-cli -- openapi -p validation-example --format 3.0
+cargo run -q -p roundhouse-cli -- routes -p notes-example
+cargo run -q -p roundhouse-cli -- openapi -p notes-example -o target/openapi.json
 ```
+
+Install it with `cargo install --path roundhouse-cli` and invoke `roundhouse` directly.
 
 `-o/--output` writes to a file instead of stdout. The examples send tracing to stderr, so a
 document on stdout stays parseable; `App::document_json()` and `App::route_listing()` are the

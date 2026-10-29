@@ -1,0 +1,17 @@
+[package]
+name = "roundhouse-cli"
+version = "0.2.0"
+edition = "2024"
+description = "Command-line tool for roundhouse: dump a linked app's OpenAPI document or route table."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/axum-roundhouse/axum-roundhouse"
+rust-version = "1.88"
+keywords = ["axum", "openapi", "cli"]
+categories = ["command-line-utilities", "web-programming::http-server"]
+
+[[bin]]
+name = "roundhouse"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
