@@ -37,15 +37,15 @@ parameter that `Path<String>` cannot name by itself.
 
 | Feature | What you get |
 |---|---|
-| **Declarative routing** | `routes!` tables live beside their handlers; `mount!` declares a subtree's prefix, tags, security and layers once. `App::build()` joins everything. |
-| **Single source of truth** | Paths, parameters, bodies, responses and security requirements are derived from the router's own declarations, so the document matches what is enforced. |
-| **Build-time diagnostics** | Duplicate routes, drifting parameter names, undeclared success responses, state mismatches and unenforced security are `BuildError`s. `App::try_build()` never panics. |
+| **Declarative routing** | `routes!` tables live beside their handlers; `mount!` declares a subtree's prefix, tags, layers and enforced `security` once. `App::build()` joins everything. |
+| **Single source of truth** | Paths, parameters, bodies, responses and security requirements are derived from the router's own declarations, so the document matches what is enforced. `security = [Bearer]` installs the `Auth<Bearer>` guard, not just the OpenAPI requirement. |
+| **Build-time diagnostics** | Duplicate routes, drifting parameter names, undeclared success responses, state mismatches and auth guards against the wrong state are `BuildError`s. `App::try_build()` never panics. |
 | **Document as artifact** | The OpenAPI document is always built; `App::openapi(..)` only decides whether it is served. `Built::openapi_json()` lets CI diff it. |
 | **Typed extractors** | `#[handler]` reads `State`, `Path`, `Query`, `Json`, `Form`, `Multipart`, `Auth`, `Option<Auth>` and `Extension` from the signature. |
 | **Schema generation** | `utoipa::ToSchema` owns the wire shape (`rename_all`, `skip`, `flatten`, `tag`, `untagged`, recursion, …); `#[derive(ApiSchema)]` adds the runtime checks. `uuid`, `chrono`, `time`, `jiff` and `decimal` are supported. |
 | **Validation** | `min_length`, `pattern`, numeric bounds, `min_items`, `unique_items`, `format` and `validate_with` are emitted into the schema *and* enforced, returning RFC 9457 problem details with JSON Pointers. |
 | **Errors** | `Problem` is the default error body; `#[derive(ApiError)]` / `#[derive(ApiResponse)]` generate `IntoResponse` plus the documented responses. |
-| **Auth** | `Auth<A>` extracts an identity, `Auth<A, Scopes>` requires an `Authorize` implementation, and schemes, 401/403 and `WWW-Authenticate` are documented automatically. |
+| **Auth** | `Auth<A>` extracts an identity, `Auth<A, Scopes>` requires an `Authorize` implementation, and `mount!(security = [A])` installs the guard for a whole subtree. Schemes, 401/403 and `WWW-Authenticate` are documented automatically. |
 | **Files & streams** | Opt-in `multipart` for `Multipart<F>`, `FilePart` and `TempFile`; plus `Attachment<T>`, `File` and SSE. |
 | **Optional schema engine** | `schema-engine` validates requests and responses against the emitted JSON Schema (2020-12). |
 | **Tooling** | `App::docs()` serves Swagger UI, `Built::openapi_30()` produces a 3.0.3 document, and merged routers are flagged so an incomplete spec can't slip through. |
@@ -136,6 +136,16 @@ std::fs::write("target/openapi.json", built.openapi_json())?;
 
 `Built::document()` returns the `OpenApi` value and `Built::routes()` the resolved table with source
 locations.
+
+**Mount-level auth is enforced.** `security` takes scheme types, not names; the same declaration
+installs the guard and publishes the requirement:
+
+```rust
+mount!("/admin", security = [Bearer]);
+```
+
+Scopes stay on the handler (`Auth<Bearer, ReadPosts>`). A handler under the mount that already
+takes `Auth<Bearer>` is not authenticated twice.
 
 **Auth backends are yours.** The schemes in `examples/auth` are a reference, not a supported backend.
 Use a maintained library (`jsonwebtoken`, `openidconnect`, `tower-sessions`) or an authenticating

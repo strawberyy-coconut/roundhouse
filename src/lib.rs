@@ -50,12 +50,13 @@
 //! ## How it fits together
 //!
 //! 1. **Declare.** `routes!` records each operation, `mount!` records a prefix plus the tags,
-//!    security and layers descendants inherit, and `#[handler]` derives the documentation half
-//!    from the handler signature.
+//!    layers and `Auth<A>` guards descendants inherit, and `#[handler]` derives the documentation
+//!    half from the handler signature.
 //! 2. **Build.** [`App::build`](router::App::build) joins every declaration in scope into a
 //!    [`Built`]: the `axum::Router`, the resolved route table, and the document.
-//!    Duplicate routes, state mismatches and unenforced security are found here, not by
-//!    `cargo check`; [`App::try_build`](router::App::try_build) reports them without panicking.
+//!    Duplicate routes, state mismatches and auth guards whose state does not match the app are
+//!    found here, not by `cargo check`; [`App::try_build`](router::App::try_build) reports them
+//!    without panicking.
 //! 3. **Enforce.** The extractors in [`extract`] enforce the constraints they publish, and
 //!    [`auth`] enforces the security requirements it publishes. Rejections are [`Problem`].
 //!
