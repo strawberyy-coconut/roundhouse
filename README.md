@@ -190,7 +190,9 @@ cargo run -q --bin roundhouse -- openapi -p notes-example -o target/openapi.json
 
 `-o/--output` writes to a file instead of stdout. The examples send tracing to stderr, so a
 document on stdout stays parseable; `App::document_json()` and `App::route_listing()` are the
-non-serving API the CLI uses.
+non-serving API the CLI uses. One caveat remains: the app value is constructed before the document
+is emitted, so state setup (environment validation, pool creation) still runs. Keep expensive or
+side-effecting startup behind a flag if you dump documents in CI.
 
 ## What works (v0.2)
 
