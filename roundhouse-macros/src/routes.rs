@@ -1,5 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::{Attribute, Expr, Ident, LitInt, LitStr, Path, Result, Token, Type};
 
@@ -22,6 +23,7 @@ struct Entry {
     validate: bool,
     deprecated: bool,
     public: bool,
+    response_override: bool,
 }
 
 impl Parse for Entry {
@@ -52,6 +54,7 @@ impl Parse for Entry {
             validate: true,
             deprecated: false,
             public: false,
+            response_override: false,
         };
         parse_attrs(&content, &mut entry)?;
         Ok(entry)
@@ -82,6 +85,7 @@ fn parse_group_entry(input: ParseStream<'_>, path: LitStr) -> Result<Entry> {
         validate: true,
         deprecated: false,
         public: false,
+        response_override: false,
     };
     parse_attrs(&content, &mut entry)?;
     Ok(entry)
@@ -93,7 +97,7 @@ fn parse_attrs(content: ParseStream<'_>, entry: &mut Entry) -> Result<()> {
         if content.is_empty() {
             break;
         }
-        let key: Ident = content.parse()?;
+        let key: Ident = content.call(Ident::parse_any)?;
         match key.to_string().as_str() {
             "summary" => {
                 content.parse::<Token![=]>()?;
@@ -128,6 +132,7 @@ fn parse_attrs(content: ParseStream<'_>, entry: &mut Entry) -> Result<()> {
             "absolute" => entry.absolute = true,
             "public" => entry.public = true,
             "deprecated" => entry.deprecated = true,
+            "override" => entry.response_override = true,
             "validate" => {
                 content.parse::<Token![=]>()?;
                 let value: syn::LitBool = content.parse()?;
@@ -289,6 +294,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let validate = entry.validate;
     let deprecated = entry.deprecated;
     let public = entry.public;
+    let response_override = entry.response_override;
     let responses = entry.responses.iter().map(|(status, body)| {
         let status = proc_macro2::Literal::u16_suffixed(*status);
         match body {
@@ -367,6 +373,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     validate: #validate,
                     deprecated: #deprecated,
                     public: #public,
+                    response_override: #response_override,
                     responses: __roundhouse_responses,
                     state: || ::roundhouse::doc::handler_state::<#marker_type>(),
                     state_name: || ::core::any::type_name::<

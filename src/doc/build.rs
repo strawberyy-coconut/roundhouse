@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::auth::SchemeDoc;
-use crate::build_error::BuildError;
+use crate::build_error::{BuildError, Diagnostic};
 use utoipa::openapi::extensions::ExtensionsBuilder;
 use utoipa::openapi::path::{OperationBuilder, ParameterBuilder};
 use utoipa::openapi::request_body::{RequestBody, RequestBodyBuilder};
@@ -25,6 +25,24 @@ pub fn build_with_options(
     include_rejections: bool,
     strict: bool,
 ) -> Result<OpenApi, BuildError> {
+    let mut diagnostics = Vec::new();
+    build_with_diagnostics(
+        info,
+        routes,
+        include_rejections,
+        strict,
+        &mut diagnostics,
+    )
+}
+
+/// Build the document, collecting non-fatal observations into `diagnostics`.
+pub fn build_with_diagnostics(
+    info: Info,
+    routes: &[ResolvedRoute],
+    include_rejections: bool,
+    strict: bool,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<OpenApi, BuildError> {
     let mut components = utoipa::openapi::schema::Components::new();
     let mut paths = Paths::new();
     let mut used_schemes: BTreeMap<String, (SchemeDoc, crate::build_error::Source)> =
@@ -36,11 +54,17 @@ pub fn build_with_options(
         }
         let Some(http_method) = route.method.to_utoipa() else {
             // `any` hides the method set; it is served but not documented.
-            tracing::warn!(
-                path = route.path,
-                source = route.record.source(),
-                "`any` route is not documented; declare explicit methods to include it"
-            );
+            crate::build_error::report(
+                diagnostics,
+                false,
+                Diagnostic::new(
+                    route.record.source_ref(),
+                    format!(
+                        "`any` route `{}` is not documented; declare explicit methods to include it",
+                        route.path
+                    ),
+                ),
+            )?;
             continue;
         };
 
@@ -52,12 +76,28 @@ pub fn build_with_options(
                     source: route.record.source_ref(),
                 });
             }
-            tracing::warn!(
-                operation = route.record.operation_id,
-                source = route.record.source(),
-                "body extractor is not verifiable by the document; the operation is marked \
-                 `x-roundhouse-unverified-body`"
-            );
+            diagnostics.push(Diagnostic::new(
+                route.record.source_ref(),
+                format!(
+                    "operation `{}` takes a body extractor the document cannot verify; it is \
+                     marked `x-roundhouse-unverified-body`",
+                    route.record.operation_id
+                ),
+            ));
+        }
+        if let Some(error_type) = docs.undocumented_error {
+            crate::build_error::report(
+                diagnostics,
+                strict,
+                Diagnostic::new(
+                    route.record.source_ref(),
+                    format!(
+                        "operation `{}` returns `{error_type}` but that type registers no \
+                         documented responses; derive `ApiError`/`ApiResponse` or return `Problem`",
+                        route.record.operation_id
+                    ),
+                ),
+            )?;
         }
         let operation = operation(
             route,
@@ -65,6 +105,8 @@ pub fn build_with_options(
             &mut components,
             &mut used_schemes,
             include_rejections,
+            strict,
+            diagnostics,
         )?;
         paths.add_path_operation(&route.path, vec![http_method], operation);
     }
@@ -91,6 +133,8 @@ fn operation(
     components: &mut utoipa::openapi::schema::Components,
     used_schemes: &mut BTreeMap<String, (SchemeDoc, crate::build_error::Source)>,
     include_rejections: bool,
+    strict: bool,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<utoipa::openapi::path::Operation, BuildError> {
     let unverified = docs.unverified;
     let mut docs = docs;
@@ -130,11 +174,31 @@ fn operation(
         Vec::new()
     };
     for response in docs.responses.into_iter().chain(failures) {
-        merge_response(&mut responses, response, route);
+        merge_response(&mut responses, response, route, strict, diagnostics)?;
     }
-    // A route-level `responses(..)` declaration overrides the inferred set for that status.
+    // A route-level `responses(..)` declaration may add statuses or, with `override`, replace an
+    // inferred body. Replacing it silently would let the table contradict the handler.
+    let mut overridden = false;
     for response in (route.record.responses)(components) {
-        responses.insert(response.status, response);
+        match responses.get(&response.status) {
+            Some(existing)
+                if existing.schema != response.schema
+                    || existing.content_type != response.content_type =>
+            {
+                if !route.record.response_override {
+                    return Err(BuildError::ConflictingResponse {
+                        operation_id: route.record.operation_id.to_string(),
+                        status: response.status,
+                        source: route.record.source_ref(),
+                    });
+                }
+                overridden = true;
+                responses.insert(response.status, response);
+            }
+            _ => {
+                responses.insert(response.status, response);
+            }
+        }
     }
 
     if !responses
@@ -249,6 +313,9 @@ fn operation(
     if unverified {
         extensions = extensions.add("x-roundhouse-unverified-body", true);
     }
+    if overridden {
+        extensions = extensions.add("x-roundhouse-overridden-response", true);
+    }
     if route.record.public {
         extensions = extensions.add("x-roundhouse-public", true);
     }
@@ -314,7 +381,9 @@ fn merge_response(
     responses: &mut BTreeMap<u16, ResponseDoc>,
     response: ResponseDoc,
     route: &ResolvedRoute,
-) {
+    strict: bool,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<(), BuildError> {
     match responses.get_mut(&response.status) {
         None => {
             responses.insert(response.status, response);
@@ -331,7 +400,7 @@ fn merge_response(
                         existing.headers.push(header);
                     }
                 }
-                return;
+                return Ok(());
             }
             if response.status >= 400 {
                 // Two shapes for one status is a lie; collapse to Problem, which is what every
@@ -341,14 +410,21 @@ fn merge_response(
                     ResponseDoc::problem(response.status, super::canonical_reason(response.status)),
                 );
             } else {
-                tracing::warn!(
-                    status = response.status,
-                    source = route.record.source(),
-                    "two different success bodies share one status; keeping the first"
-                );
+                crate::build_error::report(
+                    diagnostics,
+                    strict,
+                    Diagnostic::new(
+                        route.record.source_ref(),
+                        format!(
+                            "two different success bodies share status {}; keeping the first",
+                            response.status
+                        ),
+                    ),
+                )?;
             }
         }
     }
+    Ok(())
 }
 
 fn requirement(auth: &[crate::auth::AuthDoc]) -> SecurityRequirement {

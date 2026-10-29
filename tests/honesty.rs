@@ -77,12 +77,83 @@ mod override_response {
     mount!("/override-response");
 
     routes! {
-        get("/x", x, operation_id = "override_x", responses(200 = Payload)),
+        get("/x", x, operation_id = "override_x", responses(200 = Payload), override),
     }
 
     #[handler]
     pub async fn x() -> Json<OtherPayload> {
         Json(OtherPayload { other: 1 })
+    }
+}
+
+mod conflict_response {
+    use super::*;
+
+    mount!("/conflict-response");
+
+    routes! {
+        get("/x", x, operation_id = "conflict_x", responses(200 = Payload)),
+    }
+
+    #[handler]
+    pub async fn x() -> Json<OtherPayload> {
+        Json(OtherPayload { other: 1 })
+    }
+}
+
+mod problem_error {
+    use super::*;
+
+    mount!("/problem-error");
+
+    routes! { get("/x", x, operation_id = "problem_error_x") }
+
+    #[handler]
+    pub async fn x() -> Result<Json<Payload>, Problem> {
+        Ok(Json(Payload { value: 1 }))
+    }
+}
+
+mod dynamic_status {
+    use super::*;
+
+    mount!("/dynamic-status");
+
+    routes! { post("/x", x, operation_id = "dynamic_status_x") }
+
+    #[handler]
+    pub async fn x() -> (StatusCode, Json<Payload>) {
+        (StatusCode::CREATED, Json(Payload { value: 1 }))
+    }
+}
+
+#[derive(Debug)]
+pub struct BlindError;
+
+impl std::fmt::Display for BlindError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("blind")
+    }
+}
+
+impl std::error::Error for BlindError {}
+
+impl IntoResponse for BlindError {
+    fn into_response(self) -> Response {
+        (StatusCode::BAD_REQUEST, "blind").into_response()
+    }
+}
+
+mod blind_error {
+    use super::*;
+
+    mount!("/blind-error");
+
+    routes! { get("/x", x, operation_id = "blind_error_x") }
+
+    #[handler]
+    pub async fn x() -> Result<Json<Payload>, BlindError> {
+        Ok(Json(Payload { value: 1 }))
     }
 }
 
@@ -252,6 +323,24 @@ fn a_declared_response_overrides_the_inferred_one() {
             ["schema"]["$ref"],
         "#/components/schemas/Payload"
     );
+    assert_eq!(
+        document["paths"]["/override-response/x"]["get"]["x-roundhouse-overridden-response"],
+        true
+    );
+}
+
+#[test]
+fn a_declared_response_that_contradicts_the_handler_needs_override() {
+    let error = scoped(concat!(module_path!(), "::conflict_response"))
+        .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .try_build()
+        .err()
+        .expect("a silent override must not build");
+    assert!(matches!(
+        error,
+        BuildError::ConflictingResponse { status: 200, .. }
+    ));
+    assert!(error.to_string().contains("add `override`"));
 }
 
 #[test]
@@ -273,6 +362,61 @@ fn foreign_extractors_are_marked_and_strict_turns_the_marker_into_an_error() {
         .err()
         .expect("strict mode rejects unverified body extractors");
     assert!(matches!(error, BuildError::UnverifiedBody { .. }));
+}
+
+#[test]
+fn problem_error_type_documents_a_default_problem_response() {
+    let app = scoped(concat!(module_path!(), "::problem_error"))
+        .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .try_build()
+        .expect("Problem builds");
+    let document = document(app);
+    let responses = &document["paths"]["/problem-error/x"]["get"]["responses"];
+    assert_eq!(
+        responses["default"]["content"]["application/problem+json"]["schema"]["required"],
+        serde_json::json!(["type", "title", "status"])
+    );
+    assert!(responses["200"].is_object());
+}
+
+#[tokio::test]
+async fn a_status_bearing_tuple_documents_default_not_200() {
+    let app = scoped(concat!(module_path!(), "::dynamic_status"))
+        .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .try_build()
+        .expect("dynamic status builds");
+    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let responses = &document["paths"]["/dynamic-status/x"]["post"]["responses"];
+    assert!(responses["default"].is_object());
+    assert!(responses["200"].is_null(), "200 would be a lie for 201");
+
+    let response = app
+        .oneshot_json(http::Method::POST, "/dynamic-status/x", "{}")
+        .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+#[test]
+fn an_error_type_without_documentation_is_loud() {
+    let module = concat!(module_path!(), "::blind_error");
+    let app = scoped(module)
+        .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .try_build()
+        .expect("a blind error still builds by default");
+    assert!(
+        app.diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("BlindError")),
+        "expected a diagnostic naming the undocumented error type"
+    );
+
+    let error = scoped(module)
+        .strict()
+        .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .try_build()
+        .err()
+        .expect("strict turns the warning into an error");
+    assert!(matches!(error, BuildError::Diagnostic { .. }));
 }
 
 #[test]

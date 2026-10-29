@@ -288,17 +288,23 @@ fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenStream>> {
     if outer_ident(ty).as_deref() == Some("Result") && types.len() == 2 {
         let ok = &types[0];
         let err = &types[1];
-        let mut statements = ok_statements(ok)?;
+        let mut statements = ok_statements(ok, 200)?;
         statements.push(quote! {
+            let __before = docs.responses.len();
             docs.responses.extend(::roundhouse::doc::stored_responses_for::<#err>(components));
+            if docs.responses.len() == __before {
+                docs.undocumented_error = ::core::option::Option::Some(
+                    ::core::any::type_name::<#err>(),
+                );
+            }
         });
         return Ok(statements);
     }
 
-    ok_statements(ty)
+    ok_statements(ty, 200)
 }
 
-fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
+fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
     if let Type::Tuple(tuple) = ty {
         if tuple.elems.is_empty() {
             // Axum responds `200 OK` for `()`, so say that rather than promising a status the
@@ -308,16 +314,33 @@ fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
             }]);
         }
         if tuple.elems.len() >= 2 {
+            // `(StatusCode, Json<T>)` chooses its status at runtime. Documenting `200` would be a
+            // lie for the usual `CREATED`/`NO_CONTENT` spellings, so document `default` instead.
+            let dynamic = tuple
+                .elems
+                .iter()
+                .take(tuple.elems.len().saturating_sub(1))
+                .any(|element| outer_ident(element).as_deref() == Some("StatusCode"));
             let body = tuple.elems.last().unwrap();
-            return ok_statements(body);
+            if dynamic {
+                let mut statements = ok_statements(body, 0)?;
+                if statements.is_empty() {
+                    statements.push(quote! {
+                        docs.responses.push(::roundhouse::doc::ResponseDoc::default_response());
+                    });
+                }
+                return Ok(statements);
+            }
+            return ok_statements(body, status);
         }
     }
 
+    let status_lit = proc_macro2::Literal::u16_unsuffixed(status);
     let kind = outer_ident(ty);
     match kind.as_deref() {
         Some("Json") if !is_wrapper_type(ty) => Ok(vec![quote! {
             docs.unverified = true;
-            docs.responses.push(::roundhouse::doc::ResponseDoc::new(200, "OK"));
+            docs.responses.push(::roundhouse::doc::ResponseDoc::new(#status_lit, "OK"));
         }]),
         Some("Json") => {
             let inner = single_generic(ty).ok_or_else(|| {
@@ -325,7 +348,7 @@ fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
             })?;
             Ok(vec![quote! {
                 docs.responses.extend(
-                    ::roundhouse::doc::json_response::<#inner>(components, 200)
+                    ::roundhouse::doc::json_response::<#inner>(components, #status_lit)
                 );
             }])
         }
@@ -333,18 +356,18 @@ fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
             let inner = single_generic(ty)
                 .ok_or_else(|| syn::Error::new_spanned(ty, "expected Attachment<T>"))?;
             Ok(vec![quote! {
-                docs.responses.push(::roundhouse::attachment::attachment_response::<#inner>(200));
+                docs.responses.push(::roundhouse::attachment::attachment_response::<#inner>(#status_lit));
             }])
         }
         Some("File") if is_wrapper_type(ty) => Ok(vec![quote! {
-            docs.responses.push(::roundhouse::attachment::file_response(200));
+            docs.responses.push(::roundhouse::attachment::file_response(#status_lit));
         }]),
         Some("Sse") if is_wrapper_type(ty) => Ok(vec![quote! {
-            docs.responses.push(::roundhouse::attachment::sse_response(200));
+            docs.responses.push(::roundhouse::attachment::sse_response(#status_lit));
         }]),
         Some("Html") if !is_wrapper_type(ty) => Ok(vec![quote! {
             docs.unverified = true;
-            docs.responses.push(::roundhouse::doc::ResponseDoc::new(200, "OK"));
+            docs.responses.push(::roundhouse::doc::ResponseDoc::new(#status_lit, "OK"));
         }]),
         Some("Html") => {
             let inner = single_generic(ty).ok_or_else(|| {
@@ -353,7 +376,7 @@ fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
             Ok(vec![quote! {
                 docs.responses.push(::roundhouse::doc::text_response::<#inner>(
                     components,
-                    200,
+                    #status_lit,
                     "text/html",
                 ));
             }])
@@ -362,26 +385,26 @@ fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
             docs.responses.push(::roundhouse::doc::ResponseDoc::default_response());
         }]),
         Some("String") => Ok(vec![quote! {
-            docs.responses.push(::roundhouse::doc::plain_text_response(200));
+            docs.responses.push(::roundhouse::doc::plain_text_response(#status_lit));
         }]),
         Some("Vec") => {
             if single_generic(ty)
                 .is_some_and(|inner| matches!(outer_ident(&inner).as_deref(), Some("u8")))
             {
                 Ok(vec![quote! {
-                    docs.responses.push(::roundhouse::doc::bytes_response(200));
+                    docs.responses.push(::roundhouse::doc::bytes_response(#status_lit));
                 }])
             } else {
                 let inner = single_generic(ty).unwrap();
                 Ok(vec![quote! {
                     docs.responses.extend(
-                        ::roundhouse::doc::json_response::<#inner>(components, 200)
+                        ::roundhouse::doc::json_response::<#inner>(components, #status_lit)
                     );
                 }])
             }
         }
         Some("Bytes") | Some("Body") => Ok(vec![quote! {
-            docs.responses.push(::roundhouse::doc::bytes_response(200));
+            docs.responses.push(::roundhouse::doc::bytes_response(#status_lit));
         }]),
         Some("Option") => Ok(Vec::new()),
         Some("Infallible") => Ok(Vec::new()),
@@ -390,7 +413,7 @@ fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
                 && matches!(outer_ident(&reference.elem).as_deref(), Some("str"))
             {
                 return Ok(vec![quote! {
-                    docs.responses.push(::roundhouse::doc::plain_text_response(200));
+                    docs.responses.push(::roundhouse::doc::plain_text_response(#status_lit));
                 }]);
             }
             if let Type::ImplTrait(_) = ty {

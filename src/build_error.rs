@@ -70,6 +70,12 @@ pub enum BuildError {
         name: String,
         source: Source,
     },
+    /// A declared response contradicts the inferred one without `override`.
+    ConflictingResponse {
+        operation_id: String,
+        status: u16,
+        source: Source,
+    },
     /// Two extractors declare the same parameter with different schemas.
     ConflictingParameter {
         name: String,
@@ -80,6 +86,8 @@ pub enum BuildError {
     InvalidTemplate { reason: String, source: Source },
     /// The emitted document could not be compiled into a validator.
     SchemaCompilation { message: String },
+    /// `App::strict()` promoted a warning into an error.
+    Diagnostic { message: String, source: Source },
 }
 
 impl fmt::Display for BuildError {
@@ -133,6 +141,16 @@ impl fmt::Display for BuildError {
                  hint: add an `Auth<A>` argument or `layer_documented(auth::<A>())` for that scheme, \
                  or remove it from `security`"
             ),
+            BuildError::ConflictingResponse {
+                operation_id,
+                status,
+                source,
+            } => write!(
+                f,
+                "error: operation `{operation_id}` declares a different response for status {status} than \
+                 its handler derives\n  {source}\n\
+                 hint: make the declared type match, or add `override` to the entry"
+            ),
             BuildError::ConflictingParameter {
                 name,
                 location,
@@ -152,8 +170,51 @@ impl fmt::Display for BuildError {
                     "error: could not compile the emitted schema\n  {message}"
                 )
             }
+            BuildError::Diagnostic { message, source } => {
+                write!(f, "error: {message}\n  {source}")
+            }
         }
     }
 }
 
 impl std::error::Error for BuildError {}
+
+/// A non-fatal build observation: something the document or router had to work around.
+///
+/// `App::build()` prints these to stderr; `App::strict()` turns them into [`BuildError`]s.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Diagnostic {
+    pub message: String,
+    pub source: Source,
+}
+
+impl Diagnostic {
+    pub fn new(source: Source, message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            source,
+        }
+    }
+}
+
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "warning: {}\n  {}", self.message, self.source)
+    }
+}
+
+/// Collect a diagnostic, or fail the build when `strict` is set.
+pub fn report(
+    diagnostics: &mut Vec<Diagnostic>,
+    strict: bool,
+    diagnostic: Diagnostic,
+) -> Result<(), BuildError> {
+    if strict {
+        return Err(BuildError::Diagnostic {
+            message: diagnostic.message,
+            source: diagnostic.source,
+        });
+    }
+    diagnostics.push(diagnostic);
+    Ok(())
+}

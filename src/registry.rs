@@ -106,6 +106,8 @@ pub struct RouteRecord {
     pub validate: bool,
     pub deprecated: bool,
     pub public: bool,
+    /// `override` on a `routes!` entry: a declared response may replace an inferred one.
+    pub response_override: bool,
     pub responses: fn(&mut Components) -> Vec<crate::doc::ResponseDoc>,
     pub state: fn() -> Option<TypeId>,
     pub state_name: fn() -> &'static str,

@@ -231,23 +231,29 @@ where
 
     /// Resolve and assemble everything. Panics with the same report `try_build` returns.
     pub fn build(self) -> Built {
-        self.try_build().unwrap_or_else(|error| panic!("{error}"))
+        let built = self.try_build().unwrap_or_else(|error| panic!("{error}"));
+        for diagnostic in built.diagnostics() {
+            eprintln!("{diagnostic}");
+        }
+        built
     }
 
     /// Resolve and assemble everything, returning a diagnostic instead of panicking.
     pub fn try_build(self) -> Result<Built, BuildError> {
-        let resolved = self.resolve()?;
+        let mut diagnostics = Vec::new();
+        let resolved = self.resolve(&mut diagnostics)?;
         let serve_openapi = self.info.is_some();
         let info = self
             .info
             .as_ref()
             .map(|info| info())
             .unwrap_or_else(|| Info::new("API", "0.1.0"));
-        let built_document = doc::build::build_with_options(
+        let built_document = doc::build::build_with_diagnostics(
             info,
             &resolved,
             self.document_rejections == DocumentRejections::Auto,
             self.strict,
+            &mut diagnostics,
         )?;
         let schema_engine = if self.validation == crate::extract::Validation::Schema {
             let components = built_document.components.clone().unwrap_or_default();
@@ -357,6 +363,7 @@ where
             router,
             routes: resolved,
             document,
+            diagnostics,
         })
     }
 
@@ -417,7 +424,7 @@ where
         axum::serve(listener, built.router).await
     }
 
-    fn resolve(&self) -> Result<Vec<ResolvedRoute>, BuildError> {
+    fn resolve(&self, diagnostics: &mut Vec<crate::build_error::Diagnostic>) -> Result<Vec<ResolvedRoute>, BuildError> {
         let mounts: Vec<&'static MountRecord> = inventory::iter::<registry::MountRecord>
             .into_iter()
             .filter(|mount| self.selected(mount.module_path))
@@ -432,11 +439,14 @@ where
                 .iter()
                 .any(|route| prefix::is_ancestor(mount.module_path, route.module_path));
             if !used {
-                tracing::warn!(
-                    module = mount.module_path,
-                    location = mount.location(),
-                    "mount! has no routes below it"
-                );
+                crate::build_error::report(
+                    diagnostics,
+                    self.strict,
+                    crate::build_error::Diagnostic::new(
+                        crate::build_error::Source::new(mount.module_path, mount.file, mount.line),
+                        format!("mount! `{}` has no routes below it", mount.prefix),
+                    ),
+                )?;
             }
         }
 
@@ -866,6 +876,7 @@ pub struct Built {
     router: Router<()>,
     routes: Vec<ResolvedRoute>,
     document: Option<Arc<OpenApi>>,
+    diagnostics: Vec<crate::build_error::Diagnostic>,
 }
 
 impl Built {
@@ -882,6 +893,11 @@ impl Built {
     /// The generated document, when `App::openapi(..)` was called.
     pub fn document(&self) -> Option<&OpenApi> {
         self.document.as_deref()
+    }
+
+    /// Non-fatal observations collected while resolving and documenting the app.
+    pub fn diagnostics(&self) -> &[crate::build_error::Diagnostic] {
+        &self.diagnostics
     }
 
     pub fn openapi_json(&self) -> Option<String> {

@@ -125,6 +125,25 @@ impl From<ValidationErrors> for Problem {
     }
 }
 
+impl crate::doc::ApiResponse for Problem {
+    /// `Problem` is the framework's default error type, so it contributes a `default` response
+    /// with the `application/problem+json` schema. A `Result<_, Problem>` therefore documents the
+    /// failures it can produce instead of only its success status.
+    fn responses(components: &mut utoipa::openapi::schema::Components) -> Vec<crate::doc::ResponseDoc> {
+        let _ = components;
+        vec![crate::doc::ResponseDoc::problem_default()]
+    }
+}
+
+// Join the same link-time registry the derives use, so `stored_responses_for::<Problem>` finds
+// this implementation.
+inventory::submit! {
+    crate::registry::ResponseRecord {
+        type_key: || std::any::type_name::<Problem>(),
+        docs: |components| <Problem as crate::doc::ApiResponse>::responses(components),
+    }
+}
+
 impl From<crate::multipart::MultipartProblem> for Problem {
     fn from(value: crate::multipart::MultipartProblem) -> Self {
         Self {

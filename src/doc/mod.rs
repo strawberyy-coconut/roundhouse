@@ -77,6 +77,11 @@ impl ResponseDoc {
         }
     }
 
+    /// The catch-all error response: a `Problem` at a status chosen at runtime.
+    pub fn problem_default() -> Self {
+        Self::problem(0, "Error")
+    }
+
     /// A response whose status is chosen at runtime (`-> StatusCode`). The document says
     /// `default` with no body, which is the honest shape.
     pub fn default_response() -> Self {
@@ -103,6 +108,8 @@ pub struct HandlerDocs {
     /// A body extractor the framework can see syntactically but cannot verify at runtime
     /// (`axum::Json`, `axum::Form`, `axum::extract::Multipart`).
     pub unverified: bool,
+    /// A `Result<_, E>` whose `E` registered no documented responses.
+    pub undocumented_error: Option<&'static str>,
 }
 
 /// Implemented by the marker type `#[handler]` emits beside each handler.
@@ -196,6 +203,9 @@ pub fn record_component_name(record: &crate::registry::ComponentTypeRecord) -> S
 }
 
 pub fn canonical_reason(status: u16) -> &'static str {
+    if status == 0 {
+        return "Default Response";
+    }
     http::StatusCode::from_u16(status)
         .ok()
         .and_then(|status| status.canonical_reason())
@@ -386,7 +396,9 @@ pub fn bytes_response(status: u16) -> ResponseDoc {
     }
 }
 
-/// Implemented by `#[derive(ApiResponse)]` and `#[derive(ApiError)]`.
+/// Implemented by `#[derive(ApiResponse)]` and `#[derive(ApiError)]`, and by [`Problem`].
+///
+/// [`Problem`]: crate::Problem
 pub trait ApiResponse {
     fn responses(components: &mut Components) -> Vec<ResponseDoc>;
 }
