@@ -65,6 +65,11 @@ pub enum BuildError {
         first: Source,
         second: Source,
     },
+    /// A security requirement with no extractor or documented layer enforcing it.
+    UnverifiedSecurity {
+        name: String,
+        source: Source,
+    },
     /// Two extractors declare the same parameter with different schemas.
     ConflictingParameter {
         name: String,
@@ -121,6 +126,12 @@ impl fmt::Display for BuildError {
             } => write!(
                 f,
                 "error: security scheme `{name}` is declared with two different kinds\n  {first}\n  {second}"
+            ),
+            BuildError::UnverifiedSecurity { name, source } => write!(
+                f,
+                "error: security requirement `{name}` is documented but nothing enforces it\n  {source}\n\
+                 hint: add an `Auth<A>` argument or `layer_documented(auth::<A>())` for that scheme, \
+                 or remove it from `security`"
             ),
             BuildError::ConflictingParameter {
                 name,

@@ -2,12 +2,13 @@ use axum::http::StatusCode;
 use roundhouse::prelude::*;
 use serde::Serialize;
 
-use crate::schemes::{ApiKeyAuth, BearerAuth, ReadPosts};
+use crate::schemes::{ApiKeyAuth, BearerAuth, ReadPosts, WritePosts};
 
 routes! {
     get("/public", public, summary = "No auth"),
     get("/private", private, summary = "Bearer required"),
     get("/scoped", scoped, summary = "Bearer with read scope"),
+    get("/write", write, summary = "Bearer with write scope"),
     get("/optional", optional, summary = "Auth is optional"),
     get("/admin", admin, summary = "Bearer AND API key, admin only"),
 }
@@ -36,6 +37,13 @@ pub async fn private(Auth { principal, .. }: Auth<BearerAuth>) -> Json<Message> 
 pub async fn scoped(Auth { .. }: Auth<BearerAuth, ReadPosts>) -> Json<Message> {
     Json(Message {
         message: "read scope granted".to_string(),
+    })
+}
+
+#[handler]
+pub async fn write(Auth { .. }: Auth<BearerAuth, WritePosts>) -> Json<Message> {
+    Json(Message {
+        message: "write scope granted".to_string(),
     })
 }
 

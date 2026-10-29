@@ -35,6 +35,14 @@ impl Authenticate for BearerAuth {
                 .detail("expected a bearer token from the app state token store")
         })
     }
+
+    fn presents_credentials(parts: &Parts) -> bool {
+        parts
+            .headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.starts_with("Bearer "))
+    }
 }
 
 /// Additional header auth used to demonstrate an AND requirement.
@@ -63,6 +71,10 @@ impl Authenticate for ApiKeyAuth {
                 .detail("expected a valid `X-API-Key`"))
         }
     }
+
+    fn presents_credentials(parts: &Parts) -> bool {
+        parts.headers.contains_key("x-api-key")
+    }
 }
 
 /// OAuth scope marker: `Auth<BearerAuth, ReadPosts>`.
@@ -71,7 +83,26 @@ impl roundhouse::AuthScopes for ReadPosts {
     const SCOPES: &'static [&'static str] = &["read:posts"];
 }
 
+impl roundhouse::Authorize<BearerAuth> for ReadPosts {
+    fn authorize(_user: &User) -> Result<(), Problem> {
+        // Every authenticated user of this example may read posts.
+        Ok(())
+    }
+}
+
 pub struct WritePosts;
 impl roundhouse::AuthScopes for WritePosts {
     const SCOPES: &'static [&'static str] = &["write:posts"];
+}
+
+impl roundhouse::Authorize<BearerAuth> for WritePosts {
+    fn authorize(user: &User) -> Result<(), Problem> {
+        if user.admin {
+            Ok(())
+        } else {
+            Err(Problem::new(StatusCode::FORBIDDEN, "Forbidden")
+                .type_uri("https://roundhouse.rs/problems/Forbidden")
+                .detail("write:posts requires the admin role"))
+        }
+    }
 }

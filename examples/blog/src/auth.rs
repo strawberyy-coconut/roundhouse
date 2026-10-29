@@ -36,4 +36,12 @@ impl Authenticate for DemoBearer {
                     .detail("expected a bearer token from the app state token store")
             })
     }
+
+    fn presents_credentials(parts: &Parts) -> bool {
+        parts
+            .headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.starts_with("Bearer "))
+    }
 }

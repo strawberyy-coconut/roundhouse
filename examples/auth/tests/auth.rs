@@ -33,9 +33,10 @@ async fn bearer_auth_is_enforced_with_www_authenticate() {
 }
 
 #[tokio::test]
-async fn scopes_and_optional_auth_are_documented() {
+async fn scopes_and_optional_auth_are_documented_and_enforced() {
     let app = built();
 
+    // The reader holds `read:posts`.
     assert_eq!(
         request(
             &app,
@@ -46,6 +47,29 @@ async fn scopes_and_optional_auth_are_documented() {
         .status(),
         StatusCode::OK
     );
+    // ... but not `write:posts`: the document promises 403 and the handler now returns it.
+    assert_eq!(
+        request(
+            &app,
+            "/write",
+            &[(header::AUTHORIZATION.as_str(), "Bearer reader")]
+        )
+        .await
+        .status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            &app,
+            "/write",
+            &[(header::AUTHORIZATION.as_str(), "Bearer admin")]
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
+
+    // Absent credentials are anonymous; a present but invalid token is not.
     let response = request(&app, "/optional", &[]).await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = http_body_util::BodyExt::collect(response.into_body())
@@ -53,6 +77,14 @@ async fn scopes_and_optional_auth_are_documented() {
         .unwrap()
         .to_bytes();
     assert_eq!(&body[..], br#"{"message":"anonymous"}"#);
+
+    let response = request(
+        &app,
+        "/optional",
+        &[(header::AUTHORIZATION.as_str(), "Bearer revoked")],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
     let response = request(
         &app,
@@ -71,6 +103,10 @@ async fn scopes_and_optional_auth_are_documented() {
         document["paths"]["/scoped"]["get"]["security"][0]["bearer"],
         serde_json::json!(["read:posts"])
     );
+    assert_eq!(
+        document["paths"]["/write"]["get"]["security"][0]["bearer"],
+        serde_json::json!(["write:posts"])
+    );
     let optional = document["paths"]["/optional"]["get"]["security"]
         .as_array()
         .unwrap();
@@ -79,6 +115,11 @@ async fn scopes_and_optional_auth_are_documented() {
         optional
             .iter()
             .any(|requirement| requirement.as_object().unwrap().is_empty())
+    );
+    // An unscoped `Auth<A>` publishes no scopes.
+    assert_eq!(
+        document["paths"]["/private"]["get"]["security"][0]["bearer"],
+        serde_json::json!([])
     );
 }
 
@@ -135,6 +176,41 @@ async fn two_required_extractors_and_into_one_requirement() {
         document["components"]["securitySchemes"]["bearer"]["scheme"],
         "bearer"
     );
+}
+
+#[tokio::test]
+async fn every_documented_security_requirement_is_enforced() {
+    let app = built();
+    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+
+    let mut checked = 0;
+    for (path, item) in document["paths"].as_object().unwrap() {
+        let Some(operation) = item.get("get") else {
+            continue;
+        };
+        let Some(security) = operation.get("security").and_then(|value| value.as_array()) else {
+            continue;
+        };
+        // An empty requirement (`{}`) is an explicit anonymous alternative.
+        let anonymous_allowed = security
+            .iter()
+            .any(|requirement| requirement.as_object().is_some_and(|object| object.is_empty()));
+        if security.is_empty() || anonymous_allowed {
+            continue;
+        }
+        let response = request(&app, path, &[]).await;
+        assert!(
+            matches!(
+                response.status(),
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+            ),
+            "`{path}` documents a security requirement but answered {} without credentials",
+            response.status()
+        );
+        checked += 1;
+    }
+
+    assert!(checked >= 4, "expected several secured operations, saw {checked}");
 }
 
 #[tokio::test]

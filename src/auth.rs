@@ -86,6 +86,12 @@ pub trait Authenticate: AuthScheme {
         parts: &mut Parts,
         state: &Self::State,
     ) -> Result<Self::Identity, Problem>;
+
+    /// Whether the request carries credentials for this scheme at all.
+    ///
+    /// `Option<Auth<A>>` uses this to tell "anonymous" from "present but invalid": absent
+    /// credentials yield `None`, bad ones yield the scheme's rejection.
+    fn presents_credentials(parts: &Parts) -> bool;
 }
 
 /// Marker for an auth scheme without OAuth scopes.
@@ -97,6 +103,22 @@ pub trait AuthScopes {
 }
 
 impl AuthScopes for NoScopes {}
+
+/// The authorization decision behind a scoped `Auth<A, Scopes>`.
+///
+/// A scope marker is published to the document in a security requirement. Implementing this
+/// trait is the handler's proof that the requirement is enforced: `Auth<A, Scopes>` does not
+/// compile without it. `NoScopes` is the only built-in implementation and grants everything.
+pub trait Authorize<A: AuthScheme>: AuthScopes {
+    /// Return `Ok(())` when `identity` may exercise this route, or the rejection to send.
+    fn authorize(identity: &A::Identity) -> Result<(), Problem>;
+}
+
+impl<A: AuthScheme> Authorize<A> for NoScopes {
+    fn authorize(_identity: &A::Identity) -> Result<(), Problem> {
+        Ok(())
+    }
+}
 
 /// The authenticated principal, tagged with the scheme that produced it.
 pub struct Auth<A: AuthScheme, Scopes = NoScopes> {
@@ -121,7 +143,7 @@ impl<A: AuthScheme, Scopes> std::ops::Deref for Auth<A, Scopes> {
 impl<A, Scopes> FromRequestParts<A::State> for Auth<A, Scopes>
 where
     A: Authenticate,
-    Scopes: AuthScopes + Send + Sync + 'static,
+    Scopes: Authorize<A> + Send + Sync + 'static,
 {
     type Rejection = AuthRejection;
 
@@ -131,10 +153,16 @@ where
     ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
         async move {
             match A::authenticate(parts, state).await {
-                Ok(principal) => Ok(Auth {
-                    principal,
-                    scopes: std::marker::PhantomData,
-                }),
+                Ok(principal) => {
+                    Scopes::authorize(&principal).map_err(|problem| AuthRejection {
+                        problem,
+                        scheme: A::KIND,
+                    })?;
+                    Ok(Auth {
+                        principal,
+                        scopes: std::marker::PhantomData,
+                    })
+                }
                 Err(problem) => Err(AuthRejection {
                     problem,
                     scheme: A::KIND,
@@ -148,21 +176,21 @@ where
 impl<A, Scopes> OptionalFromRequestParts<A::State> for Auth<A, Scopes>
 where
     A: Authenticate,
-    Scopes: AuthScopes + Send + Sync + 'static,
+    Scopes: Authorize<A> + Send + Sync + 'static,
 {
-    type Rejection = std::convert::Infallible;
+    type Rejection = AuthRejection;
 
     fn from_request_parts(
         parts: &mut Parts,
         state: &A::State,
     ) -> impl std::future::Future<Output = Result<Option<Self>, Self::Rejection>> + Send {
         async move {
-            match <Auth<A, Scopes> as FromRequestParts<A::State>>::from_request_parts(parts, state)
-                .await
-            {
-                Ok(auth) => Ok(Some(auth)),
-                Err(_) => Ok(None),
+            if !A::presents_credentials(parts) {
+                return Ok(None);
             }
+            <Auth<A, Scopes> as FromRequestParts<A::State>>::from_request_parts(parts, state)
+                .await
+                .map(Some)
         }
     }
 }

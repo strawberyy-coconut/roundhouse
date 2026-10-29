@@ -30,7 +30,9 @@ pub use roundhouse_schema as schema;
 pub use roundhouse_schema::validate;
 
 pub use attachment::{Attachment, AttachmentType, File};
-pub use auth::{Auth, AuthDoc, AuthScheme, AuthScopes, Authenticate, NoScopes, SecuritySchemeKind};
+pub use auth::{
+    Auth, AuthDoc, AuthScheme, AuthScopes, Authenticate, Authorize, NoScopes, SecuritySchemeKind,
+};
 pub use axum::response::sse::{Event, KeepAlive, Sse};
 pub use build_error::{BuildError, Source};
 pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams};

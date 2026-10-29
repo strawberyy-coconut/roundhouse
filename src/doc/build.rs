@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::auth::{SchemeDoc, SecuritySchemeKind};
+use crate::auth::SchemeDoc;
 use crate::build_error::BuildError;
 use utoipa::openapi::extensions::ExtensionsBuilder;
 use utoipa::openapi::path::{OperationBuilder, ParameterBuilder};
@@ -27,7 +27,8 @@ pub fn build_with_options(
 ) -> Result<OpenApi, BuildError> {
     let mut components = utoipa::openapi::schema::Components::new();
     let mut paths = Paths::new();
-    let mut used_schemes: BTreeMap<String, SchemeDoc> = BTreeMap::new();
+    let mut used_schemes: BTreeMap<String, (SchemeDoc, crate::build_error::Source)> =
+        BTreeMap::new();
 
     for route in routes {
         if route.hidden || route.record.hidden {
@@ -68,7 +69,7 @@ pub fn build_with_options(
         paths.add_path_operation(&route.path, vec![http_method], operation);
     }
 
-    for scheme in used_schemes.values() {
+    for (scheme, _) in used_schemes.values() {
         components
             .security_schemes
             .insert(scheme.name.to_string(), scheme.kind.to_utoipa().into());
@@ -88,7 +89,7 @@ fn operation(
     route: &ResolvedRoute,
     docs: super::HandlerDocs,
     components: &mut utoipa::openapi::schema::Components,
-    used_schemes: &mut BTreeMap<String, SchemeDoc>,
+    used_schemes: &mut BTreeMap<String, (SchemeDoc, crate::build_error::Source)>,
     include_rejections: bool,
 ) -> Result<utoipa::openapi::path::Operation, BuildError> {
     let unverified = docs.unverified;
@@ -154,12 +155,22 @@ fn operation(
     }
 
     for scheme in &docs.schemes {
-        merge_scheme(used_schemes, *scheme, route)?;
+        merge_scheme(used_schemes, *scheme, route.record.source_ref())?;
     }
 
+    // A mount-level `security = [...]` is a claim. Accept it only when the operation itself
+    // requires that scheme (an `Auth<A>` argument or a documented auth layer enforces it);
+    // otherwise the document would advertise protection the router does not provide.
+    let enforced: Vec<&'static str> = docs.required_auth.iter().map(|auth| auth.name).collect();
     let mut required = docs.required_auth;
-    for scheme in route.security.iter().chain(route.record.security.iter()) {
-        if !required.iter().any(|auth| auth.name == *scheme) {
+    for scheme in route.security.iter().chain(route.record.security.iter()).copied() {
+        if !enforced.contains(&scheme) {
+            return Err(BuildError::UnverifiedSecurity {
+                name: scheme.to_string(),
+                source: route.record.source_ref(),
+            });
+        }
+        if !required.iter().any(|auth| auth.name == scheme) {
             required.push(crate::auth::AuthDoc {
                 name: scheme,
                 scopes: &[],
@@ -170,13 +181,19 @@ fn operation(
 
     let mut security: Vec<SecurityRequirement> = Vec::new();
     for auth in required.iter().chain(optional.iter()) {
-        let scheme = docs
+        let Some(scheme) = docs
             .schemes
             .iter()
             .find(|scheme| scheme.name == auth.name)
             .copied()
-            .unwrap_or_else(|| default_security_scheme(auth.name));
-        merge_scheme(used_schemes, scheme, route)?;
+        else {
+            // No `Auth<A>` or `layer_documented(auth::<A>())` registered the kind.
+            return Err(BuildError::UnverifiedSecurity {
+                name: auth.name.to_string(),
+                source: route.record.source_ref(),
+            });
+        };
+        merge_scheme(used_schemes, scheme, route.record.source_ref())?;
     }
 
     if !required.is_empty() || !optional.is_empty() {
@@ -334,22 +351,6 @@ fn merge_response(
     }
 }
 
-/// Deterministic schemes for mount/table security names. `Auth<A>` declarations replace these
-/// defaults with the exact kind from `A::KIND`.
-fn default_security_scheme(name: &'static str) -> SchemeDoc {
-    if name == "bearer" {
-        SchemeDoc {
-            name,
-            kind: SecuritySchemeKind::HttpBearer,
-        }
-    } else {
-        SchemeDoc {
-            name,
-            kind: SecuritySchemeKind::ApiKeyHeader(name),
-        }
-    }
-}
-
 fn requirement(auth: &[crate::auth::AuthDoc]) -> SecurityRequirement {
     let mut requirement = SecurityRequirement::default();
     for doc in auth {
@@ -358,22 +359,24 @@ fn requirement(auth: &[crate::auth::AuthDoc]) -> SecurityRequirement {
     requirement
 }
 
+/// Store the first declaration of a scheme; a second, different kind is a build error that
+/// points at both declarations.
 fn merge_scheme(
-    used: &mut BTreeMap<String, SchemeDoc>,
+    used: &mut BTreeMap<String, (SchemeDoc, crate::build_error::Source)>,
     scheme: SchemeDoc,
-    route: &ResolvedRoute,
+    source: crate::build_error::Source,
 ) -> Result<(), BuildError> {
     match used.get(scheme.name) {
-        Some(existing) if existing.kind != scheme.kind => {
+        Some((existing, first)) if existing.kind != scheme.kind => {
             return Err(BuildError::SchemeKindConflict {
                 name: scheme.name.to_string(),
-                first: route.record.source_ref(),
-                second: route.record.source_ref(),
+                first: *first,
+                second: source,
             });
         }
         Some(_) => {}
         None => {
-            used.insert(scheme.name.to_string(), scheme);
+            used.insert(scheme.name.to_string(), (scheme, source));
         }
     }
     Ok(())

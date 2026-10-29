@@ -135,12 +135,40 @@ mod route_layered {
 mod secured {
     use super::*;
 
+    pub struct Bearer;
+
+    impl AuthScheme for Bearer {
+        type State = State;
+        type Identity = ();
+
+        const NAME: &'static str = "bearer";
+        const KIND: roundhouse::SecuritySchemeKind = roundhouse::SecuritySchemeKind::HttpBearer;
+    }
+
+    #[roundhouse::async_trait]
+    impl Authenticate for Bearer {
+        async fn authenticate(
+            parts: &mut axum::http::request::Parts,
+            _state: &State,
+        ) -> Result<(), Problem> {
+            if parts.headers.contains_key(header::AUTHORIZATION) {
+                Ok(())
+            } else {
+                Err(Problem::new(StatusCode::UNAUTHORIZED, "Unauthorized"))
+            }
+        }
+
+        fn presents_credentials(parts: &axum::http::request::Parts) -> bool {
+            parts.headers.contains_key(header::AUTHORIZATION)
+        }
+    }
+
     mount!("/secured", security = ["bearer"]);
 
     routes! { get("/me", me) }
 
     #[handler]
-    pub async fn me() -> &'static str {
+    pub async fn me(_auth: Auth<Bearer>) -> &'static str {
         "me"
     }
 }
