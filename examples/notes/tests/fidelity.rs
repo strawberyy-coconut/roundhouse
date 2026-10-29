@@ -20,6 +20,13 @@ fn hand_written(state: AppState) -> Router {
         .route("/notes", get(notes::list::list).post(notes::create::create))
         .route("/notes/{id}", get(notes::show::show))
         .fallback(|| async { roundhouse::Problem::not_found("no route matched this request") })
+        .method_not_allowed_fallback(|| async {
+            roundhouse::Problem::new(
+                StatusCode::METHOD_NOT_ALLOWED,
+                "Method Not Allowed",
+            )
+            .detail("this path does not accept the request method")
+        })
         .with_state(state)
 }
 

@@ -115,7 +115,7 @@ mod default_ids {
 }
 
 #[test]
-fn default_operation_ids_use_the_resolved_path() {
+fn default_operation_ids_use_module_and_handler_not_the_url() {
     let app = scoped(concat!(module_path!(), "::default_ids"))
         .try_build()
         .expect("distinct resolved paths build");
@@ -124,7 +124,13 @@ fn default_operation_ids_use_the_resolved_path() {
         .iter()
         .map(|route| route.operation_id.as_str())
         .collect();
-    assert_eq!(ids, ["get_a_id", "get_b_id"]);
+    assert_eq!(
+        ids,
+        [
+            "get_paths_default_ids_a_show",
+            "get_paths_default_ids_b_show"
+        ]
+    );
 }
 
 fn path_parameters(module: &'static str, path: &str) -> Vec<serde_json::Value> {

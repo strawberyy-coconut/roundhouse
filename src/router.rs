@@ -862,10 +862,11 @@ fn resolve_routes(
                     source: record.source_ref(),
                 });
             }
+            let mount_prefix = binding.as_ref().map(|mount| mount.prefix);
             let operation_id = record
                 .operation_id
                 .map(str::to_string)
-                .unwrap_or_else(|| default_operation_id(record, &path));
+                .unwrap_or_else(|| default_operation_id(record, mount_prefix));
             let key = (record.method, normalised.clone());
             if let Some(previous) = seen.get(&key) {
                 return Err(BuildError::DuplicateRoute {
@@ -986,33 +987,29 @@ fn first_segment(module: &'static str) -> &'static str {
     module.split("::").next().unwrap_or(module)
 }
 
-/// `GET /blog/posts/{id}` → `get_blog_posts_id`.
+/// `GET blog::posts::show` → `get_blog_posts_show`.
 ///
-/// A path made only of captures (or `/`) is not unique across modules, so those also include the
-/// module's last segment and the handler name. An explicit `operation_id` always wins.
-fn default_operation_id(record: &RouteRecord, path: &str) -> String {
+/// The id follows the declaration, not the URL, so moving a route under a different prefix does
+/// not rename every generated client method. A second binding of the same table (via
+/// `App::mount`) appends that binding's prefix, because one OpenAPI document cannot contain two
+/// operations with the same id. An explicit `operation_id` always wins.
+fn default_operation_id(record: &RouteRecord, mount_prefix: Option<&str>) -> String {
     let mut parts = vec![record.method.as_str().to_ascii_lowercase()];
-    let mut literal = false;
-    for segment in path.split('/').filter(|segment| !segment.is_empty()) {
-        if let Some(name) = segment
-            .strip_prefix('{')
-            .and_then(|rest| rest.strip_suffix('}'))
-        {
-            parts.push(sanitize(name.strip_prefix('*').unwrap_or(name)));
-        } else {
-            parts.push(sanitize(segment));
-            literal = true;
+    for segment in record.module_path.split("::") {
+        let segment = sanitize(segment);
+        if !segment.is_empty() {
+            parts.push(segment);
         }
     }
-    if !literal {
-        parts.push(sanitize(
-            record
-                .module_path
-                .rsplit("::")
-                .next()
-                .unwrap_or(record.module_path),
-        ));
-        parts.push(sanitize(record.handler_name));
+    let handler = sanitize(record.handler_name);
+    if parts.last().is_none_or(|last| *last != handler) {
+        parts.push(handler);
+    }
+    if let Some(prefix) = mount_prefix {
+        let prefix = sanitize(prefix);
+        if !prefix.is_empty() {
+            parts.push(prefix);
+        }
     }
     parts.join("_")
 }

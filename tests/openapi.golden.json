@@ -10,7 +10,7 @@
         "tags": [
           "ops"
         ],
-        "operationId": "get_healthz",
+        "operationId": "get_spine_health_healthz",
         "responses": {
           "200": {
             "description": "OK",
@@ -31,7 +31,7 @@
           "notes"
         ],
         "summary": "List notes",
-        "operationId": "get_notes",
+        "operationId": "get_spine_notes_list",
         "responses": {
           "200": {
             "description": "OK",
@@ -53,7 +53,7 @@
           "notes"
         ],
         "summary": "Create a note",
-        "operationId": "post_notes",
+        "operationId": "post_spine_notes_create",
         "requestBody": {
           "content": {
             "application/json": {
@@ -276,7 +276,7 @@
           "notes"
         ],
         "summary": "Read a note",
-        "operationId": "get_notes_id",
+        "operationId": "get_spine_notes_show",
         "parameters": [
           {
             "name": "id",
