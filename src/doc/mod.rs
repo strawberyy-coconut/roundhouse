@@ -186,6 +186,14 @@ pub fn component_name(simple: &'static str, module: &'static str) -> String {
     }
 }
 
+/// The component name actually used by a registered type.
+pub fn record_component_name(record: &crate::registry::ComponentTypeRecord) -> String {
+    match record.name {
+        Some(name) => name.to_string(),
+        None => component_name(record.simple, record.module),
+    }
+}
+
 pub fn canonical_reason(status: u16) -> &'static str {
     http::StatusCode::from_u16(status)
         .ok()

@@ -13,10 +13,11 @@ fn main() {
         usage();
         std::process::exit(2);
     };
-    if command != "openapi" {
+    if command != "openapi" && command != "routes" {
         usage();
         std::process::exit(2);
     }
+    let routes = command == "routes";
 
     let mut package = None;
     let mut format = "3.1".to_string();
@@ -48,12 +49,16 @@ fn main() {
         std::process::exit(2);
     };
 
-    let flag = match format.as_str() {
-        "3.1" | "3.1.0" => "--openapi",
-        "3.0" | "3.0.3" => "--openapi-30",
-        other => {
-            eprintln!("unsupported format `{other}`; use 3.1 or 3.0");
-            std::process::exit(2);
+    let flag = if routes {
+        "--routes"
+    } else {
+        match format.as_str() {
+            "3.1" | "3.1.0" => "--openapi",
+            "3.0" | "3.0.3" => "--openapi-30",
+            other => {
+                eprintln!("unsupported format `{other}`; use 3.1 or 3.0");
+                std::process::exit(2);
+            }
         }
     };
 
@@ -68,8 +73,9 @@ fn main() {
 
 fn usage() {
     eprintln!(
-        "usage: roundhouse openapi -p <package> [--format 3.1|3.0]\n\
+        "usage: roundhouse <openapi|routes> -p <package> [--format 3.1|3.0]\n\
          \n\
-         Runs the package and prints the OpenAPI document that App::serve would have served."
+         openapi  prints the document App::serve would have served.\n\
+         routes   prints the resolved route table with each declaration's source."
     );
 }

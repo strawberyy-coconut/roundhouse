@@ -4,9 +4,11 @@
 //! build script, an SDK or a test without compiling a server. The `roundhouse` facade re-exports
 //! everything here, so user imports stay `roundhouse::…`.
 
+pub mod engine;
 pub mod schema;
 pub mod validate;
 
+pub use jsonschema;
 pub use schema::{ApiSchema, PathNames, PathValidate};
 pub use utoipa;
 pub use validate::{ValidationError, ValidationErrors, pointer};

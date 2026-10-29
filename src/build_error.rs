@@ -73,6 +73,8 @@ pub enum BuildError {
     },
     /// A path template cannot be served.
     InvalidTemplate { reason: String, source: Source },
+    /// The emitted document could not be compiled into a validator.
+    SchemaCompilation { message: String },
 }
 
 impl fmt::Display for BuildError {
@@ -132,6 +134,12 @@ impl fmt::Display for BuildError {
             ),
             BuildError::InvalidTemplate { reason, source } => {
                 write!(f, "error: invalid route template\n  {reason}\n  {source}")
+            }
+            BuildError::SchemaCompilation { message } => {
+                write!(
+                    f,
+                    "error: could not compile the emitted schema\n  {message}"
+                )
             }
         }
     }

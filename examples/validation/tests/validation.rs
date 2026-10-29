@@ -142,7 +142,7 @@ async fn document_carries_the_constraints() {
     );
     assert_eq!(profile["properties"]["username"]["example"], "ada_lovelace");
     assert_eq!(profile["properties"]["email"]["format"], "email");
-    assert_eq!(profile["properties"]["website"]["format"], "url");
+    assert_eq!(profile["properties"]["website"]["format"], "uri");
     assert_eq!(profile["properties"]["id"]["format"], "uuid");
     assert_eq!(profile["properties"]["age"]["minimum"], 18);
     assert_eq!(profile["properties"]["age"]["maximum"], 130);

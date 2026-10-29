@@ -107,17 +107,23 @@ docs UI at `/reference`; showcase serves `/openapi.json` and `/docs`.
 
 ### Dump a document from CI or a Makefile
 
-The `roundhouse` binary builds and runs an app package with its `--openapi` flag:
+The `roundhouse` binary builds and runs an app package with its `--openapi` flag; `routes` prints
+the resolved table instead (each line carries the declaration's module and source location):
 
 ```sh
 cargo run -q --bin roundhouse -- openapi -p notes-example
 cargo run -q --bin roundhouse -- openapi -p validation-example --format 3.0
+cargo run -q --bin roundhouse -- routes -p notes-example
 ```
 
-## What works (v0.1)
+## What works (v0.2)
 
 - **Discovery** — `routes!` and `mount!` submit const-evaluable records through `inventory`;
   `App::build()` joins them once, checks state `TypeId`s, and resolves every full path.
+  `App::try_build()` returns a `BuildError` instead of panicking: duplicate routes (after
+  normalising `{id}` and `{post_id}` to the same shape), duplicate `operationId`s, conflicting
+  parameters and security-scheme kinds, and undeclared success responses. `App::build()` is the
+  panicking convenience over it.
 - **Routing** — module nesting is Rust module nesting; `mount!` prefixes, group mounts, module
   layers (full/route), entry layers, `absolute`, `hidden`, `#[cfg]` entries, grouped method tables,
   scoped discovery (`scope` / `include`), `App::layer`, `App::merge`, custom fallbacks, and a JSON
@@ -128,7 +134,11 @@ cargo run -q --bin roundhouse -- openapi -p validation-example --format 3.0
 - **Handlers** — `#[handler]` reads `State<T>`, `Path<T>`, `Query<T>`, `Json<T>`, `Form<T>`,
   `Multipart<F>`, `Auth<A>`, `Option<Auth<A>>` and `Extension<T>` from the signature. It emits the
   documentation half plus a compile-time marker, so a handler listed in `routes!` without
-  `#[handler]` fails at the table line.
+  `#[handler]` fails at the table line. Derivation is loud: a route that derives no 2xx/3xx
+  response and declares none is a build error, a foreign `axum::Json` body marks the operation
+  `x-roundhouse-unverified-body` (a warning by default, a `BuildError` under `App::strict()`), and
+  `-> StatusCode` documents a `default` response. `responses(200 = Post)` uses `Post`'s schema;
+  `deprecated` and `public` emit `deprecated: true` and `x-roundhouse-public: true`.
 - **Auth** — `AuthScheme` is pure metadata (`NAME`, `KIND`, failure statuses, `type Identity`);
   `Authenticate` receives `&Self::State` (normally `&AppState`) and returns the identity, so token
   lookups use app state instead of hiding a store in request extensions. `Auth<A>` yields the
@@ -166,14 +176,25 @@ cargo run -q --bin roundhouse -- openapi -p validation-example --format 3.0
   the crate's `Json`, `Form`, `Path`, `Query`, and `Multipart` wrappers. Violations produce one RFC
   9457 `application/problem+json` response with a JSON Pointer per field. `App::validation_status`
   chooses 400 (default) or 422; `validate = false` on the table entry opts the whole body out.
+  `#[schema(skip_validation)]` was removed: a constraint is published and enforced, or it is not
+  declared. `url` is emitted as JSON Schema's standard `uri` format.
+- **Schema execution (opt-in)** — `App::validation(Validation::Schema)` compiles the emitted
+  component schemas with `jsonschema` (2020-12, `format` assertions on, the `regex` pattern engine)
+  and validates request bodies against the document. `Validation::Off` disables checks;
+  `Validation::Generated` is the default. `validate_with` still runs after the engine and is
+  published as `x-validate-with`. `tests/engine.rs` is the conformance harness: verdict and JSON
+  Pointer parity between the generated checks and the engine, plus serde/`deny_unknown_fields`
+  fixtures.
 - **Errors** — `Problem` is the default error body; `#[derive(ApiError)]` / `#[derive(ApiResponse)]`
   generate both `IntoResponse` and the documented response set (statuses, bodies, headers,
   `Location`, `Problem`). Data-carrying enum variants validate their fields with the same pointers.
 - **Tooling** — `App::docs()` serves a Swagger UI; `App::validate_responses()` checks JSON
-  responses against the generated schemas; `Built::openapi_30()` (and the CLI's `--format 3.0`)
+  responses with the same schema engine (so `minLength`, `pattern`, numeric bounds and
+  `uniqueItems` are no longer ignored); `Built::openapi_30()` (and the CLI's `--format 3.0`)
   produces a 3.0.3-shaped document. Components with the same simple name are disambiguated by
-  module path automatically; `#[schema(name = "..")]` overrides it. `App::max_body` sets the
-  global request limit.
+  module path automatically; `#[schema(name = "..")]` overrides it. `App::max_body` and
+  `App::max_parts` set global request limits. `roundhouse routes -p <package>` prints the resolved
+  table with each declaration's source.
 
 ## Tests
 
@@ -189,8 +210,9 @@ The suite covers route resolution, grouped tables, leaf-module table inheritance
 absolute routes, layer ordering, security/Auth documentation, query/path constraints, enum and
 struct schemas, recursive schemas and component-name collisions, multipart/files/SSE, `ApiResponse`
 headers, rejection suppression, validation status, `validate = false`, layer docs, docs UI, 3.0
-downgrade, response validation, scope selection, duplicate-route and state-mismatch diagnostics,
-the golden document, and the hand-written-vs-discovered differential.
+downgrade, response validation, scope selection, duplicate-route, duplicate-operation-id,
+normalised-template, undeclared-success and state-mismatch diagnostics, the schema-execution
+conformance harness, the golden document, and the hand-written-vs-discovered differential.
 
 ## Out of scope
 

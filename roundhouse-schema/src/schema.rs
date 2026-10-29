@@ -575,7 +575,7 @@ pub fn with_format(schema: RefOr<Schema>, format: &str) -> RefOr<Schema> {
         "email" => SchemaFormat::KnownFormat(KnownFormat::Email),
         "uuid" => SchemaFormat::Custom("uuid".to_string()),
         "uri" => SchemaFormat::Custom("uri".to_string()),
-        "url" => SchemaFormat::Custom("url".to_string()),
+        "url" => SchemaFormat::Custom("uri".to_string()),
         "date" => SchemaFormat::KnownFormat(KnownFormat::Date),
         "date-time" => SchemaFormat::KnownFormat(KnownFormat::DateTime),
         "ipv4" => SchemaFormat::KnownFormat(KnownFormat::Ipv4),

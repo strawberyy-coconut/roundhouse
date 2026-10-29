@@ -173,6 +173,9 @@ inventory::collect!(QueryDocRecord);
 pub struct ComponentTypeRecord {
     pub simple: &'static str,
     pub module: &'static str,
+    pub type_id: fn() -> TypeId,
+    /// `#[schema(name = "..")]`, which overrides the derived component name.
+    pub name: Option<&'static str>,
 }
 
 inventory::collect!(ComponentTypeRecord);

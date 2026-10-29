@@ -34,7 +34,7 @@ pub use auth::{Auth, AuthDoc, AuthScheme, AuthScopes, Authenticate, NoScopes, Se
 pub use axum::response::sse::{Event, KeepAlive, Sse};
 pub use build_error::{BuildError, Source};
 pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams};
-pub use extract::{Form, Json, Path, Query};
+pub use extract::{Form, Json, Path, Query, Validation};
 pub use multipart::{FilePart, Multipart, MultipartForm, MultipartProblem, TempFile};
 pub use problem::Problem;
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};

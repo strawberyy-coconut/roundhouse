@@ -325,14 +325,21 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         )
     };
 
-    let component_record = if explicit_name.is_some() {
-        quote!()
-    } else {
+    let component_record = {
+        let name = match &explicit_name {
+            Some(name) => {
+                let lit = LitStr::new(name, ident.span());
+                quote!(::core::option::Option::Some(#lit))
+            }
+            None => quote!(::core::option::Option::None),
+        };
         quote! {
             ::roundhouse::inventory::submit! {
                 ::roundhouse::registry::ComponentTypeRecord {
                     simple: #simple_lit,
                     module: module_path!(),
+                    type_id: || ::core::any::TypeId::of::<#ident #ty_generics>(),
+                    name: #name,
                 }
             }
         }
@@ -908,6 +915,15 @@ pub(crate) fn field_schema_expr(ty: &Type, constraints: &Constraints) -> TokenSt
             schema = ::roundhouse::doc::schema::with_example(
                 schema,
                 ::roundhouse::serde_json::json!(#value),
+            );
+        });
+    }
+    if constraints.validate_with.is_some() {
+        calls.extend(quote! {
+            schema = ::roundhouse::doc::schema::with_extension(
+                schema,
+                "x-validate-with",
+                ::roundhouse::serde_json::json!(true),
             );
         });
     }

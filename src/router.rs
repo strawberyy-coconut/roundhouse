@@ -22,6 +22,14 @@ use crate::registry::{self, Method, MountLayer, MountRecord, RouteRecord};
 
 type RouterLayer = Box<dyn Fn(Router<()>) -> Router<()> + Send + Sync>;
 
+type ValidationState = (
+    axum::http::StatusCode,
+    crate::extract::Validation,
+    Option<usize>,
+    Option<usize>,
+    Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
+);
+
 /// The application builder.
 ///
 /// `App::router()` returns a real `axum::Router`; `App::build()` gives the same router plus the
@@ -41,6 +49,7 @@ pub struct App<S> {
     max_body: Option<usize>,
     max_parts: Option<usize>,
     strict: bool,
+    validation: crate::extract::Validation,
 }
 
 impl<S> App<S>
@@ -63,6 +72,7 @@ where
             max_body: None,
             max_parts: None,
             strict: false,
+            validation: crate::extract::Validation::Generated,
         }
     }
 
@@ -153,6 +163,12 @@ where
         self
     }
 
+    /// Choose the enforcer: generated checks (default), the emitted JSON Schema, or none.
+    pub fn validation(mut self, mode: crate::extract::Validation) -> Self {
+        self.validation = mode;
+        self
+    }
+
     /// Set the global request body limit. Body extractors answer `413` above it.
     ///
     /// This is the default for every body extractor, including multipart, where a field's
@@ -191,10 +207,24 @@ where
             .as_ref()
             .map(|info| info())
             .unwrap_or_else(|| Info::new("API", "0.1.0"));
-        let document =
+        let built_document =
             doc::build::build_with_options(info, &resolved, self.document_rejections, self.strict)?;
+        let schema_engine = if self.validation == crate::extract::Validation::Schema {
+            let components = built_document.components.clone().unwrap_or_default();
+            let types = inventory::iter::<registry::ComponentTypeRecord>
+                .into_iter()
+                .map(|record| ((record.type_id)(), doc::record_component_name(record)));
+            Some(Arc::new(
+                roundhouse_schema::engine::SchemaEngine::from_components(&components, types)
+                    .map_err(|error| BuildError::SchemaCompilation {
+                        message: error.to_string(),
+                    })?,
+            ))
+        } else {
+            None
+        };
         let document = if serve_openapi || self.validate_responses {
-            Some(Arc::new(document))
+            Some(Arc::new(built_document))
         } else {
             None
         };
@@ -238,7 +268,11 @@ where
         if self.validate_responses
             && let Some(document) = &document
         {
-            let validator = Arc::new(doc::response::ResponseValidator::new(document));
+            let validator = Arc::new(doc::response::ResponseValidator::new(document).map_err(
+                |error| BuildError::SchemaCompilation {
+                    message: error.to_string(),
+                },
+            )?);
             let layer = axum::middleware::from_fn_with_state::<
                 _,
                 _,
@@ -255,7 +289,13 @@ where
         }
 
         router = router.layer(axum::middleware::from_fn_with_state(
-            (self.validation_status, self.max_body, self.max_parts),
+            (
+                self.validation_status,
+                self.validation,
+                self.max_body,
+                self.max_parts,
+                schema_engine,
+            ),
             inject_validation_config,
         ));
 
@@ -286,8 +326,22 @@ where
     /// `roundhouse openapi` command uses to dump a linked app's document.
     pub async fn serve(self, addr: impl Into<String>) -> std::io::Result<()> {
         let args: Vec<String> = std::env::args().collect();
+        let want_routes = args.iter().any(|arg| arg == "--routes");
         let want_30 = args.iter().any(|arg| arg == "--openapi-30");
         let want_openapi = want_30 || args.iter().any(|arg| arg == "--openapi");
+
+        if want_routes {
+            let built = self.build();
+            for route in built.routes() {
+                println!(
+                    "{:<7} {:<40} {}",
+                    route.method,
+                    route.path,
+                    route.record.source()
+                );
+            }
+            return Ok(());
+        }
 
         if want_openapi {
             let built = self.build();
@@ -714,23 +768,24 @@ async fn skip_validation(
 }
 
 async fn inject_validation_config(
-    axum::extract::State((status, max_body, max_parts)): axum::extract::State<(
-        axum::http::StatusCode,
-        Option<usize>,
-        Option<usize>,
-    )>,
+    axum::extract::State((status, mode, max_body, max_parts, engine)): axum::extract::State<
+        ValidationState,
+    >,
     mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     request
         .extensions_mut()
-        .insert(crate::extract::ValidationConfig { status });
+        .insert(crate::extract::ValidationConfig { status, mode });
     request
         .extensions_mut()
         .insert(crate::multipart::MultipartLimits {
             max_body,
             max_parts,
         });
+    if let Some(engine) = engine {
+        request.extensions_mut().insert(engine);
+    }
     next.run(request).await
 }
 
