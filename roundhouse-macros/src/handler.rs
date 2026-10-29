@@ -95,49 +95,61 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     });
                 }
             }
-            "Json" if is_wrapper_type(&ty) => {
-                if let Some(inner) = single_generic(&ty) {
-                    body_count += 1;
-                    statements.push(quote! {
-                        docs.body = ::core::option::Option::Some(
-                            ::roundhouse::doc::json_body::<#inner>(components)
-                        );
-                    });
-                }
-                if !handled {
-                    statements.push(quote! {
-                        docs.failures.extend(::roundhouse::doc::json_failures());
-                    });
-                }
-            }
-            "Multipart" if is_wrapper_type(&ty) => {
-                if let Some(inner) = single_generic(&ty) {
-                    body_count += 1;
-                    statements.push(quote! {
-                        docs.body = ::core::option::Option::Some(
-                            ::roundhouse::doc::multipart_body::<#inner>(components)
-                        );
-                    });
-                }
-                if !handled {
-                    statements.push(quote! {
-                        docs.failures.extend(::roundhouse::doc::multipart_failures());
-                    });
+            "Json" => {
+                body_count += 1;
+                if is_wrapper_type(&ty) {
+                    if let Some(inner) = single_generic(&ty) {
+                        statements.push(quote! {
+                            docs.body = ::core::option::Option::Some(
+                                ::roundhouse::doc::json_body::<#inner>(components)
+                            );
+                        });
+                    }
+                    if !handled {
+                        statements.push(quote! {
+                            docs.failures.extend(::roundhouse::doc::json_failures());
+                        });
+                    }
+                } else {
+                    statements.push(quote! { docs.unverified = true; });
                 }
             }
-            "Form" if is_wrapper_type(&ty) => {
-                if let Some(inner) = single_generic(&ty) {
-                    body_count += 1;
-                    statements.push(quote! {
-                        docs.body = ::core::option::Option::Some(
-                            ::roundhouse::doc::form_body::<#inner>(components)
-                        );
-                    });
+            "Multipart" => {
+                body_count += 1;
+                if is_wrapper_type(&ty) {
+                    if let Some(inner) = single_generic(&ty) {
+                        statements.push(quote! {
+                            docs.body = ::core::option::Option::Some(
+                                ::roundhouse::doc::multipart_body::<#inner>(components)
+                            );
+                        });
+                    }
+                    if !handled {
+                        statements.push(quote! {
+                            docs.failures.extend(::roundhouse::doc::multipart_failures());
+                        });
+                    }
+                } else {
+                    statements.push(quote! { docs.unverified = true; });
                 }
-                if !handled {
-                    statements.push(quote! {
-                        docs.failures.extend(::roundhouse::doc::form_failures());
-                    });
+            }
+            "Form" => {
+                body_count += 1;
+                if is_wrapper_type(&ty) {
+                    if let Some(inner) = single_generic(&ty) {
+                        statements.push(quote! {
+                            docs.body = ::core::option::Option::Some(
+                                ::roundhouse::doc::form_body::<#inner>(components)
+                            );
+                        });
+                    }
+                    if !handled {
+                        statements.push(quote! {
+                            docs.failures.extend(::roundhouse::doc::form_failures());
+                        });
+                    }
+                } else {
+                    statements.push(quote! { docs.unverified = true; });
                 }
             }
             "State" => {
@@ -297,7 +309,10 @@ fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
 
     let kind = outer_ident(ty);
     match kind.as_deref() {
-        Some("Json") if !is_wrapper_type(ty) => Ok(Vec::new()),
+        Some("Json") if !is_wrapper_type(ty) => Ok(vec![quote! {
+            docs.unverified = true;
+            docs.responses.push(::roundhouse::doc::ResponseDoc::new(200, "OK"));
+        }]),
         Some("Json") => {
             let inner = single_generic(ty).ok_or_else(|| {
                 syn::Error::new_spanned(ty, "expected `Json<T>` as the response body")
@@ -321,7 +336,10 @@ fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
         Some("Sse") if is_wrapper_type(ty) => Ok(vec![quote! {
             docs.responses.push(::roundhouse::attachment::sse_response(200));
         }]),
-        Some("Html") if !is_wrapper_type(ty) => Ok(Vec::new()),
+        Some("Html") if !is_wrapper_type(ty) => Ok(vec![quote! {
+            docs.unverified = true;
+            docs.responses.push(::roundhouse::doc::ResponseDoc::new(200, "OK"));
+        }]),
         Some("Html") => {
             let inner = single_generic(ty).ok_or_else(|| {
                 syn::Error::new_spanned(ty, "expected `Html<T>` as the response body")
@@ -334,7 +352,9 @@ fn ok_statements(ty: &Type) -> syn::Result<Vec<TokenStream>> {
                 ));
             }])
         }
-        Some("StatusCode") => Ok(Vec::new()),
+        Some("StatusCode") => Ok(vec![quote! {
+            docs.responses.push(::roundhouse::doc::ResponseDoc::default_response());
+        }]),
         Some("String") => Ok(vec![quote! {
             docs.responses.push(::roundhouse::doc::plain_text_response(200));
         }]),

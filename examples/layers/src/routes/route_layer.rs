@@ -8,7 +8,8 @@ mount!(
 );
 
 routes! {
-    get("/ok", ok, summary = "A route under a route_layer module"),
+    get("/ok", ok, summary = "A route under a route_layer module",
+        operation_id = "route_layer_ok"),
 }
 
 #[handler]

@@ -15,6 +15,7 @@
 
 pub mod attachment;
 pub mod auth;
+pub mod build_error;
 pub mod doc;
 pub mod extract;
 pub mod prefix;
@@ -31,6 +32,7 @@ pub use roundhouse_schema::validate;
 pub use attachment::{Attachment, AttachmentType, File};
 pub use auth::{Auth, AuthDoc, AuthScheme, AuthScopes, Authenticate, NoScopes, SecuritySchemeKind};
 pub use axum::response::sse::{Event, KeepAlive, Sse};
+pub use build_error::{BuildError, Source};
 pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams};
 pub use extract::{Form, Json, Path, Query};
 pub use multipart::{FilePart, Multipart, MultipartForm, MultipartProblem, TempFile};

@@ -125,6 +125,32 @@ pub const fn assert_path_names(template: &str, names: &[&str]) {
     }
 }
 
+/// Normalise captures to `{}` and wildcards to `{*}`, so two templates that `matchit` treats as
+/// the same route shape compare equal.
+pub fn normalise_template(template: &str) -> String {
+    let bytes = template.as_bytes();
+    let mut out = String::with_capacity(template.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'{' {
+            let start = index + 1;
+            if let Some(offset) = template[start..].find('}') {
+                let end = start + offset;
+                if template[start..end].starts_with('*') {
+                    out.push_str("{*}");
+                } else {
+                    out.push_str("{}");
+                }
+                index = end + 1;
+                continue;
+            }
+        }
+        out.push(bytes[index] as char);
+        index += 1;
+    }
+    out
+}
+
 /// Reject axum 0.7 `:id` syntax with a migration hint.
 pub fn validate_template(template: &str) -> Result<(), String> {
     if template.split('/').any(|segment| segment.starts_with(':')) {
@@ -168,6 +194,14 @@ mod tests {
     fn const_check_accepts_matching_names() {
         const _: () = assert_path_names("/blog/{id}", &["id"]);
         const _: () = assert_path_names("/x/{a}/{*rest}", &["a", "rest"]);
+    }
+
+    #[test]
+    fn templates_are_normalised() {
+        assert_eq!(normalise_template("/blog/{id}"), "/blog/{}");
+        assert_eq!(normalise_template("/blog/{post_id}"), "/blog/{}");
+        assert_eq!(normalise_template("/files/{*rest}"), "/files/{*}");
+        assert_eq!(normalise_template("/healthz"), "/healthz");
     }
 
     #[test]

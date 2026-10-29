@@ -34,7 +34,7 @@ mod grouped {
             post(create),
         },
         "/{id}" => {
-            get(show),
+            get(show, operation_id = "grouped_show"),
             delete(destroy),
         },
     }
@@ -101,7 +101,7 @@ mod layered {
     mount!("/layered", layer = middleware::from_fn(marker));
 
     routes! {
-        get("/ok", ok),
+        get("/ok", ok, operation_id = "layered_ok"),
         get("/entry", entry, layer = middleware::from_fn(marker)),
     }
 
@@ -124,7 +124,7 @@ mod route_layered {
         layer_mode = route,
     );
 
-    routes! { get("/ok", ok) }
+    routes! { get("/ok", ok, operation_id = "route_layered_ok") }
 
     #[handler]
     pub async fn ok() -> &'static str {
@@ -195,7 +195,7 @@ mod split_notes {
         use roundhouse::prelude::*;
 
         routes! {
-            get("/{id}", show),
+            get("/{id}", show, operation_id = "split_show"),
         }
 
         #[handler]
@@ -209,7 +209,7 @@ mod collision_a {
     use roundhouse::prelude::*;
     use serde::{Deserialize, Serialize};
 
-    routes! { get("/collision-a", show) }
+    routes! { get("/collision-a", show, operation_id = "collision_a_show") }
 
     #[derive(Serialize, Deserialize, ApiSchema)]
     pub struct Collision {
@@ -226,7 +226,7 @@ mod collision_b {
     use roundhouse::prelude::*;
     use serde::{Deserialize, Serialize};
 
-    routes! { get("/collision-b", show) }
+    routes! { get("/collision-b", show, operation_id = "collision_b_show") }
 
     #[derive(Serialize, Deserialize, ApiSchema)]
     pub struct Collision {
@@ -247,7 +247,7 @@ mod documented_layer {
         doc = ::roundhouse::doc::layer::rate_limit(429),
     );
 
-    routes! { get("/ok", ok) }
+    routes! { get("/ok", ok, operation_id = "documented_ok") }
 
     #[handler]
     pub async fn ok() -> &'static str {

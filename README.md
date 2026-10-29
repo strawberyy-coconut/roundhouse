@@ -165,7 +165,7 @@ cargo run -q --bin roundhouse -- openapi -p validation-example --format 3.0
   `validate_with`, and `#[schema(via = utoipa)]` are emitted into the schema **and** enforced by
   the crate's `Json`, `Form`, `Path`, `Query`, and `Multipart` wrappers. Violations produce one RFC
   9457 `application/problem+json` response with a JSON Pointer per field. `App::validation_status`
-  chooses 400 (default) or 422; `validate = false` and `#[schema(skip_validation)]` opt out.
+  chooses 400 (default) or 422; `validate = false` on the table entry opts the whole body out.
 - **Errors** — `Problem` is the default error body; `#[derive(ApiError)]` / `#[derive(ApiResponse)]`
   generate both `IntoResponse` and the documented response set (statuses, bodies, headers,
   `Location`, `Problem`). Data-carrying enum variants validate their fields with the same pointers.

@@ -34,7 +34,6 @@ pub(crate) struct Constraints {
     unique_items: bool,
     format: Option<LitStr>,
     example: Option<Expr>,
-    skip_validation: bool,
     validate_with: Option<syn::Path>,
 }
 
@@ -231,7 +230,11 @@ pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
             } else if meta.path.is_ident("example") {
                 schema.constraints.example = Some(meta.value()?.parse()?);
             } else if meta.path.is_ident("skip_validation") {
-                schema.constraints.skip_validation = true;
+                return Err(meta.error(
+                    "`#[schema(skip_validation)]` was removed: a constraint is either published \
+                     and enforced, or not declared. Use `validate = false` on the routes! entry \
+                     to opt the whole body out.",
+                ));
             } else if meta.path.is_ident("validate_with") {
                 schema.constraints.validate_with = Some(meta.value()?.parse()?);
             } else if meta.path.is_ident("via") {
@@ -377,7 +380,7 @@ fn struct_parts(fields: &Fields, container: &SerdeContainer) -> Result<(TokenStr
         if field_serde.skip {
             continue;
         }
-        if !field_schema.constraints.skip_validation {
+        {
             let property_name = field_name(field, &field_serde, container.rename_all)?;
             let access = match &field.ident {
                 Some(ident) => quote!(self.#ident),
@@ -637,7 +640,7 @@ fn variant_validation(
                 let Some(ident) = &field.ident else { continue };
                 let field_serde = serde_field(&field.attrs)?;
                 let field_schema = schema_attrs(&field.attrs)?;
-                if field_serde.skip || field_schema.constraints.skip_validation {
+                if field_serde.skip {
                     continue;
                 }
                 let property_name = field_name(field, &field_serde, container.rename_all)?;
@@ -664,8 +667,7 @@ fn variant_validation(
             for (field_index, field) in unnamed.unnamed.iter().enumerate() {
                 let binding = format_ident!("__field_{field_index}");
                 let field_serde = serde_field(&field.attrs)?;
-                let field_schema = schema_attrs(&field.attrs)?;
-                if field_serde.skip || field_schema.constraints.skip_validation {
+                if field_serde.skip {
                     bindings.push(quote!(_));
                     continue;
                 }

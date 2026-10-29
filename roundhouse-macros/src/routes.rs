@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
-use syn::{Attribute, Expr, Ident, LitInt, LitStr, Path, Result, Token};
+use syn::{Attribute, Expr, Ident, LitInt, LitStr, Path, Result, Token, Type};
 
 use crate::util::{last_segment, marker_type, marker_value, parse_u16, string_slice};
 
@@ -15,11 +15,13 @@ struct Entry {
     operation_id: Option<LitStr>,
     tags: Vec<LitStr>,
     security: Vec<LitStr>,
-    responses: Vec<u16>,
+    responses: Vec<(u16, Option<Type>)>,
     layer: Option<Expr>,
     hidden: bool,
     absolute: bool,
     validate: bool,
+    deprecated: bool,
+    public: bool,
 }
 
 impl Parse for Entry {
@@ -48,6 +50,8 @@ impl Parse for Entry {
             hidden: false,
             absolute: false,
             validate: true,
+            deprecated: false,
+            public: false,
         };
         parse_attrs(&content, &mut entry)?;
         Ok(entry)
@@ -76,6 +80,8 @@ fn parse_group_entry(input: ParseStream<'_>, path: LitStr) -> Result<Entry> {
         hidden: false,
         absolute: false,
         validate: true,
+        deprecated: false,
+        public: false,
     };
     parse_attrs(&content, &mut entry)?;
     Ok(entry)
@@ -120,8 +126,8 @@ fn parse_attrs(content: ParseStream<'_>, entry: &mut Entry) -> Result<()> {
             }
             "hidden" => entry.hidden = true,
             "absolute" => entry.absolute = true,
-            "public" => {}
-            "deprecated" => {}
+            "public" => entry.public = true,
+            "deprecated" => entry.deprecated = true,
             "validate" => {
                 content.parse::<Token![=]>()?;
                 let value: syn::LitBool = content.parse()?;
@@ -147,23 +153,25 @@ fn parse_string_list(input: ParseStream<'_>) -> Result<Vec<LitStr>> {
         .collect())
 }
 
-fn parse_responses(input: ParseStream<'_>) -> Result<Vec<u16>> {
-    let mut statuses = Vec::new();
+fn parse_responses(input: ParseStream<'_>) -> Result<Vec<(u16, Option<Type>)>> {
+    let mut responses = Vec::new();
     while !input.is_empty() {
         let literal: LitInt = input.parse()?;
-        statuses.push(parse_u16(&literal)?);
-        // `200 = Post` names a body type; the schema comes from the handler, so skip it.
-        if input.peek(Token![=]) {
+        let status = parse_u16(&literal)?;
+        let body = if input.peek(Token![=]) {
             input.parse::<Token![=]>()?;
-            let _: syn::Type = input.parse()?;
-        }
+            Some(input.parse::<Type>()?)
+        } else {
+            None
+        };
+        responses.push((status, body));
         if input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
         } else {
             break;
         }
     }
-    Ok(statuses)
+    Ok(responses)
 }
 
 pub struct RoutesInput {
@@ -279,10 +287,22 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let hidden = entry.hidden;
     let absolute = entry.absolute;
     let validate = entry.validate;
-    let responses = entry
-        .responses
-        .iter()
-        .map(|status| proc_macro2::Literal::u16_suffixed(*status));
+    let deprecated = entry.deprecated;
+    let public = entry.public;
+    let responses = entry.responses.iter().map(|(status, body)| {
+        let status = proc_macro2::Literal::u16_suffixed(*status);
+        match body {
+            Some(ty) => quote! {
+                __responses.push(::roundhouse::doc::json_response_doc::<#ty>(components, #status));
+            },
+            None => quote! {
+                __responses.push(::roundhouse::doc::ResponseDoc::new(
+                    #status,
+                    ::roundhouse::doc::canonical_reason(#status),
+                ));
+            },
+        }
+    });
     let line = entry.path.span().start().line as u32;
 
     let layer_value = if entry.layer.is_some() {
@@ -322,6 +342,14 @@ fn expand_entry(entry: Entry) -> TokenStream {
 
             #layer
 
+            fn __roundhouse_responses(
+                components: &mut ::roundhouse::utoipa::openapi::schema::Components,
+            ) -> ::std::vec::Vec<::roundhouse::doc::ResponseDoc> {
+                let mut __responses = ::std::vec::Vec::new();
+                #(#responses)*
+                __responses
+            }
+
             ::roundhouse::inventory::submit! {
                 ::roundhouse::registry::RouteRecord {
                     module_path: module_path!(),
@@ -337,7 +365,9 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     hidden: #hidden,
                     absolute: #absolute,
                     validate: #validate,
-                    responses: &[#(#responses),*],
+                    deprecated: #deprecated,
+                    public: #public,
+                    responses: __roundhouse_responses,
                     state: || ::roundhouse::doc::handler_state::<#marker_type>(),
                     state_name: || ::core::any::type_name::<
                         <#marker_type as ::roundhouse::doc::HandlerMeta>::State,

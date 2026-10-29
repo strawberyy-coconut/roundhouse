@@ -104,7 +104,9 @@ pub struct RouteRecord {
     pub hidden: bool,
     pub absolute: bool,
     pub validate: bool,
-    pub responses: &'static [u16],
+    pub deprecated: bool,
+    pub public: bool,
+    pub responses: fn(&mut Components) -> Vec<crate::doc::ResponseDoc>,
     pub state: fn() -> Option<TypeId>,
     pub state_name: fn() -> &'static str,
     pub handler: fn() -> Box<dyn Any + Send + Sync>,
@@ -119,6 +121,10 @@ impl RouteRecord {
 
     pub fn source(&self) -> String {
         format!("{}  {}", self.module_path, self.location())
+    }
+
+    pub fn source_ref(&self) -> crate::build_error::Source {
+        crate::build_error::Source::new(self.module_path, self.file, self.line)
     }
 }
 

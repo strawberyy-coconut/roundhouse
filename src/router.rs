@@ -14,6 +14,7 @@ use axum::routing::{MethodRouter, Route};
 use tower::{Layer, Service, ServiceExt};
 use utoipa::openapi::{Info, OpenApi};
 
+use crate::build_error::BuildError;
 use crate::doc::{self, HandlerDocs};
 use crate::prefix;
 use crate::problem::Problem;
@@ -39,6 +40,7 @@ pub struct App<S> {
     validate_responses: bool,
     max_body: Option<usize>,
     max_parts: Option<usize>,
+    strict: bool,
 }
 
 impl<S> App<S>
@@ -60,6 +62,7 @@ where
             validate_responses: false,
             max_body: None,
             max_parts: None,
+            strict: false,
         }
     }
 
@@ -132,6 +135,12 @@ where
         self
     }
 
+    /// Turn the loud-derivation warnings into build errors.
+    pub fn strict(mut self) -> Self {
+        self.strict = true;
+        self
+    }
+
     /// Add or suppress extractor rejection responses (`Auto` by default).
     pub fn document_rejections(mut self, enabled: bool) -> Self {
         self.document_rejections = enabled;
@@ -168,30 +177,33 @@ where
         self
     }
 
-    /// Resolve and assemble everything.
+    /// Resolve and assemble everything. Panics with the same report `try_build` returns.
     pub fn build(self) -> Built {
-        let resolved = self.resolve();
+        self.try_build().unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    /// Resolve and assemble everything, returning a diagnostic instead of panicking.
+    pub fn try_build(self) -> Result<Built, BuildError> {
+        let resolved = self.resolve()?;
+        let serve_openapi = self.info.is_some();
+        let info = self
+            .info
+            .as_ref()
+            .map(|info| info())
+            .unwrap_or_else(|| Info::new("API", "0.1.0"));
+        let document =
+            doc::build::build_with_options(info, &resolved, self.document_rejections, self.strict)?;
+        let document = if serve_openapi || self.validate_responses {
+            Some(Arc::new(document))
+        } else {
+            None
+        };
+
         let mut router = self.assemble(&resolved);
 
         for merged in self.merges {
             router = router.merge(merged);
         }
-
-        let serve_openapi = self.info.is_some();
-        let document = if serve_openapi || self.validate_responses {
-            let info = self
-                .info
-                .as_ref()
-                .map(|info| info())
-                .unwrap_or_else(|| Info::new("API", "0.1.0"));
-            Some(Arc::new(doc::build::build_with_options(
-                info,
-                &resolved,
-                self.document_rejections,
-            )))
-        } else {
-            None
-        };
 
         if serve_openapi && let (Some(document), Some(path)) = (&document, self.openapi_route) {
             let for_route = document.clone();
@@ -251,11 +263,11 @@ where
             router = layer(router);
         }
 
-        Built {
+        Ok(Built {
             router,
             routes: resolved,
             document,
-        }
+        })
     }
 
     /// The escape hatch: a real `axum::Router<S>`.
@@ -301,7 +313,7 @@ where
         axum::serve(listener, built.router).await
     }
 
-    fn resolve(&self) -> Vec<ResolvedRoute> {
+    fn resolve(&self) -> Result<Vec<ResolvedRoute>, BuildError> {
         let mounts: Vec<&'static MountRecord> = inventory::iter::<registry::MountRecord>
             .into_iter()
             .filter(|mount| self.selected(mount.module_path))
@@ -328,8 +340,11 @@ where
         let mut seen: HashMap<(Method, String), &'static RouteRecord> = HashMap::new();
 
         for record in records {
-            if let Err(error) = prefix::validate_template(record.path) {
-                panic!("error: {error}\n  {}", record.source());
+            if let Err(reason) = prefix::validate_template(record.path) {
+                return Err(BuildError::InvalidTemplate {
+                    reason,
+                    source: record.source_ref(),
+                });
             }
 
             let ancestors: Vec<&'static MountRecord> = mounts
@@ -373,32 +388,27 @@ where
                 (path, tags, security, hidden)
             };
 
-            let key = (record.method, path.clone());
+            let normalised = prefix::normalise_template(&path);
+            let key = (record.method, normalised.clone());
             if let Some(previous) = seen.get(&key) {
-                panic!(
-                    "error: duplicate route\n  {} {}   {}\n  {} {}   {}\n",
-                    record.method,
+                return Err(BuildError::DuplicateRoute {
+                    method: record.method,
                     path,
-                    record.source(),
-                    previous.method,
-                    path,
-                    previous.source()
-                );
+                    first: previous.source_ref(),
+                    second: record.source_ref(),
+                });
             }
             for ((existing_method, existing_path), previous) in &seen {
-                if *existing_path == path
+                if *existing_path == normalised
                     && (*existing_method == Method::Any || record.method == Method::Any)
                     && *existing_method != record.method
                 {
-                    panic!(
-                        "error: duplicate route\n  {} {}   {}\n  {} {}   {}\n",
-                        record.method,
+                    return Err(BuildError::DuplicateRoute {
+                        method: record.method,
                         path,
-                        record.source(),
-                        previous.method,
-                        path,
-                        previous.source()
-                    );
+                        first: previous.source_ref(),
+                        second: record.source_ref(),
+                    });
                 }
             }
             seen.insert(key, record);
@@ -421,7 +431,19 @@ where
                 .then_with(|| a.method.cmp(&b.method))
                 .then_with(|| a.record.operation_id.cmp(b.record.operation_id))
         });
-        resolved
+
+        let mut operations: HashMap<&'static str, &'static RouteRecord> = HashMap::new();
+        for route in &resolved {
+            if let Some(previous) = operations.insert(route.record.operation_id, route.record) {
+                return Err(BuildError::DuplicateOperationId {
+                    operation_id: route.record.operation_id.to_string(),
+                    first: previous.source_ref(),
+                    second: route.record.source_ref(),
+                });
+            }
+        }
+
+        Ok(resolved)
     }
 
     fn selected(&self, module: &str) -> bool {

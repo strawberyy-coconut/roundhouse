@@ -75,6 +75,18 @@ impl ResponseDoc {
             headers: Vec::new(),
         }
     }
+
+    /// A response whose status is chosen at runtime (`-> StatusCode`). The document says
+    /// `default` with no body, which is the honest shape.
+    pub fn default_response() -> Self {
+        Self {
+            status: 0,
+            description: "Default Response".to_string(),
+            content_type: None,
+            schema: None,
+            headers: Vec::new(),
+        }
+    }
 }
 
 /// The documentation half a `#[handler]` attribute derives from the signature.
@@ -87,6 +99,9 @@ pub struct HandlerDocs {
     pub required_auth: Vec<crate::auth::AuthDoc>,
     pub optional_auth: Vec<crate::auth::AuthDoc>,
     pub schemes: Vec<crate::auth::SchemeDoc>,
+    /// A body extractor the framework can see syntactically but cannot verify at runtime
+    /// (`axum::Json`, `axum::Form`, `axum::extract::Multipart`).
+    pub unverified: bool,
 }
 
 /// Implemented by the marker type `#[handler]` emits beside each handler.
@@ -293,6 +308,12 @@ where
     T: ApiSchema,
 {
     json_response::<T>(components, status)
+}
+
+/// One JSON response, for a `responses(200 = Post)` declaration.
+pub fn json_response_doc<T: ApiSchema>(components: &mut Components, status: u16) -> ResponseDoc {
+    T::register(components);
+    ResponseDoc::json(status, T::schema())
 }
 
 /// Look up responses registered by `#[derive(ApiResponse)]` / `#[derive(ApiError)]`.

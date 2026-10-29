@@ -3,25 +3,28 @@
 use std::collections::BTreeMap;
 
 use crate::auth::{SchemeDoc, SecuritySchemeKind};
+use crate::build_error::BuildError;
+use utoipa::openapi::extensions::ExtensionsBuilder;
 use utoipa::openapi::path::{OperationBuilder, ParameterBuilder};
 use utoipa::openapi::request_body::{RequestBody, RequestBodyBuilder};
 use utoipa::openapi::{
-    Content, Info, OpenApi, Paths, Required, Response, ResponseBuilder, ResponsesBuilder,
-    SecurityRequirement,
+    Content, Deprecated, Info, OpenApi, Paths, Required, Response, ResponseBuilder,
+    ResponsesBuilder, SecurityRequirement,
 };
 
 use super::{BodyDoc, Param, ParamIn, ResponseDoc};
 use crate::router::ResolvedRoute;
 
 pub fn build(info: Info, routes: &[ResolvedRoute]) -> OpenApi {
-    build_with_options(info, routes, true)
+    build_with_options(info, routes, true, false).unwrap_or_else(|error| panic!("{error}"))
 }
 
 pub fn build_with_options(
     info: Info,
     routes: &[ResolvedRoute],
     include_rejections: bool,
-) -> OpenApi {
+    strict: bool,
+) -> Result<OpenApi, BuildError> {
     let mut components = utoipa::openapi::schema::Components::new();
     let mut paths = Paths::new();
     let mut used_schemes: BTreeMap<String, SchemeDoc> = BTreeMap::new();
@@ -41,7 +44,27 @@ pub fn build_with_options(
         };
 
         let docs = (route.record.docs)(&mut components);
-        let operation = operation(route, docs, &mut used_schemes, include_rejections);
+        if docs.unverified {
+            if strict {
+                return Err(BuildError::UnverifiedBody {
+                    operation_id: route.record.operation_id.to_string(),
+                    source: route.record.source_ref(),
+                });
+            }
+            tracing::warn!(
+                operation = route.record.operation_id,
+                source = route.record.source(),
+                "body extractor is not verifiable by the document; the operation is marked \
+                 `x-roundhouse-unverified-body`"
+            );
+        }
+        let operation = operation(
+            route,
+            docs,
+            &mut components,
+            &mut used_schemes,
+            include_rejections,
+        )?;
         paths.add_path_operation(&route.path, vec![http_method], operation);
     }
 
@@ -58,15 +81,17 @@ pub fn build_with_options(
     {
         document.components = Some(components);
     }
-    document
+    Ok(document)
 }
 
 fn operation(
     route: &ResolvedRoute,
     docs: super::HandlerDocs,
+    components: &mut utoipa::openapi::schema::Components,
     used_schemes: &mut BTreeMap<String, SchemeDoc>,
     include_rejections: bool,
-) -> utoipa::openapi::path::Operation {
+) -> Result<utoipa::openapi::path::Operation, BuildError> {
+    let unverified = docs.unverified;
     let mut docs = docs;
     for layer in &route.layer_docs {
         docs.params.extend(layer.parameters.clone());
@@ -86,14 +111,11 @@ fn operation(
             .find(|existing| existing.name == param.name && existing.location == param.location)
         {
             if existing.schema != param.schema {
-                panic!(
-                    "error: conflicting parameter `{}` ({})\n  {}\n  {}\n\
-                     hint: two extractors document the same parameter with different schemas",
-                    param.name,
-                    param.location.as_str(),
-                    route.record.source(),
-                    "the other declaration is in a different extractor",
-                );
+                return Err(BuildError::ConflictingParameter {
+                    name: param.name.clone(),
+                    location: param.location,
+                    source: route.record.source_ref(),
+                });
             }
             continue;
         }
@@ -109,10 +131,18 @@ fn operation(
     for response in docs.responses.into_iter().chain(failures) {
         merge_response(&mut responses, response, route);
     }
-    for status in route.record.responses {
-        responses
-            .entry(*status)
-            .or_insert_with(|| ResponseDoc::new(*status, super::canonical_reason(*status)));
+    for response in (route.record.responses)(components) {
+        merge_response(&mut responses, response, route);
+    }
+
+    if !responses
+        .keys()
+        .any(|status| *status == 0 || (200..400).contains(status))
+    {
+        return Err(BuildError::UndeclaredSuccess {
+            operation_id: route.record.operation_id.to_string(),
+            source: route.record.source_ref(),
+        });
     }
 
     let mut tags: Vec<String> = Vec::new();
@@ -123,7 +153,7 @@ fn operation(
     }
 
     for scheme in &docs.schemes {
-        merge_scheme(used_schemes, *scheme, route);
+        merge_scheme(used_schemes, *scheme, route)?;
     }
 
     let mut required = docs.required_auth;
@@ -145,7 +175,7 @@ fn operation(
             .find(|scheme| scheme.name == auth.name)
             .copied()
             .unwrap_or_else(|| default_security_scheme(auth.name));
-        merge_scheme(used_schemes, scheme, route);
+        merge_scheme(used_schemes, scheme, route)?;
     }
 
     if !required.is_empty() || !optional.is_empty() {
@@ -166,7 +196,12 @@ fn operation(
     let responses = responses
         .into_values()
         .fold(ResponsesBuilder::new(), |builder, response| {
-            builder.response(response.status.to_string(), build_response(response))
+            let key = if response.status == 0 {
+                "default".to_string()
+            } else {
+                response.status.to_string()
+            };
+            builder.response(key, build_response(response))
         })
         .build();
 
@@ -188,8 +223,23 @@ fn operation(
     if !security.is_empty() {
         builder = builder.securities(Some(security));
     }
+    if route.record.deprecated {
+        builder = builder.deprecated(Some(Deprecated::True));
+    }
 
-    builder.build()
+    let mut extensions = ExtensionsBuilder::new();
+    if unverified {
+        extensions = extensions.add("x-roundhouse-unverified-body", true);
+    }
+    if route.record.public {
+        extensions = extensions.add("x-roundhouse-public", true);
+    }
+    let extensions = extensions.build();
+    if !extensions.is_empty() {
+        builder = builder.extensions(Some(extensions));
+    }
+
+    Ok(builder.build())
 }
 
 fn build_param(param: Param) -> utoipa::openapi::path::Parameter {
@@ -307,18 +357,23 @@ fn requirement(auth: &[crate::auth::AuthDoc]) -> SecurityRequirement {
     requirement
 }
 
-fn merge_scheme(used: &mut BTreeMap<String, SchemeDoc>, scheme: SchemeDoc, route: &ResolvedRoute) {
+fn merge_scheme(
+    used: &mut BTreeMap<String, SchemeDoc>,
+    scheme: SchemeDoc,
+    route: &ResolvedRoute,
+) -> Result<(), BuildError> {
     match used.get(scheme.name) {
         Some(existing) if existing.kind != scheme.kind => {
-            panic!(
-                "error: security scheme `{}` is declared with two different kinds\n  {}\n",
-                scheme.name,
-                route.record.source()
-            );
+            return Err(BuildError::SchemeKindConflict {
+                name: scheme.name.to_string(),
+                first: route.record.source_ref(),
+                second: route.record.source_ref(),
+            });
         }
         Some(_) => {}
         None => {
             used.insert(scheme.name.to_string(), scheme);
         }
     }
+    Ok(())
 }
