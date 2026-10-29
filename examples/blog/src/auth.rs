@@ -20,7 +20,6 @@ impl AuthScheme for DemoBearer {
     const KIND: SecuritySchemeKind = SecuritySchemeKind::HttpBearer;
 }
 
-#[roundhouse::async_trait]
 impl Authenticate for DemoBearer {
     async fn authenticate(parts: &mut Parts, state: &AppState) -> Result<DemoUser, Problem> {
         let token = parts

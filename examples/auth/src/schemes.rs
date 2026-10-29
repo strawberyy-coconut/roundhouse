@@ -1,3 +1,10 @@
+//! Reference implementation, not a supported backend.
+//!
+//! This module demonstrates the full `Auth<A>` surface: `Authenticate` and
+//! `presents_credentials`, `Authorize` scope decisions, the 401/403 challenges produced by an
+//! `AuthRejection`, and a two-scheme AND. It deliberately uses a tiny in-memory token store; use a
+//! maintained identity library or gateway for production verification.
+
 use axum::http::request::Parts;
 use axum::http::{StatusCode, header};
 use roundhouse::{AuthScheme, Authenticate, Problem, SecuritySchemeKind};
@@ -21,7 +28,6 @@ impl AuthScheme for BearerAuth {
     const KIND: SecuritySchemeKind = SecuritySchemeKind::HttpBearer;
 }
 
-#[roundhouse::async_trait]
 impl Authenticate for BearerAuth {
     async fn authenticate(parts: &mut Parts, state: &AppState) -> Result<User, Problem> {
         let token = parts
@@ -56,7 +62,6 @@ impl AuthScheme for ApiKeyAuth {
     const KIND: SecuritySchemeKind = SecuritySchemeKind::ApiKeyHeader("X-API-Key");
 }
 
-#[roundhouse::async_trait]
 impl Authenticate for ApiKeyAuth {
     async fn authenticate(parts: &mut Parts, state: &AppState) -> Result<(), Problem> {
         let key = parts

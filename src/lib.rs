@@ -42,7 +42,6 @@ pub use problem::Problem;
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
 pub use router::{App, Built, DocumentRejections, ResolvedRoute};
 
-pub use async_trait::async_trait;
 pub use axum;
 pub use http;
 pub mod openapi {
@@ -70,7 +69,7 @@ macro_rules! app {
 /// The crate's axum-shaped surface. Import this in every route module.
 pub mod prelude {
     pub use crate::attachment::{Attachment, File};
-    pub use crate::auth::{Auth, AuthScheme, AuthScopes, Authenticate, NoScopes};
+    pub use crate::auth::{Auth, AuthScheme, AuthScopes, Authenticate, Authorize, NoScopes};
     pub use crate::doc::PathNames;
     pub use crate::extract::{Extension, Form, Json, Path, Query};
     pub use crate::problem::Problem;

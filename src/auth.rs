@@ -5,6 +5,7 @@ use axum::http::StatusCode;
 use axum::http::header;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
+use std::future::Future;
 use utoipa::openapi::SecurityRequirement;
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme};
 
@@ -80,12 +81,11 @@ pub trait AuthScheme: Sized + Send + Sync + 'static {
 /// This is separate from `AuthScheme` because the scheme is pure metadata while this trait needs
 /// `&S` — usually `&AppState` — for a real token lookup. A handler using `Auth<A>` only compiles
 /// when `A: Authenticate<AppState>`, keeping the same compile-time state check as `State<T>`.
-#[async_trait::async_trait]
 pub trait Authenticate: AuthScheme {
-    async fn authenticate(
+    fn authenticate(
         parts: &mut Parts,
         state: &Self::State,
-    ) -> Result<Self::Identity, Problem>;
+    ) -> impl Future<Output = Result<Self::Identity, Problem>> + Send;
 
     /// Whether the request carries credentials for this scheme at all.
     ///

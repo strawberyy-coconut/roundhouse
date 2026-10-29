@@ -145,7 +145,6 @@ mod secured {
         const KIND: roundhouse::SecuritySchemeKind = roundhouse::SecuritySchemeKind::HttpBearer;
     }
 
-    #[roundhouse::async_trait]
     impl Authenticate for Bearer {
         async fn authenticate(
             parts: &mut axum::http::request::Parts,

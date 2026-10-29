@@ -286,6 +286,20 @@ side-effecting startup behind a flag if you dump documents in CI.
   `App::max_body` and `App::max_parts` set global request limits. `roundhouse routes -p <package>`
   prints the resolved table with each declaration's source.
 
+## Auth backends
+
+The schemes in `examples/auth/` are a reference implementation, not a supported backend. For
+production, use a maintained library or service: [`jsonwebtoken`](https://docs.rs/jsonwebtoken)
+for JWT verification, [`openidconnect`](https://docs.rs/openidconnect) for OIDC discovery and
+ID-token validation, [`tower-sessions`](https://docs.rs/tower-sessions) for session-backed
+identities, or an API gateway that authenticates at the edge and forwards a verified identity.
+The framework guarantees the contract around a scheme: `Authenticate` runs at the extractor,
+`presents_credentials` separates missing credentials (`None`) from invalid ones (a rejection),
+`Authorize` is required before a scope is documented, and 401/403 responses carry the documented
+`WWW-Authenticate` challenge. Your scheme must guarantee the identity itself: verify signatures
+and expiry, compare secrets in constant time, check the token's audience and issuer rather than
+only that it parses, and return `presents_credentials = false` only when credentials are absent.
+
 ## Tests
 
 ```sh
