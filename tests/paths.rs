@@ -86,6 +86,47 @@ mod duplicate_capture {
     }
 }
 
+mod default_ids {
+    pub mod a {
+        use roundhouse::prelude::*;
+
+        mount!("/a");
+
+        routes! { get("/{id}", show) }
+
+        #[handler]
+        pub async fn show() -> &'static str {
+            "a"
+        }
+    }
+
+    pub mod b {
+        use roundhouse::prelude::*;
+
+        mount!("/b");
+
+        routes! { get("/{id}", show) }
+
+        #[handler]
+        pub async fn show() -> &'static str {
+            "b"
+        }
+    }
+}
+
+#[test]
+fn default_operation_ids_use_the_resolved_path() {
+    let app = scoped(concat!(module_path!(), "::default_ids"))
+        .try_build()
+        .expect("distinct resolved paths build");
+    let ids: Vec<&str> = app
+        .routes()
+        .iter()
+        .map(|route| route.operation_id.as_str())
+        .collect();
+    assert_eq!(ids, ["get_a_id", "get_b_id"]);
+}
+
 fn path_parameters(module: &'static str, path: &str) -> Vec<serde_json::Value> {
     let app = scoped(module).try_build().expect("valid document");
     let document = serde_json::to_value(app.document().unwrap()).unwrap();

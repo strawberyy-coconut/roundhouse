@@ -517,7 +517,7 @@ where
                 && expected != TypeId::of::<S>()
             {
                 return Err(BuildError::StateMismatch {
-                    operation_id: record.operation_id.to_string(),
+                    operation_id: record.operation_id.unwrap_or(record.handler_name).to_string(),
                     expected: (record.state_name)(),
                     actual: std::any::type_name::<S>(),
                     source: record.source_ref(),
@@ -583,6 +583,10 @@ where
                     source: record.source_ref(),
                 });
             }
+            let operation_id = record
+                .operation_id
+                .map(str::to_string)
+                .unwrap_or_else(|| default_operation_id(record, &path));
             let key = (record.method, normalised.clone());
             if let Some(previous) = seen.get(&key) {
                 return Err(BuildError::DuplicateRoute {
@@ -610,6 +614,7 @@ where
             resolved.push(ResolvedRoute {
                 method: record.method,
                 path,
+                operation_id,
                 module_path: record.module_path,
                 record,
                 tags,
@@ -623,14 +628,14 @@ where
             a.path
                 .cmp(&b.path)
                 .then_with(|| a.method.cmp(&b.method))
-                .then_with(|| a.record.operation_id.cmp(b.record.operation_id))
+                .then_with(|| a.operation_id.cmp(&b.operation_id))
         });
 
-        let mut operations: HashMap<&'static str, &'static RouteRecord> = HashMap::new();
+        let mut operations: HashMap<&str, &'static RouteRecord> = HashMap::new();
         for route in &resolved {
-            if let Some(previous) = operations.insert(route.record.operation_id, route.record) {
+            if let Some(previous) = operations.insert(route.operation_id.as_str(), route.record) {
                 return Err(BuildError::DuplicateOperationId {
-                    operation_id: route.record.operation_id.to_string(),
+                    operation_id: route.operation_id.clone(),
                     first: previous.source_ref(),
                     second: route.record.source_ref(),
                 });
@@ -818,6 +823,52 @@ fn first_segment(module: &'static str) -> &'static str {
     module.split("::").next().unwrap_or(module)
 }
 
+/// `GET /blog/posts/{id}` → `get_blog_posts_id`.
+///
+/// A path made only of captures (or `/`) is not unique across modules, so those also include the
+/// module's last segment and the handler name. An explicit `operation_id` always wins.
+fn default_operation_id(record: &RouteRecord, path: &str) -> String {
+    let mut parts = vec![record.method.as_str().to_ascii_lowercase()];
+    let mut literal = false;
+    for segment in path.split('/').filter(|segment| !segment.is_empty()) {
+        if let Some(name) = segment
+            .strip_prefix('{')
+            .and_then(|rest| rest.strip_suffix('}'))
+        {
+            parts.push(sanitize(name.strip_prefix('*').unwrap_or(name)));
+        } else {
+            parts.push(sanitize(segment));
+            literal = true;
+        }
+    }
+    if !literal {
+        parts.push(sanitize(
+            record
+                .module_path
+                .rsplit("::")
+                .next()
+                .unwrap_or(record.module_path),
+        ));
+        parts.push(sanitize(record.handler_name));
+    }
+    parts.join("_")
+}
+
+fn sanitize(input: &str) -> String {
+    let mut out = String::new();
+    let mut last_underscore = false;
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            last_underscore = false;
+        } else if !last_underscore {
+            out.push('_');
+            last_underscore = true;
+        }
+    }
+    out.trim_matches('_').to_string()
+}
+
 fn nest_path(prefix: &str) -> String {
     let joined = prefix::join("", prefix);
     if joined == "/" { String::new() } else { joined }
@@ -881,7 +932,7 @@ where
     let mut method_router = if (record.state)().is_some() {
         let method_router = boxed.downcast::<MethodRouter<S>>().map_err(|_| {
             BuildError::HandlerBuild {
-                operation_id: record.operation_id.to_string(),
+                operation_id: record.operation_id.unwrap_or(record.handler_name).to_string(),
                 message: format!(
                     "registered for state `{}` but the handler was built for another state",
                     (record.state_name)()
@@ -894,7 +945,7 @@ where
         let method_router = boxed
             .downcast::<MethodRouter<()>>()
             .map_err(|_| BuildError::HandlerBuild {
-                operation_id: record.operation_id.to_string(),
+                operation_id: record.operation_id.unwrap_or(record.handler_name).to_string(),
                 message: "registered as stateless but the handler was built for a state".to_string(),
                 source: record.source_ref(),
             })?;
@@ -947,6 +998,8 @@ async fn inject_validation_config(
 pub struct ResolvedRoute {
     pub method: Method,
     pub path: String,
+    /// The explicit `operation_id` or one derived from method, path and module.
+    pub operation_id: String,
     pub module_path: &'static str,
     pub record: &'static RouteRecord,
     pub tags: Vec<&'static str>,

@@ -282,11 +282,8 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let handler = &entry.handler;
     let marker_type = marker_type(handler);
     let marker_value = marker_value(handler);
-    let operation_id = entry
-        .operation_id
-        .as_ref()
-        .map(|lit| LitStr::new(&lit.value(), lit.span()))
-        .unwrap_or_else(|| LitStr::new(&last_segment(handler), entry.path.span()));
+    let operation_id = option_lit(&entry.operation_id);
+    let handler_name = LitStr::new(&last_segment(handler), entry.path.span());
     let summary = option_lit(&entry.summary);
     let description = option_lit(&entry.description);
     let tags = string_slice(&entry.tags);
@@ -366,6 +363,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     #method,
                     #path,
                     #operation_id,
+                    #handler_name,
                     #summary,
                     #description,
                     #tags,

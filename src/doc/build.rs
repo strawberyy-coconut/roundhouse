@@ -95,7 +95,7 @@ pub fn build_with_observations(
         if docs.unverified {
             if strict {
                 return Err(BuildError::UnverifiedBody {
-                    operation_id: route.record.operation_id.to_string(),
+                    operation_id: route.operation_id.clone(),
                     source: route.record.source_ref(),
                 });
             }
@@ -104,7 +104,7 @@ pub fn build_with_observations(
                 format!(
                     "operation `{}` takes a body extractor the document cannot verify; it is \
                      marked `x-roundhouse-unverified-body`",
-                    route.record.operation_id
+                    route.operation_id
                 ),
             ));
         }
@@ -117,7 +117,7 @@ pub fn build_with_observations(
                     format!(
                         "operation `{}` returns `{error_type}` but that type registers no \
                          documented responses; derive `ApiError`/`ApiResponse` or return `Problem`",
-                        route.record.operation_id
+                        route.operation_id
                     ),
                 ),
             )?;
@@ -240,7 +240,7 @@ fn operation(
             {
                 if !route.record.response_override {
                     return Err(BuildError::ConflictingResponse {
-                        operation_id: route.record.operation_id.to_string(),
+                        operation_id: route.operation_id.clone(),
                         status: response.status,
                         source: route.record.source_ref(),
                     });
@@ -259,7 +259,7 @@ fn operation(
         .any(|status| *status == 0 || (200..400).contains(status))
     {
         return Err(BuildError::UndeclaredSuccess {
-            operation_id: route.record.operation_id.to_string(),
+            operation_id: route.operation_id.clone(),
             source: route.record.source_ref(),
         });
     }
@@ -341,7 +341,7 @@ fn operation(
         .build();
 
     let mut builder = OperationBuilder::new()
-        .operation_id(Some(route.record.operation_id))
+        .operation_id(Some(route.operation_id.clone()))
         .summary(route.record.summary)
         .description(route.record.description)
         .responses(responses);
