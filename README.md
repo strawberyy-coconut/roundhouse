@@ -31,7 +31,7 @@ leaves both off does not compile or link `roundhouse-multipart` or axum's multip
 
 ```toml
 [dependencies]
-roundhouse = "0.2"
+roundhouse = "0.1"
 axum = "0.8"
 serde = { version = "1", features = ["derive"] }
 ```
@@ -197,7 +197,7 @@ let json = built.openapi_json().expect("openapi enabled");
 std::fs::write("target/openapi.json", json)?;
 ```
 
-## What works (v0.2)
+## What works (v0.1)
 
 - **Discovery** — `routes!` and `mount!` submit const-evaluable records through `inventory`;
   `App::build()` joins them once, checks state `TypeId`s, and resolves every full path.
