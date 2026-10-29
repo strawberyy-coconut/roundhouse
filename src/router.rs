@@ -433,6 +433,17 @@ where
             );
         }
 
+        // A served response is part of the contract: a method mismatch uses the same Problem
+        // shape as the 404 fallback instead of axum's empty default body. Applying this after
+        // merges and the document routes covers every method router in the assembled app.
+        router = router.method_not_allowed_fallback(|| async {
+            Problem::new(
+                axum::http::StatusCode::METHOD_NOT_ALLOWED,
+                "Method Not Allowed",
+            )
+            .detail("this path does not accept the request method")
+        });
+
         if let Some(max) = self.max_body {
             router = router.layer(axum::extract::DefaultBodyLimit::max(max));
         }

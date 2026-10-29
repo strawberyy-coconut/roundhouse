@@ -216,7 +216,7 @@ std::fs::write("target/openapi.json", json)?;
   grouped method tables, scoped discovery (`scope` / `include`), `App::mount(prefix, scope)` for
   cross-crate composition and several prefixes over one table, `App::layer`,
   `App::layer_documented` for layers that terminate requests, `App::merge`, custom fallbacks, and
-  a JSON `404 Problem` default. `scope(..)` selects declarations; mounts above the scope still
+  JSON `404 Problem` and `405 Problem` defaults. `scope(..)` selects declarations; mounts above the scope still
   provide the structural prefix (and their tags, security and layers), so scoping below
   `mount!("/api/v1")` keeps `/api/v1` in routes and documents. A router given to `App::merge` is
   served but not discovered; the document carries `x-roundhouse-merged` and a warning, which

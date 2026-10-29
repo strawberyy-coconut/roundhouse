@@ -560,6 +560,17 @@ async fn grouped_table_serves_every_method() {
     let response = app.oneshot(request).await;
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     assert_eq!(response.headers()[header::ALLOW], "GET,HEAD,POST");
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+    let body = http_body_util::BodyExt::collect(response.into_body())
+        .await
+        .unwrap()
+        .to_bytes();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["status"], 405);
+    assert_eq!(value["title"], "Method Not Allowed");
 }
 
 #[tokio::test]
