@@ -1,16 +1,99 @@
-//! One-pass multipart extraction into a generated struct.
+//! Typed multipart extraction.
+//!
+//! `Multipart<F>` reads a `multipart/form-data` body into a derived struct. The rejection body is
+//! RFC 9457 `application/problem+json`, the same shape every other roundhouse extractor produces.
 
+use axum::body::Body;
+use axum::http::{StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use bytes::{Bytes, BytesMut};
+use roundhouse_schema::{ApiSchema, ValidationError, ValidationErrors, pointer};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::{Components, ObjectBuilder, Schema, Type};
 
-use crate::doc::ApiSchema;
-use crate::problem::Problem;
-use crate::validate::{ValidationError, ValidationErrors};
-
 const MAX_PART_BYTES: usize = 16 * 1024 * 1024;
 const MAX_TOTAL_BYTES: usize = 32 * 1024 * 1024;
+
+/// The RFC 9457 body produced by every multipart failure.
+///
+/// The facade converts this into its `Problem` type; the serialized shape is identical, so one
+/// client parser handles missing fields, wrong content types and size violations.
+#[derive(Debug, Clone, Serialize)]
+pub struct MultipartProblem {
+    #[serde(rename = "type")]
+    pub type_uri: String,
+    pub title: String,
+    pub status: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<ValidationError>,
+}
+
+impl MultipartProblem {
+    fn new(status: StatusCode, title: impl Into<String>) -> Self {
+        Self {
+            type_uri: "about:blank".to_string(),
+            title: title.into(),
+            status: status.as_u16(),
+            detail: None,
+            errors: Vec::new(),
+        }
+    }
+
+    fn from_validation(errors: ValidationErrors) -> Self {
+        Self {
+            type_uri: "https://roundhouse.rs/problems/validation".to_string(),
+            title: "Validation failed".to_string(),
+            status: StatusCode::BAD_REQUEST.as_u16(),
+            detail: None,
+            errors: errors.into_vec(),
+        }
+    }
+
+    fn from_validation_with_status(errors: ValidationErrors, status: StatusCode) -> Self {
+        let mut problem = Self::from_validation(errors);
+        problem.status = status.as_u16();
+        problem
+    }
+
+    fn from_rejection(status: StatusCode, title: &str, detail: String) -> Self {
+        let mut problem = Self::new(status, title);
+        problem.detail = Some(detail);
+        problem
+    }
+
+    pub fn status(&self) -> StatusCode {
+        StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+    }
+}
+
+impl std::fmt::Display for MultipartProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.detail {
+            Some(detail) => write!(f, "{}: {}", self.title, detail),
+            None => f.write_str(&self.title),
+        }
+    }
+}
+
+impl std::error::Error for MultipartProblem {}
+
+impl IntoResponse for MultipartProblem {
+    fn into_response(self) -> Response {
+        let status = self.status();
+        let bytes = serde_json::to_vec(&self).unwrap_or_else(|_| {
+            br#"{"type":"about:blank","title":"Internal Server Error","status":500}"#.to_vec()
+        });
+        Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, "application/problem+json")
+            .body(Body::from(bytes))
+            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+    }
+}
 
 /// One part read off the connection.
 #[derive(Clone)]
@@ -86,7 +169,7 @@ impl std::fmt::Debug for TempFile {
 /// Implemented by `#[derive(Multipart)]`.
 #[allow(clippy::result_large_err)]
 pub trait MultipartForm: Sized {
-    fn from_parts(parts: Vec<Part>) -> Result<Self, Problem>;
+    fn from_parts(parts: Vec<Part>) -> Result<Self, MultipartProblem>;
     fn schema(components: &mut Components) -> RefOr<Schema>;
     fn deny_unknown() -> bool {
         false
@@ -115,7 +198,7 @@ where
     F: MultipartForm + Send,
     S: Send + Sync,
 {
-    type Rejection = Problem;
+    type Rejection = MultipartProblem;
 
     async fn from_request(
         request: axum::extract::Request,
@@ -124,7 +207,7 @@ where
         let mut multipart = axum::extract::Multipart::from_request(request, state)
             .await
             .map_err(|rejection| {
-                Problem::from_rejection(
+                MultipartProblem::from_rejection(
                     rejection.status(),
                     rejection
                         .status()
@@ -168,25 +251,25 @@ where
     }
 }
 
-fn multipart_error(error: axum::extract::multipart::MultipartError) -> Problem {
-    Problem::from_rejection(
+fn multipart_error(error: axum::extract::multipart::MultipartError) -> MultipartProblem {
+    MultipartProblem::from_rejection(
         error.status(),
         error.status().canonical_reason().unwrap_or("Bad Request"),
         error.body_text(),
     )
 }
 
-fn limit_problem(name: &str, limit: usize) -> Problem {
+fn limit_problem(name: &str, limit: usize) -> MultipartProblem {
     let mut errors = ValidationErrors::new();
     errors.push(
         ValidationError::new(
-            crate::validate::pointer("", name),
+            pointer("", name),
             "max_bytes",
             format!("part exceeds the {limit} byte limit"),
         )
         .with_limit(limit),
     );
-    Problem::from_validation(errors)
+    MultipartProblem::from_validation(errors)
 }
 
 fn sanitize_file_name(name: String) -> String {
@@ -214,20 +297,20 @@ pub fn take_parts(parts: &mut Vec<Part>, name: &str) -> Vec<Part> {
 }
 
 /// Pick the most specific status for a collected multipart failure set.
-pub fn problem(errors: ValidationErrors) -> Problem {
+pub fn problem(errors: ValidationErrors) -> MultipartProblem {
     let status = if errors.errors.iter().any(|error| error.code == "max_bytes") {
-        axum::http::StatusCode::PAYLOAD_TOO_LARGE
+        StatusCode::PAYLOAD_TOO_LARGE
     } else if errors.errors.iter().any(|error| error.code == "accept") {
-        axum::http::StatusCode::UNSUPPORTED_MEDIA_TYPE
+        StatusCode::UNSUPPORTED_MEDIA_TYPE
     } else {
-        axum::http::StatusCode::BAD_REQUEST
+        StatusCode::BAD_REQUEST
     };
-    Problem::from_validation_with_status(errors, status)
+    MultipartProblem::from_validation_with_status(errors, status)
 }
 
 pub fn missing(name: &str, errors: &mut ValidationErrors) {
     errors.push(ValidationError::new(
-        crate::validate::pointer("", name),
+        pointer("", name),
         "required",
         "field is required",
     ));
@@ -241,11 +324,7 @@ pub fn text<T: DeserializeOwned + ApiSchema>(
     match parse_text::<T>(part) {
         Ok(value) => Some(value),
         Err(message) => {
-            errors.push(ValidationError::new(
-                crate::validate::pointer("", name),
-                "invalid",
-                message,
-            ));
+            errors.push(ValidationError::new(pointer("", name), "invalid", message));
             None
         }
     }
@@ -270,7 +349,7 @@ pub fn file(
     {
         errors.push(
             ValidationError::new(
-                crate::validate::pointer("", name),
+                pointer("", name),
                 "max_bytes",
                 format!("file exceeds the {max} byte limit"),
             )
@@ -282,10 +361,10 @@ pub fn file(
         let accepted = part
             .content_type
             .as_deref()
-            .is_some_and(|content_type| accept.contains(&content_type));
+            .is_some_and(|content_type| media_type_matches(accept, content_type));
         if !accepted {
             errors.push(ValidationError::new(
-                crate::validate::pointer("", name),
+                pointer("", name),
                 "accept",
                 format!("expected one of: {}", accept.join(", ")),
             ));
@@ -297,6 +376,19 @@ pub fn file(
         file_name: part.file_name,
         content_type: part.content_type,
     })
+}
+
+/// `accept` matches the media type only: case-insensitive, parameters stripped.
+fn media_type_matches(accept: &[&str], content_type: &str) -> bool {
+    let media_type = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    accept
+        .iter()
+        .any(|candidate| candidate.trim().to_ascii_lowercase() == media_type)
 }
 
 pub fn temp_file(
@@ -312,7 +404,7 @@ pub fn temp_file(
     let mut file = tempfile::tempfile()
         .map_err(|error| {
             errors.push(ValidationError::new(
-                crate::validate::pointer("", name),
+                pointer("", name),
                 "temp_file",
                 error.to_string(),
             ));
@@ -320,7 +412,7 @@ pub fn temp_file(
         .ok()?;
     if let Err(error) = file.write_all(&part.bytes) {
         errors.push(ValidationError::new(
-            crate::validate::pointer("", name),
+            pointer("", name),
             "temp_file",
             error.to_string(),
         ));
@@ -337,9 +429,11 @@ pub fn schema_object() -> ObjectBuilder {
 }
 
 pub fn binary_schema() -> RefOr<Schema> {
-    crate::doc::schema::string_with_format(utoipa::openapi::schema::SchemaFormat::KnownFormat(
-        utoipa::openapi::schema::KnownFormat::Binary,
-    ))
+    roundhouse_schema::schema::string_with_format(
+        utoipa::openapi::schema::SchemaFormat::KnownFormat(
+            utoipa::openapi::schema::KnownFormat::Binary,
+        ),
+    )
 }
 
 pub fn file_schema() -> RefOr<Schema> {
@@ -347,13 +441,13 @@ pub fn file_schema() -> RefOr<Schema> {
 }
 
 pub fn files_schema() -> RefOr<Schema> {
-    crate::doc::schema::array(binary_schema()).into()
+    roundhouse_schema::schema::array(binary_schema()).into()
 }
 
 pub fn optional_file_schema() -> RefOr<Schema> {
-    crate::doc::schema::nullable(binary_schema())
+    roundhouse_schema::schema::nullable(binary_schema())
 }
 
 pub fn optional_files_schema() -> RefOr<Schema> {
-    crate::doc::schema::nullable(files_schema())
+    roundhouse_schema::schema::nullable(files_schema())
 }

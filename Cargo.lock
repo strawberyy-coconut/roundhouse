@@ -838,7 +838,6 @@ dependencies = [
  "async-trait",
  "axum",
  "bytes",
- "chrono",
  "futures-util",
  "http",
  "http-body-util",
@@ -846,17 +845,15 @@ dependencies = [
  "jiff",
  "regex",
  "roundhouse-macros",
- "rust_decimal",
+ "roundhouse-multipart",
+ "roundhouse-schema",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror",
- "time",
  "tokio",
  "tower",
  "tracing",
  "utoipa",
- "uuid",
 ]
 
 [[package]]
@@ -866,6 +863,35 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "roundhouse-multipart"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "roundhouse-schema",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "utoipa",
+]
+
+[[package]]
+name = "roundhouse-schema"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "jiff",
+ "regex",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "time",
+ "utoipa",
+ "uuid",
 ]
 
 [[package]]

@@ -366,7 +366,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     Ok(quote! {
         impl ::roundhouse::multipart::MultipartForm for #ident {
             fn from_parts(mut parts: ::std::vec::Vec<::roundhouse::multipart::Part>)
-                -> ::core::result::Result<Self, ::roundhouse::Problem>
+                -> ::core::result::Result<Self, ::roundhouse::multipart::MultipartProblem>
             {
                 let mut errors = ::roundhouse::validate::ValidationErrors::new();
                 #(#bindings)*

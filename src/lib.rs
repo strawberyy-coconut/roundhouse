@@ -17,12 +17,16 @@ pub mod attachment;
 pub mod auth;
 pub mod doc;
 pub mod extract;
-pub mod multipart;
 pub mod prefix;
 pub mod problem;
 pub mod registry;
 pub mod router;
-pub mod validate;
+
+/// Typed multipart extraction, re-exported from `roundhouse-multipart`.
+pub use roundhouse_multipart as multipart;
+/// The schema half, re-exported from `roundhouse-schema`.
+pub use roundhouse_schema as schema;
+pub use roundhouse_schema::validate;
 
 pub use attachment::{Attachment, AttachmentType, File};
 pub use auth::{Auth, AuthDoc, AuthScheme, AuthScopes, Authenticate, NoScopes, SecuritySchemeKind};
@@ -31,8 +35,8 @@ pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams};
 pub use extract::{Form, Json, Path, Query};
 pub use multipart::{FilePart, Multipart, MultipartForm, Part, TempFile};
 pub use problem::Problem;
+pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
 pub use router::{App, Built, ResolvedRoute};
-pub use validate::{ValidationError, ValidationErrors};
 
 pub use async_trait::async_trait;
 pub use axum;

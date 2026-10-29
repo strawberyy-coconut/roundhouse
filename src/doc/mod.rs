@@ -5,67 +5,17 @@ pub mod downgrade;
 pub mod response;
 pub use build::{build, build_with_options};
 pub mod layer;
-pub mod schema;
+
+/// Schema derivation and constraint helpers, re-exported from `roundhouse-schema`.
+pub use roundhouse_schema::schema;
 
 use std::any::TypeId;
 
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::{Components, Schema};
 
-pub use schema::{ApiSchema, PathNames, PathValidate};
+pub use roundhouse_schema::{ApiSchema, Param, ParamIn, PathNames, PathValidate};
 pub use utoipa;
-
-/// Where a parameter is read from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ParamIn {
-    Path,
-    Query,
-    Header,
-    Cookie,
-}
-
-impl ParamIn {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ParamIn::Path => "path",
-            ParamIn::Query => "query",
-            ParamIn::Header => "header",
-            ParamIn::Cookie => "cookie",
-        }
-    }
-}
-
-/// One documented request parameter.
-#[derive(Clone)]
-pub struct Param {
-    pub name: String,
-    pub location: ParamIn,
-    pub required: bool,
-    pub schema: RefOr<Schema>,
-    pub description: Option<String>,
-}
-
-impl Param {
-    pub fn new(name: impl Into<String>, location: ParamIn, schema: RefOr<Schema>) -> Self {
-        Self {
-            name: name.into(),
-            location,
-            required: location == ParamIn::Path,
-            schema,
-            description: None,
-        }
-    }
-
-    pub fn required(mut self, required: bool) -> Self {
-        self.required = required;
-        self
-    }
-
-    pub fn description(mut self, description: impl Into<String>) -> Self {
-        self.description = Some(description.into());
-        self
-    }
-}
 
 /// A documented request body.
 #[derive(Clone)]

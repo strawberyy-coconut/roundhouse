@@ -7,7 +7,9 @@ The repository is a Cargo workspace with `roundhouse` as the root package:
 
 | Path | What it is |
 |---|---|
-| `src/` | the framework: registry, prefix resolution, router assembly, OpenAPI derivation, validation, `Problem` |
+| `src/` | the framework facade: registry, prefix resolution, router assembly, OpenAPI derivation, validation, `Problem` |
+| `roundhouse-schema/` | `ApiSchema`, path/query declarations, `ValidationErrors` — no routes and no axum |
+| `roundhouse-multipart/` | `Multipart<F>`, `FilePart`, `TempFile` and the multipart rejection |
 | `roundhouse-macros/` | `routes!`, `mount!`, `#[handler]`, `#[derive(ApiSchema / PathParams / QueryParams / Multipart / ApiResponse / ApiError)]` |
 | `examples/notes/` | module-local route tables and inherited `mount!` |
 | `examples/blog/` | nested mounts, grouped tables, `hidden`/`absolute`, auth, response enums |
@@ -18,6 +20,7 @@ The repository is a Cargo workspace with `roundhouse` as the root package:
 | `examples/auth/` | `Auth<A>`, scopes, optional auth, two-scheme AND, security registry, `WWW-Authenticate` |
 | `tests/` | the framework's surface, conflict and golden-document tests |
 | `examples/*/tests/` | each example's integration tests |
+| `specs/` | the design spec: crate boundaries, macro surface, document and validation decisions |
 
 The example app has no `router()` function. Its wiring is declarations:
 
@@ -55,7 +58,10 @@ to `module_path!()`, so a linked dependency's routes cannot join by accident.
 
 ## API reference
 
-The README and rustdoc are the contract; there is no separate design snapshot to drift from.
+The README and rustdoc are the contract for what the framework does today. `specs/roundhouse-spec.md`
+is the design record — crate boundaries, the macro surface, and the decisions that are not implemented
+yet (loud derivation, schema execution, the multipart rewrite). Where the two disagree, the README is
+current behaviour and the spec is the target.
 
 ```sh
 cargo doc --workspace --no-deps --open
