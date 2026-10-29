@@ -1,0 +1,324 @@
+//! Assemble the OpenAPI document from the same resolved routes the router uses.
+
+use std::collections::BTreeMap;
+
+use crate::auth::{SchemeDoc, SecuritySchemeKind};
+use utoipa::openapi::path::{OperationBuilder, ParameterBuilder};
+use utoipa::openapi::request_body::{RequestBody, RequestBodyBuilder};
+use utoipa::openapi::{
+    Content, Info, OpenApi, Paths, Required, Response, ResponseBuilder, ResponsesBuilder,
+    SecurityRequirement,
+};
+
+use super::{BodyDoc, Param, ParamIn, ResponseDoc};
+use crate::router::ResolvedRoute;
+
+pub fn build(info: Info, routes: &[ResolvedRoute]) -> OpenApi {
+    build_with_options(info, routes, true)
+}
+
+pub fn build_with_options(
+    info: Info,
+    routes: &[ResolvedRoute],
+    include_rejections: bool,
+) -> OpenApi {
+    let mut components = utoipa::openapi::schema::Components::new();
+    let mut paths = Paths::new();
+    let mut used_schemes: BTreeMap<String, SchemeDoc> = BTreeMap::new();
+
+    for route in routes {
+        if route.hidden || route.record.hidden {
+            continue;
+        }
+        let Some(http_method) = route.method.to_utoipa() else {
+            // `any` hides the method set; it is served but not documented.
+            tracing::warn!(
+                path = route.path,
+                source = route.record.source(),
+                "`any` route is not documented; declare explicit methods to include it"
+            );
+            continue;
+        };
+
+        let docs = (route.record.docs)(&mut components);
+        let operation = operation(route, docs, &mut used_schemes, include_rejections);
+        paths.add_path_operation(&route.path, vec![http_method], operation);
+    }
+
+    for scheme in used_schemes.values() {
+        components
+            .security_schemes
+            .insert(scheme.name.to_string(), scheme.kind.to_utoipa().into());
+    }
+
+    let mut document = OpenApi::new(info, paths);
+    if !components.schemas.is_empty()
+        || !components.security_schemes.is_empty()
+        || !components.responses.is_empty()
+    {
+        document.components = Some(components);
+    }
+    document
+}
+
+fn operation(
+    route: &ResolvedRoute,
+    docs: super::HandlerDocs,
+    used_schemes: &mut BTreeMap<String, SchemeDoc>,
+    include_rejections: bool,
+) -> utoipa::openapi::path::Operation {
+    let mut docs = docs;
+    for layer in &route.layer_docs {
+        docs.params.extend(layer.parameters.clone());
+        if docs.body.is_none() {
+            docs.body = layer.body.clone();
+        }
+        docs.responses.extend(layer.responses.clone());
+        docs.required_auth.extend(layer.required_auth.clone());
+        docs.optional_auth.extend(layer.optional_auth.clone());
+        docs.schemes.extend(layer.schemes.clone());
+    }
+
+    let mut parameters: Vec<Param> = Vec::new();
+    for param in docs.params {
+        if let Some(existing) = parameters
+            .iter()
+            .find(|existing| existing.name == param.name && existing.location == param.location)
+        {
+            if existing.schema != param.schema {
+                panic!(
+                    "error: conflicting parameter `{}` ({})\n  {}\n  {}\n\
+                     hint: two extractors document the same parameter with different schemas",
+                    param.name,
+                    param.location.as_str(),
+                    route.record.source(),
+                    "the other declaration is in a different extractor",
+                );
+            }
+            continue;
+        }
+        parameters.push(param);
+    }
+
+    let mut responses: BTreeMap<u16, ResponseDoc> = BTreeMap::new();
+    let failures = if include_rejections {
+        docs.failures
+    } else {
+        Vec::new()
+    };
+    for response in docs.responses.into_iter().chain(failures) {
+        merge_response(&mut responses, response, route);
+    }
+    for status in route.record.responses {
+        responses
+            .entry(*status)
+            .or_insert_with(|| ResponseDoc::new(*status, super::canonical_reason(*status)));
+    }
+
+    let mut tags: Vec<String> = Vec::new();
+    for tag in route.tags.iter().chain(route.record.tags.iter()) {
+        if !tags.iter().any(|existing| existing == tag) {
+            tags.push((*tag).to_string());
+        }
+    }
+
+    for scheme in &docs.schemes {
+        merge_scheme(used_schemes, *scheme, route);
+    }
+
+    let mut required = docs.required_auth;
+    for scheme in route.security.iter().chain(route.record.security.iter()) {
+        if !required.iter().any(|auth| auth.name == *scheme) {
+            required.push(crate::auth::AuthDoc {
+                name: scheme,
+                scopes: &[],
+            });
+        }
+    }
+    let optional = docs.optional_auth;
+
+    let mut security: Vec<SecurityRequirement> = Vec::new();
+    for auth in required.iter().chain(optional.iter()) {
+        let scheme = docs
+            .schemes
+            .iter()
+            .find(|scheme| scheme.name == auth.name)
+            .copied()
+            .unwrap_or_else(|| default_security_scheme(auth.name));
+        merge_scheme(used_schemes, scheme, route);
+    }
+
+    if !required.is_empty() || !optional.is_empty() {
+        if optional.is_empty() {
+            security.push(requirement(&required));
+        } else {
+            let mut all = required.clone();
+            all.extend(optional.iter().copied());
+            security.push(requirement(&all));
+            if required.is_empty() {
+                security.push(SecurityRequirement::default());
+            } else {
+                security.push(requirement(&required));
+            }
+        }
+    }
+
+    let responses = responses
+        .into_values()
+        .fold(ResponsesBuilder::new(), |builder, response| {
+            builder.response(response.status.to_string(), build_response(response))
+        })
+        .build();
+
+    let mut builder = OperationBuilder::new()
+        .operation_id(Some(route.record.operation_id))
+        .summary(route.record.summary)
+        .description(route.record.description)
+        .responses(responses);
+
+    if !tags.is_empty() {
+        builder = builder.tags(Some(tags));
+    }
+    if let Some(body) = docs.body {
+        builder = builder.request_body(Some(build_body(body)));
+    }
+    if !parameters.is_empty() {
+        builder = builder.parameters(Some(parameters.into_iter().map(build_param)));
+    }
+    if !security.is_empty() {
+        builder = builder.securities(Some(security));
+    }
+
+    builder.build()
+}
+
+fn build_param(param: Param) -> utoipa::openapi::path::Parameter {
+    let parameter_in = match param.location {
+        ParamIn::Path => utoipa::openapi::path::ParameterIn::Path,
+        ParamIn::Query => utoipa::openapi::path::ParameterIn::Query,
+        ParamIn::Header => utoipa::openapi::path::ParameterIn::Header,
+        ParamIn::Cookie => utoipa::openapi::path::ParameterIn::Cookie,
+    };
+    ParameterBuilder::new()
+        .name(param.name)
+        .parameter_in(parameter_in)
+        .required(if param.required {
+            Required::True
+        } else {
+            Required::False
+        })
+        .schema(Some(param.schema))
+        .description(param.description)
+        .build()
+}
+
+fn build_body(body: BodyDoc) -> RequestBody {
+    let mut builder = RequestBodyBuilder::new()
+        .required(Some(if body.required {
+            Required::True
+        } else {
+            Required::False
+        }))
+        .content(body.content_type, Content::new(Some(body.schema)));
+    if let Some(description) = body.description {
+        builder = builder.description(Some(description));
+    }
+    builder.build()
+}
+
+fn build_response(response: ResponseDoc) -> Response {
+    let mut builder = ResponseBuilder::new().description(response.description);
+    if let (Some(content_type), Some(schema)) = (response.content_type, response.schema) {
+        builder = builder.content(content_type, Content::new(Some(schema)));
+    }
+    for header in response.headers {
+        builder = builder.header(
+            header.name,
+            utoipa::openapi::HeaderBuilder::new()
+                .schema(Some(header.schema))
+                .build(),
+        );
+    }
+    builder.build()
+}
+
+fn merge_response(
+    responses: &mut BTreeMap<u16, ResponseDoc>,
+    response: ResponseDoc,
+    route: &ResolvedRoute,
+) {
+    match responses.get_mut(&response.status) {
+        None => {
+            responses.insert(response.status, response);
+        }
+        Some(existing) => {
+            if existing.schema == response.schema && existing.content_type == response.content_type
+            {
+                for header in response.headers {
+                    if !existing
+                        .headers
+                        .iter()
+                        .any(|existing| existing.name == header.name)
+                    {
+                        existing.headers.push(header);
+                    }
+                }
+                return;
+            }
+            if response.status >= 400 {
+                // Two shapes for one status is a lie; collapse to Problem, which is what every
+                // extractor and ApiError produce.
+                responses.insert(
+                    response.status,
+                    ResponseDoc::problem(response.status, super::canonical_reason(response.status)),
+                );
+            } else {
+                tracing::warn!(
+                    status = response.status,
+                    source = route.record.source(),
+                    "two different success bodies share one status; keeping the first"
+                );
+            }
+        }
+    }
+}
+
+/// Deterministic schemes for mount/table security names. `Auth<A>` declarations replace these
+/// defaults with the exact kind from `A::KIND`.
+fn default_security_scheme(name: &'static str) -> SchemeDoc {
+    if name == "bearer" {
+        SchemeDoc {
+            name,
+            kind: SecuritySchemeKind::HttpBearer,
+        }
+    } else {
+        SchemeDoc {
+            name,
+            kind: SecuritySchemeKind::ApiKeyHeader(name),
+        }
+    }
+}
+
+fn requirement(auth: &[crate::auth::AuthDoc]) -> SecurityRequirement {
+    let mut requirement = SecurityRequirement::default();
+    for doc in auth {
+        requirement = requirement.add(doc.name, doc.scopes.iter().copied());
+    }
+    requirement
+}
+
+fn merge_scheme(used: &mut BTreeMap<String, SchemeDoc>, scheme: SchemeDoc, route: &ResolvedRoute) {
+    match used.get(scheme.name) {
+        Some(existing) if existing.kind != scheme.kind => {
+            panic!(
+                "error: security scheme `{}` is declared with two different kinds\n  {}\n",
+                scheme.name,
+                route.record.source()
+            );
+        }
+        Some(_) => {}
+        None => {
+            used.insert(scheme.name.to_string(), scheme);
+        }
+    }
+}

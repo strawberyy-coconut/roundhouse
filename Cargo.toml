@@ -1,0 +1,58 @@
+[workspace]
+members = [
+    "roundhouse-macros",
+    "examples/notes",
+    "examples/blog",
+    "examples/layers",
+    "examples/validation",
+    "examples/uploads",
+    "examples/showcase",
+    "examples/auth",
+]
+resolver = "2"
+
+[package]
+name = "roundhouse"
+version = "0.1.0"
+edition = "2024"
+description = "Declarations in, router and OpenAPI document out. A thin layer over axum."
+
+[[bin]]
+name = "roundhouse"
+path = "src/bin/roundhouse.rs"
+
+[features]
+default = ["macros"]
+macros = ["dep:roundhouse-macros"]
+uuid = ["dep:uuid"]
+chrono = ["dep:chrono"]
+time = ["dep:time"]
+decimal = ["dep:rust_decimal"]
+jiff = ["dep:jiff"]
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+async-trait = "0.1"
+bytes = "1"
+chrono = { version = "0.4", optional = true, default-features = false }
+http = "1"
+jiff = { version = "0.2", optional = true, features = ["serde"] }
+inventory = "0.3"
+regex = "1"
+roundhouse-macros = { path = "roundhouse-macros", optional = true }
+rust_decimal = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+time = { version = "0.3", optional = true }
+tokio = { version = "1", features = ["net", "rt"] }
+tracing = "0.1"
+tower = { version = "0.5", features = ["util"] }
+utoipa = { version = "6", features = ["non_strict_integers"] }
+uuid = { version = "1", optional = true }
+
+[dev-dependencies]
+futures-util = "0.3"
+http-body-util = "0.1"
+thiserror = "2"
+tower = { version = "0.5", features = ["util"] }

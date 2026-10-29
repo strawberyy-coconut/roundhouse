@@ -1,0 +1,67 @@
+use axum::http::StatusCode;
+use roundhouse::prelude::*;
+use serde::Serialize;
+
+use crate::schemes::{ApiKeyAuth, BearerAuth, ReadPosts};
+
+routes! {
+    get("/public", public, summary = "No auth"),
+    get("/private", private, summary = "Bearer required"),
+    get("/scoped", scoped, summary = "Bearer with read scope"),
+    get("/optional", optional, summary = "Auth is optional"),
+    get("/admin", admin, summary = "Bearer AND API key, admin only"),
+}
+
+#[derive(Serialize, ApiSchema)]
+pub struct Message {
+    pub message: String,
+}
+
+#[handler]
+pub async fn public() -> Json<Message> {
+    Json(Message {
+        message: "public".to_string(),
+    })
+}
+
+#[handler]
+pub async fn private(Auth { principal, .. }: Auth<BearerAuth>) -> Json<Message> {
+    let _ = principal;
+    Json(Message {
+        message: "private".to_string(),
+    })
+}
+
+#[handler]
+pub async fn scoped(Auth { .. }: Auth<BearerAuth, ReadPosts>) -> Json<Message> {
+    Json(Message {
+        message: "read scope granted".to_string(),
+    })
+}
+
+#[handler]
+pub async fn optional(auth: Option<Auth<BearerAuth>>) -> Json<Message> {
+    Json(Message {
+        message: match auth {
+            Some(_) => "authenticated".to_string(),
+            None => "anonymous".to_string(),
+        },
+    })
+}
+
+#[allow(clippy::result_large_err)]
+#[handler]
+pub async fn admin(
+    Auth { principal, .. }: Auth<BearerAuth>,
+    _api_key: Auth<ApiKeyAuth>,
+) -> Result<Json<Message>, Problem> {
+    // AuthScheme::authenticate accepted the token; the role check is handler policy.
+    if !principal.admin {
+        return Err(Problem::new(StatusCode::FORBIDDEN, "Forbidden")
+            .type_uri("https://roundhouse.rs/problems/Forbidden")
+            .detail("admin role required"));
+    }
+    Ok(Json(Message {
+        message: format!("admin {}", principal.name),
+    }))
+}

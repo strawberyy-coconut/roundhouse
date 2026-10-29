@@ -1,0 +1,8 @@
+[alias]
+notes = "run -p notes-example"
+blog = "run -p blog-example"
+layers = "run -p layers-example"
+validation = "run -p validation-example"
+uploads = "run -p uploads-example"
+showcase = "run -p showcase-example"
+auth = "run -p auth-example"

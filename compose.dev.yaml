@@ -1,0 +1,11 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Containerfile.dev
+    environment:
+      RUST_LOG: "info,tower_http=debug"
+    ports:
+      - target: 3000
+        published: "3000"
+        protocol: tcp

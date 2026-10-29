@@ -1,0 +1,6 @@
+FROM docker.io/rust:latest
+
+RUN rustup component add rustfmt clippy
+
+RUN printf 'export PATH="${CARGO_HOME:-/usr/local/cargo}/bin:$PATH"\n' \
+    > /etc/profile.d/rust.sh

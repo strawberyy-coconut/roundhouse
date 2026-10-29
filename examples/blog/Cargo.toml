@@ -1,0 +1,22 @@
+[package]
+name = "blog-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "A richer roundhouse example: nested mounts, grouped tables, hidden and absolute routes."
+
+[dependencies]
+axum = "0.8"
+roundhouse = { path = "../.." }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower-http = { version = "0.7", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+http = "1"
+http-body-util = "0.1"
+serde_json = "1"
+tower = { version = "0.5", features = ["util"] }

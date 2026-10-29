@@ -1,0 +1,13 @@
+[package]
+name = "roundhouse-macros"
+version = "0.1.0"
+edition = "2024"
+description = "Proc macros for roundhouse: routes!, mount!, #[handler] and the derives."
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+syn = { version = "2", features = ["full", "extra-traits", "parsing"] }
