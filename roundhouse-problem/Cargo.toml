@@ -1,6 +1,6 @@
 [package]
 name = "roundhouse-problem"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
 description = "The RFC 9457 problem response shared by roundhouse and its satellites."
 license = "MIT OR Apache-2.0"
