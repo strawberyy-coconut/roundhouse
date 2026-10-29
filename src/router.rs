@@ -431,7 +431,10 @@ where
     /// and document gates as [`App::build`] but never unwinds.
     pub fn try_build(self) -> Result<Built, BuildError> {
         let mut diagnostics = Vec::new();
+        let serve_openapi =
+            self.info.is_some() || self.openapi_route.is_some() || self.docs_route.is_some();
         let resolved = self.resolve(&mut diagnostics)?;
+        self.check_reserved_paths(serve_openapi, &resolved)?;
         for merge in &self.merges {
             crate::build_error::report(
                 &mut diagnostics,
@@ -443,8 +446,6 @@ where
                 ),
             )?;
         }
-        let serve_openapi =
-            self.info.is_some() || self.openapi_route.is_some() || self.docs_route.is_some();
         let info = self
             .info
             .as_ref()
@@ -514,31 +515,35 @@ where
 
         let mut router = self.assemble(&resolved)?;
 
-        for merged in self.merges {
-            router = router.merge(merged.router);
+        for merged in &self.merges {
+            router = merge_router(router, merged.router.clone(), merged.source)?;
         }
 
         if serve_openapi && let Some(path) = self.openapi_route {
             let for_route = document.clone();
-            router = router.route(
+            router = add_get_route(
+                router,
                 path,
-                axum::routing::get(move || {
+                move || {
                     let document = for_route.clone();
                     async move { axum::Json((*document).clone()) }
-                }),
-            );
+                },
+                crate::build_error::Source::new("App::openapi_route", "<app>", 0),
+            )?;
         }
 
         if serve_openapi && let Some(docs_path) = self.docs_route {
             let spec_path = self.openapi_route.unwrap_or("/openapi.json");
             let html = docs_html(spec_path);
-            router = router.route(
+            router = add_get_route(
+                router,
                 docs_path,
-                axum::routing::get(move || {
+                move || {
                     let html = html.clone();
                     async move { axum::response::Html(html) }
-                }),
-            );
+                },
+                crate::build_error::Source::new("App::docs_route", "<app>", 0),
+            )?;
         }
 
         // A served response is part of the contract: a method mismatch uses the same Problem
@@ -653,6 +658,53 @@ where
         axum::serve(listener, built.router)
             .with_graceful_shutdown(shutdown)
             .await
+    }
+
+    fn check_reserved_paths(
+        &self,
+        serve_openapi: bool,
+        resolved: &[ResolvedRoute],
+    ) -> Result<(), BuildError> {
+        if !serve_openapi {
+            return Ok(());
+        }
+
+        let mut reserved = Vec::new();
+        if let Some(path) = self.openapi_route {
+            reserved.push((path, "the generated OpenAPI document"));
+        }
+        if let Some(path) = self.docs_route {
+            reserved.push((path, "the documentation UI"));
+        }
+
+        for (path, what) in reserved {
+            let normalised = prefix::join("", path);
+            if let Some(route) = resolved.iter().find(|route| {
+                prefix::join("", &route.path) == normalised
+                    && matches!(route.method, Method::Get | Method::Any)
+            }) {
+                return Err(BuildError::RouteConflict {
+                    path: normalised,
+                    reason: format!(
+                        "{what} is served at this path; move the document route or the operation"
+                    ),
+                    source: route.record.source_ref(),
+                });
+            }
+        }
+
+        if let (Some(openapi), Some(docs)) = (self.openapi_route, self.docs_route)
+            && prefix::join("", openapi) == prefix::join("", docs)
+        {
+            return Err(BuildError::RouteConflict {
+                path: prefix::join("", openapi),
+                reason: "the OpenAPI document and the documentation UI cannot share a path"
+                    .to_string(),
+                source: crate::build_error::Source::new("App::docs_route", "<app>", 0),
+            });
+        }
+
+        Ok(())
     }
 
     fn resolve(
@@ -1083,6 +1135,61 @@ fn resolve_routes(
     }
 
     Ok(resolved)
+}
+
+fn merge_router(
+    router: Router<()>,
+    merged: Router<()>,
+    source: crate::build_error::Source,
+) -> Result<Router<()>, BuildError> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| router.merge(merged))) {
+        Ok(router) => Ok(router),
+        Err(payload) => Err(BuildError::RouteConflict {
+            path: "<merged router>".to_string(),
+            reason: format!(
+                "the router given to `App::merge` collides with a declared route ({}); \
+                 declare the overlapping paths through roundhouse or merge a non-overlapping router",
+                panic_message(payload.as_ref())
+            ),
+            source,
+        }),
+    }
+}
+
+fn add_get_route<H, T>(
+    router: Router<()>,
+    path: &'static str,
+    handler: H,
+    source: crate::build_error::Source,
+) -> Result<Router<()>, BuildError>
+where
+    H: Handler<T, ()> + Clone + Send + Sync + 'static,
+    T: 'static,
+{
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        router.route(path, axum::routing::get(handler))
+    })) {
+        Ok(router) => Ok(router),
+        Err(payload) => Err(BuildError::RouteConflict {
+            path: path.to_string(),
+            reason: format!(
+                "the generated route `{path}` collides with a route already in the assembled app \
+                 ({}); move the document route or declare the conflicting path through roundhouse",
+                panic_message(payload.as_ref())
+            ),
+            source,
+        }),
+    }
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "route conflict".to_string()
+    }
 }
 
 fn docs_html(spec_path: &str) -> String {
