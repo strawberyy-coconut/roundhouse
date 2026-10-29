@@ -99,6 +99,12 @@ pub enum BuildError {
     },
     /// A path template cannot be served.
     InvalidTemplate { reason: String, source: Source },
+    /// An explicit `path = "..."` assertion does not match the resolved path.
+    PathAssertion {
+        expected: String,
+        actual: String,
+        source: Source,
+    },
     /// A handler's `State<T>`/`Auth<A>` pins a different state type than the app.
     StateMismatch {
         operation_id: String,
@@ -222,6 +228,15 @@ impl fmt::Display for BuildError {
             BuildError::InvalidTemplate { reason, source } => {
                 write!(f, "error: invalid route template\n  {reason}\n  {source}")
             }
+            BuildError::PathAssertion {
+                expected,
+                actual,
+                source,
+            } => write!(
+                f,
+                "error: route path assertion failed\n  expected `{expected}`\n  actual   `{actual}`\n  {source}\n\
+                 hint: update the `path = \"...\"` assertion or the mount prefix"
+            ),
             BuildError::StateMismatch {
                 operation_id,
                 expected,

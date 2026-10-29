@@ -10,6 +10,7 @@ struct Entry {
     attrs: Vec<Attribute>,
     method: Ident,
     path: LitStr,
+    assert_path: Option<LitStr>,
     handler: Path,
     summary: Option<LitStr>,
     description: Option<LitStr>,
@@ -42,6 +43,7 @@ impl Parse for Entry {
             attrs,
             method,
             path,
+            assert_path: None,
             handler,
             summary: None,
             description: None,
@@ -74,6 +76,7 @@ fn parse_group_entry(input: ParseStream<'_>, path: LitStr) -> Result<Entry> {
         attrs,
         method,
         path,
+        assert_path: None,
         handler,
         summary: None,
         description: None,
@@ -113,6 +116,10 @@ fn parse_attrs(content: ParseStream<'_>, entry: &mut Entry) -> Result<()> {
             "operation_id" => {
                 content.parse::<Token![=]>()?;
                 entry.operation_id = Some(content.parse()?);
+            }
+            "path" => {
+                content.parse::<Token![=]>()?;
+                entry.assert_path = Some(content.parse()?);
             }
             "tags" => {
                 content.parse::<Token![=]>()?;
@@ -286,6 +293,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
         Err(error) => return error.to_compile_error(),
     };
     let path = &entry.path;
+    let assert_path = option_lit(&entry.assert_path);
     let handler = &entry.handler;
     let marker_type = marker_type(handler);
         let operation_id = option_lit(&entry.operation_id);
@@ -385,6 +393,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     #line,
                     #method,
                     #path,
+                    #assert_path,
                     #operation_id,
                     #handler_name,
                     #summary,

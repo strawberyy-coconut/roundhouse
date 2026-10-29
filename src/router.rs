@@ -851,6 +851,16 @@ fn resolve_routes(
                 (path, tags, security, hidden)
             };
 
+            if let Some(expected) = record.assert_path
+                && path != expected
+            {
+                return Err(BuildError::PathAssertion {
+                    expected: expected.to_string(),
+                    actual: path,
+                    source: record.source_ref(),
+                });
+            }
+
             let normalised = prefix::normalise_template(&path);
             let mut captures = prefix::captures(&path);
             let total = captures.len();

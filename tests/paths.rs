@@ -190,3 +190,57 @@ fn a_duplicate_capture_is_a_build_error() {
         .expect("duplicate captures are invalid");
     assert!(matches!(error, BuildError::InvalidTemplate { .. }));
 }
+
+mod asserted_path {
+    use super::*;
+
+    mount!("/asserted");
+
+    routes! {
+        get("/{id}", show, path = "/asserted/{id}"),
+    }
+
+    #[handler]
+    pub async fn show() -> &'static str {
+        "shown"
+    }
+}
+
+mod wrong_path_assertion {
+    use super::*;
+
+    mount!("/moved");
+
+    routes! {
+        get("/x", show, path = "/old/x"),
+    }
+
+    #[handler]
+    pub async fn show() -> &'static str {
+        "shown"
+    }
+}
+
+#[test]
+fn a_path_assertion_accepts_the_resolved_path() {
+    let app = scoped(concat!(module_path!(), "::asserted_path"))
+        .try_build()
+        .expect("the asserted path is correct");
+    assert_eq!(app.routes()[0].path, "/asserted/{id}");
+}
+
+#[test]
+fn a_path_assertion_names_both_sides_when_a_module_move_changes_the_url() {
+    let error = scoped(concat!(module_path!(), "::wrong_path_assertion"))
+        .try_build()
+        .err()
+        .expect("the assertion no longer matches");
+    assert!(matches!(
+        error,
+        BuildError::PathAssertion { ref expected, ref actual, .. }
+            if expected == "/old/x" && actual == "/moved/x"
+    ));
+    let message = error.to_string();
+    assert!(message.contains("/old/x"));
+    assert!(message.contains("/moved/x"));
+}

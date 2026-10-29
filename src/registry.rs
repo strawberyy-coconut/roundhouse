@@ -100,7 +100,9 @@ pub struct RouteRecord {
     pub(crate) line: u32,
     pub(crate) method: Method,
     pub(crate) path: &'static str,
-    /// An explicit `operation_id = "..."`; `None` derives one from the resolved path.
+    /// An optional `path = "..."` assertion checked against the first resolved binding.
+    pub(crate) assert_path: Option<&'static str>,
+    /// An explicit `operation_id = "..."`; `None` derives one from the module and handler.
     pub(crate) operation_id: Option<&'static str>,
     pub(crate) handler_name: &'static str,
     pub(crate) summary: Option<&'static str>,
@@ -135,6 +137,7 @@ impl RouteRecord {
         line: u32,
         method: Method,
         path: &'static str,
+        assert_path: Option<&'static str>,
         operation_id: Option<&'static str>,
         handler_name: &'static str,
         summary: Option<&'static str>,
@@ -161,6 +164,7 @@ impl RouteRecord {
             line,
             method,
             path,
+            assert_path,
             operation_id,
             handler_name,
             summary,
