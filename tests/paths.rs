@@ -223,10 +223,22 @@ mod wrong_path_assertion {
 
 #[test]
 fn a_path_assertion_accepts_the_resolved_path() {
-    let app = scoped(concat!(module_path!(), "::asserted_path"))
+    let module = concat!(module_path!(), "::asserted_path");
+    let app = scoped(module)
+        // An app-level binding may add a prefix; the assertion describes the declaration.
+        .mount("/v9", module)
         .try_build()
         .expect("the asserted path is correct");
-    assert_eq!(app.routes()[0].path, "/asserted/{id}");
+    assert!(
+        app.routes()
+            .iter()
+            .any(|route| route.path == "/asserted/{id}")
+    );
+    assert!(
+        app.routes()
+            .iter()
+            .any(|route| route.path == "/v9/asserted/{id}")
+    );
 }
 
 #[test]

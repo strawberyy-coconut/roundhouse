@@ -885,6 +885,24 @@ fn resolve_routes(
         };
         layer_docs.extend(global_layer_docs.iter().map(|doc| doc()));
 
+        // The assertion describes the declaration's own prefix chain, before any
+        // `App::mount` binding. A library can therefore assert its public URL and still be
+        // mounted at a versioned prefix by an application.
+        let declared_path = if record.absolute {
+            prefix::join("", record.path)
+        } else {
+            prefix::join_all(ancestors.iter().map(|mount| mount.prefix), record.path)
+        };
+        if let Some(expected) = record.assert_path
+            && declared_path != expected
+        {
+            return Err(BuildError::PathAssertion {
+                expected: expected.to_string(),
+                actual: declared_path,
+                source: record.source_ref(),
+            });
+        }
+
         let normal = selected(scopes, record.module_path);
         let mut bindings: Vec<Option<MountBinding>> = Vec::new();
         if record.absolute {
@@ -934,16 +952,6 @@ fn resolve_routes(
                 let hidden = record.hidden || ancestors.iter().any(|mount| mount.hidden);
                 (path, tags, security, hidden)
             };
-
-            if let Some(expected) = record.assert_path
-                && path != expected
-            {
-                return Err(BuildError::PathAssertion {
-                    expected: expected.to_string(),
-                    actual: path,
-                    source: record.source_ref(),
-                });
-            }
 
             let normalised = prefix::normalise_template(&path);
             let mut captures = prefix::captures(&path);
