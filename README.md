@@ -59,9 +59,11 @@ to `module_path!()`, so a linked dependency's routes cannot join by accident.
 ## API reference
 
 The README and rustdoc are the contract for what the framework does today. `specs/roundhouse-spec.md`
-is the design record — crate boundaries, the macro surface, and the decisions that are not implemented
-yet (loud derivation, schema execution, the multipart rewrite). Where the two disagree, the README is
-current behaviour and the spec is the target.
+is the design record — crate boundaries, the macro surface, and the decisions still ahead of the
+implementation (v0.3 codegen mode, erased-state mode, the separate conformance tool). The v0.2
+milestone is in place: crate split, multipart rewrite, loud derivation, schema execution and
+response validation on the same engine. Where the two disagree, the README is current behaviour and
+the spec is the target.
 
 ```sh
 cargo doc --workspace --no-deps --open
