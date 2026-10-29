@@ -38,6 +38,7 @@ pub struct App<S> {
     validation_status: axum::http::StatusCode,
     validate_responses: bool,
     max_body: Option<usize>,
+    max_parts: Option<usize>,
 }
 
 impl<S> App<S>
@@ -58,6 +59,7 @@ where
             validation_status: axum::http::StatusCode::BAD_REQUEST,
             validate_responses: false,
             max_body: None,
+            max_parts: None,
         }
     }
 
@@ -143,8 +145,17 @@ where
     }
 
     /// Set the global request body limit. Body extractors answer `413` above it.
+    ///
+    /// This is the default for every body extractor, including multipart, where a field's
+    /// `max_bytes` can only narrow it.
     pub fn max_body(mut self, bytes: usize) -> Self {
         self.max_body = Some(bytes);
+        self
+    }
+
+    /// Bound the number of parts in a multipart request. Many tiny parts are a DoS axis.
+    pub fn max_parts(mut self, parts: usize) -> Self {
+        self.max_parts = Some(parts);
         self
     }
 
@@ -232,7 +243,7 @@ where
         }
 
         router = router.layer(axum::middleware::from_fn_with_state(
-            self.validation_status,
+            (self.validation_status, self.max_body, self.max_parts),
             inject_validation_config,
         ));
 
@@ -681,13 +692,23 @@ async fn skip_validation(
 }
 
 async fn inject_validation_config(
-    axum::extract::State(status): axum::extract::State<axum::http::StatusCode>,
+    axum::extract::State((status, max_body, max_parts)): axum::extract::State<(
+        axum::http::StatusCode,
+        Option<usize>,
+        Option<usize>,
+    )>,
     mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     request
         .extensions_mut()
         .insert(crate::extract::ValidationConfig { status });
+    request
+        .extensions_mut()
+        .insert(crate::multipart::MultipartLimits {
+            max_body,
+            max_parts,
+        });
     next.run(request).await
 }
 

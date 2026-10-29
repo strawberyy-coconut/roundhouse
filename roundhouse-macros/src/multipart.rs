@@ -20,6 +20,22 @@ enum Kind {
     OptionalTexts,
 }
 
+impl Kind {
+    fn is_file(self) -> bool {
+        matches!(
+            self,
+            Kind::File
+                | Kind::OptionalFile
+                | Kind::Files
+                | Kind::OptionalFiles
+                | Kind::TempFile
+                | Kind::OptionalTempFile
+                | Kind::TempFiles
+                | Kind::OptionalTempFiles
+        )
+    }
+}
+
 struct FieldSpec {
     ident: Ident,
     name: String,
@@ -81,6 +97,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let mut required = Vec::new();
     let mut registers = Vec::new();
     let mut constructor_fields = Vec::new();
+    let mut field_specs = Vec::new();
 
     for spec in &specs {
         let field = &spec.ident;
@@ -96,6 +113,28 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         } else {
             quote!(&[#(#accept_literals),*])
         };
+        let required_field = matches!(spec.kind, Kind::File | Kind::TempFile | Kind::Text);
+        let kind = match spec.kind {
+            Kind::File => quote!(::roundhouse::multipart::FieldKind::File),
+            Kind::OptionalFile => quote!(::roundhouse::multipart::FieldKind::File),
+            Kind::Files => quote!(::roundhouse::multipart::FieldKind::FileList),
+            Kind::OptionalFiles => quote!(::roundhouse::multipart::FieldKind::FileList),
+            Kind::TempFile => quote!(::roundhouse::multipart::FieldKind::TempFile),
+            Kind::OptionalTempFile => quote!(::roundhouse::multipart::FieldKind::TempFile),
+            Kind::TempFiles => quote!(::roundhouse::multipart::FieldKind::TempFileList),
+            Kind::OptionalTempFiles => quote!(::roundhouse::multipart::FieldKind::TempFileList),
+            Kind::Text => quote!(::roundhouse::multipart::FieldKind::Text),
+            Kind::OptionalText => quote!(::roundhouse::multipart::FieldKind::Text),
+            Kind::Texts => quote!(::roundhouse::multipart::FieldKind::TextList),
+            Kind::OptionalTexts => quote!(::roundhouse::multipart::FieldKind::TextList),
+        };
+        field_specs.push(quote! {
+            ::roundhouse::multipart::FieldSpec::new(#name, #kind)
+                .required(#required_field)
+                .max_bytes(#max)
+                .accept(#accept)
+        });
+
         let constructor = if matches!(
             spec.kind,
             Kind::OptionalFile
@@ -110,151 +149,109 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         ) {
             quote!(#field)
         } else {
-            quote!(#field: #field.expect("validated multipart field"))
+            quote!(#field: #field.expect("required multipart field was validated by the extractor"))
         };
         constructor_fields.push(constructor);
 
         let binding = match spec.kind {
             Kind::File => quote! {
-                let mut __parts = ::roundhouse::multipart::take_parts(&mut parts, #name);
-                let #field = match __parts.into_iter().next() {
-                    Some(part) => ::roundhouse::multipart::file(
-                        part, #max, #accept, #name, &mut errors,
-                    ),
-                    None => {
-                        ::roundhouse::multipart::missing(#name, &mut errors);
-                        ::core::option::Option::None
-                    }
-                };
+                let #field = ::roundhouse::multipart::require(
+                    fields.take_files(#name).into_iter().next(),
+                    #name,
+                    &mut errors,
+                );
             },
             Kind::OptionalFile => quote! {
-                let #field = ::roundhouse::multipart::take_parts(&mut parts, #name)
-                    .into_iter()
-                    .next()
-                    .and_then(|part| ::roundhouse::multipart::file(
-                        part, #max, #accept, #name, &mut errors,
-                    ));
+                let #field = fields.take_files(#name).into_iter().next();
             },
             Kind::Files => quote! {
                 let #field: ::std::vec::Vec<::roundhouse::multipart::FilePart> =
-                    ::roundhouse::multipart::take_parts(&mut parts, #name)
-                        .into_iter()
-                        .filter_map(|part| ::roundhouse::multipart::file(
-                            part, #max, #accept, #name, &mut errors,
-                        ))
-                        .collect();
+                    fields.take_files(#name);
             },
             Kind::OptionalFiles => quote! {
-                let __parts = ::roundhouse::multipart::take_parts(&mut parts, #name);
+                let __values = fields.take_files(#name);
                 let #field: ::core::option::Option<
                     ::std::vec::Vec<::roundhouse::multipart::FilePart>,
-                > = if __parts.is_empty() {
+                > = if __values.is_empty() {
                     ::core::option::Option::None
                 } else {
-                    ::core::option::Option::Some(
-                        __parts
-                            .into_iter()
-                            .filter_map(|part| ::roundhouse::multipart::file(
-                                part, #max, #accept, #name, &mut errors,
-                            ))
-                            .collect(),
-                    )
+                    ::core::option::Option::Some(__values)
                 };
             },
             Kind::TempFile => quote! {
-                let mut __parts = ::roundhouse::multipart::take_parts(&mut parts, #name);
-                let #field = match __parts.into_iter().next() {
-                    Some(part) => ::roundhouse::multipart::temp_file(
-                        part, #max, #accept, #name, &mut errors,
-                    ),
-                    None => {
-                        ::roundhouse::multipart::missing(#name, &mut errors);
-                        ::core::option::Option::None
-                    }
-                };
+                let #field = ::roundhouse::multipart::require(
+                    fields.take_temp_files(#name).into_iter().next(),
+                    #name,
+                    &mut errors,
+                );
             },
             Kind::OptionalTempFile => quote! {
-                let #field = ::roundhouse::multipart::take_parts(&mut parts, #name)
-                    .into_iter()
-                    .next()
-                    .and_then(|part| ::roundhouse::multipart::temp_file(
-                        part, #max, #accept, #name, &mut errors,
-                    ));
+                let #field = fields.take_temp_files(#name).into_iter().next();
             },
             Kind::TempFiles => quote! {
                 let #field: ::std::vec::Vec<::roundhouse::multipart::TempFile> =
-                    ::roundhouse::multipart::take_parts(&mut parts, #name)
-                        .into_iter()
-                        .filter_map(|part| ::roundhouse::multipart::temp_file(
-                            part, #max, #accept, #name, &mut errors,
-                        ))
-                        .collect();
+                    fields.take_temp_files(#name);
             },
             Kind::OptionalTempFiles => quote! {
-                let __parts = ::roundhouse::multipart::take_parts(&mut parts, #name);
+                let __values = fields.take_temp_files(#name);
                 let #field: ::core::option::Option<
                     ::std::vec::Vec<::roundhouse::multipart::TempFile>,
-                > = if __parts.is_empty() {
+                > = if __values.is_empty() {
                     ::core::option::Option::None
                 } else {
-                    ::core::option::Option::Some(
-                        __parts
-                            .into_iter()
-                            .filter_map(|part| ::roundhouse::multipart::temp_file(
-                                part, #max, #accept, #name, &mut errors,
-                            ))
-                            .collect(),
-                    )
+                    ::core::option::Option::Some(__values)
                 };
             },
             Kind::Text => quote! {
-                let mut __parts = ::roundhouse::multipart::take_parts(&mut parts, #name);
-                let #field = match __parts.into_iter().next() {
-                    Some(part) => ::roundhouse::multipart::text::<#ty>(
-                        part, #name, &mut errors,
-                    ),
-                    None => {
-                        ::roundhouse::multipart::missing(#name, &mut errors);
-                        ::core::option::Option::None
-                    }
-                };
+                let #field = ::roundhouse::multipart::require(
+                    fields
+                        .take_texts(#name)
+                        .into_iter()
+                        .next()
+                        .and_then(|bytes| ::roundhouse::multipart::parse_text::<#ty>(
+                            bytes, #name, &mut errors,
+                        )),
+                    #name,
+                    &mut errors,
+                );
             },
             Kind::OptionalText => {
                 let target = text_target(&spec.kind, ty);
                 quote! {
-                    let #field = ::roundhouse::multipart::take_parts(&mut parts, #name)
+                    let #field = fields
+                        .take_texts(#name)
                         .into_iter()
                         .next()
-                        .and_then(|part| ::roundhouse::multipart::text::<#target>(
-                            part, #name, &mut errors,
+                        .and_then(|bytes| ::roundhouse::multipart::parse_text::<#target>(
+                            bytes, #name, &mut errors,
                         ));
                 }
             }
             Kind::Texts => {
                 let target = text_target(&spec.kind, ty);
                 quote! {
-                    let #field: ::std::vec::Vec<#target> =
-                        ::roundhouse::multipart::take_parts(&mut parts, #name)
-                            .into_iter()
-                            .filter_map(|part| ::roundhouse::multipart::text::<#target>(
-                                part, #name, &mut errors,
-                            ))
-                            .collect();
+                    let #field: ::std::vec::Vec<#target> = fields
+                        .take_texts(#name)
+                        .into_iter()
+                        .filter_map(|bytes| ::roundhouse::multipart::parse_text::<#target>(
+                            bytes, #name, &mut errors,
+                        ))
+                        .collect();
                 }
             }
             Kind::OptionalTexts => {
                 let target = text_target(&spec.kind, ty);
                 quote! {
-                    let __parts = ::roundhouse::multipart::take_parts(&mut parts, #name);
+                    let __values = fields.take_texts(#name);
                     let #field: ::core::option::Option<::std::vec::Vec<#target>> =
-                        if __parts.is_empty() {
+                        if __values.is_empty() {
                             ::core::option::Option::None
                         } else {
                             ::core::option::Option::Some(
-                                __parts
+                                __values
                                     .into_iter()
-                                    .filter_map(|part| ::roundhouse::multipart::text::<#target>(
-                                        part, #name, &mut errors,
+                                    .filter_map(|bytes| ::roundhouse::multipart::parse_text::<#target>(
+                                        bytes, #name, &mut errors,
                                     ))
                                     .collect(),
                             )
@@ -264,19 +261,8 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         };
         bindings.push(binding);
 
-        let is_file = matches!(
-            spec.kind,
-            Kind::File
-                | Kind::OptionalFile
-                | Kind::Files
-                | Kind::OptionalFiles
-                | Kind::TempFile
-                | Kind::OptionalTempFile
-                | Kind::TempFiles
-                | Kind::OptionalTempFiles
-        );
         let mut extensions = TokenStream::new();
-        if is_file {
+        if spec.kind.is_file() {
             if let Some(expr) = &spec.max_bytes {
                 extensions.extend(quote! {
                     let schema = ::roundhouse::doc::schema::with_extension(
@@ -324,15 +310,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         properties.push(quote! {
             builder = builder.property(#name, #schema);
         });
-        if !matches!(
-            spec.kind,
-            Kind::OptionalFile
-                | Kind::OptionalTempFile
-                | Kind::OptionalFiles
-                | Kind::OptionalTempFiles
-                | Kind::OptionalText
-                | Kind::OptionalTexts
-        ) {
+        if required_field {
             required.push(quote! {
                 builder = builder.required(#name);
             });
@@ -347,33 +325,21 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         }
     }
 
-    let deny = if deny_unknown {
-        quote! {
-            if !parts.is_empty() {
-                for part in &parts {
-                    errors.push(::roundhouse::validate::ValidationError::new(
-                        ::roundhouse::validate::pointer("", &part.name),
-                        "unknown",
-                        "unknown multipart field",
-                    ));
-                }
-            }
-        }
-    } else {
-        quote!()
-    };
-
     Ok(quote! {
         impl ::roundhouse::multipart::MultipartForm for #ident {
-            fn from_parts(mut parts: ::std::vec::Vec<::roundhouse::multipart::Part>)
-                -> ::core::result::Result<Self, ::roundhouse::multipart::MultipartProblem>
-            {
+            fn fields() -> &'static [::roundhouse::multipart::FieldSpec] {
+                const FIELDS: &[::roundhouse::multipart::FieldSpec] = &[#(#field_specs),*];
+                FIELDS
+            }
+
+            fn from_fields(
+                fields: &mut ::roundhouse::multipart::FieldValues,
+            ) -> ::core::result::Result<Self, ::roundhouse::multipart::MultipartProblem> {
                 let mut errors = ::roundhouse::validate::ValidationErrors::new();
                 #(#bindings)*
-                #deny
                 if !errors.is_empty() {
                     return ::core::result::Result::Err(
-                        ::roundhouse::multipart::problem(errors)
+                        ::roundhouse::multipart::MultipartProblem::from_validation(errors),
                     );
                 }
                 ::core::result::Result::Ok(Self { #(#constructor_fields),* })

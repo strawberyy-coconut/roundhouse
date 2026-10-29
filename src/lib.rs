@@ -33,7 +33,7 @@ pub use auth::{Auth, AuthDoc, AuthScheme, AuthScopes, Authenticate, NoScopes, Se
 pub use axum::response::sse::{Event, KeepAlive, Sse};
 pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams};
 pub use extract::{Form, Json, Path, Query};
-pub use multipart::{FilePart, Multipart, MultipartForm, Part, TempFile};
+pub use multipart::{FilePart, Multipart, MultipartForm, MultipartProblem, TempFile};
 pub use problem::Problem;
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
 pub use router::{App, Built, ResolvedRoute};

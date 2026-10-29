@@ -138,9 +138,14 @@ cargo run -q --bin roundhouse -- openapi -p validation-example --format 3.0
 - **Extractor docs** — `#[derive(QueryParams)]` and `#[derive(PathParams)]` publish query/path
   parameters with the same `#[schema(..)]` constraints the runtime enforces. Auth publishes the
   scheme, 401/403 responses, `WWW-Authenticate`, optional-auth alternatives, and scope metadata.
-- **Files and streams** — `#[derive(Multipart)]` with `FilePart`, `TempFile`, repeated text/file
-  fields, per-part `max_bytes`/`accept`, one-pass extraction, and RFC 9457 responses; plus
-  `Attachment<T>`, `File`, and axum's `Sse` with documented content types and headers. `App::max_body` sets the global body limit; multipart parts also enforce their own `max_bytes`.
+- **Files and streams** — `#[derive(Multipart)]` with a generated field table: parts are routed by
+  name as they arrive, `FilePart` buffers under the field's `max_bytes`, `TempFile` streams straight
+  to an already-unlinked file (with `Read`/`Seek`), duplicate single-valued fields are a `400`,
+  unknown fields are ignored unless `#[multipart(deny_unknown)]`, and `accept` matches the media
+  type (parameters and case stripped). Missing required fields collect into one `Problem`; limits
+  are decided while reading and narrow the app's `max_body`, with `App::max_parts` bounding the
+  part count. Plus `Attachment<T>`, `File`, and axum's `Sse` with documented content types and
+  headers.
 - **Module-local tables** — a leaf module can keep its `routes!` table beside its handler and needs
   no `mount!`; only the module that owns the subtree declares the prefix. Descendants inherit its
   prefix, tags, security, and layers.

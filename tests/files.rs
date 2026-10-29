@@ -288,3 +288,87 @@ async fn deny_unknown_rejects_extra_multipart_fields() {
     assert_eq!(value["errors"][0]["pointer"], "/extra");
     assert_eq!(value["errors"][0]["code"], "unknown");
 }
+
+#[tokio::test]
+async fn duplicate_single_valued_fields_are_rejected() {
+    let app = app();
+    let body = multipart(
+        "test-boundary",
+        &[
+            ("file", Some("a.txt"), Some("text/plain"), "hello"),
+            ("file", Some("b.txt"), Some("text/plain"), "again"),
+        ],
+    );
+    let response = send_multipart(&app, &body).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let value = body_json(response).await;
+    assert_eq!(value["errors"][0]["pointer"], "/file");
+    assert_eq!(value["errors"][0]["code"], "duplicate_field");
+}
+
+#[tokio::test]
+async fn zero_byte_files_are_distinct_from_missing_ones() {
+    let app = app();
+    let body = multipart(
+        "test-boundary",
+        &[("file", Some("empty.txt"), Some("text/plain"), "")],
+    );
+    let response = send_multipart(&app, &body).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let value = body_json(response).await;
+    assert_eq!(value["file_name"], "empty.txt");
+    assert_eq!(value["file_len"], 0);
+}
+
+#[tokio::test]
+async fn accept_matches_the_media_type_with_parameters() {
+    let app = app();
+    let body = multipart(
+        "test-boundary",
+        &[
+            ("file", Some("a.txt"), Some("text/plain"), "hello"),
+            (
+                "thumbnail",
+                Some("thumb.txt"),
+                Some("text/plain; charset=utf-8"),
+                "tiny",
+            ),
+        ],
+    );
+    let response = send_multipart(&app, &body).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_non_multipart_content_type_is_415() {
+    let app = app();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/files/upload")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from("{}"))
+        .unwrap();
+    let response = app.oneshot(request).await;
+    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    let value = body_json(response).await;
+    assert_eq!(value["status"], 415);
+}
+
+#[tokio::test]
+async fn max_parts_bounds_the_part_count() {
+    let app = roundhouse::App::new(State)
+        .scope(module_path!())
+        .max_parts(1)
+        .build();
+    let body = multipart(
+        "test-boundary",
+        &[
+            ("file", Some("a.txt"), Some("text/plain"), "hello"),
+            ("tags", None, None, "rust"),
+        ],
+    );
+    let response = send_multipart(&app, &body).await;
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    let value = body_json(response).await;
+    assert_eq!(value["errors"][0]["code"], "max_parts");
+}
