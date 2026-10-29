@@ -773,3 +773,45 @@ pub fn text_list_schema<T: ApiSchema>(components: &mut Components) -> RefOr<Sche
     T::register(components);
     roundhouse_schema::schema::array(T::schema()).into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn temp_file_reads_from_the_current_position_and_seeks() {
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(b"hello").unwrap();
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut temp = TempFile { file, len: 5 };
+
+        let mut buf = [0u8; 3];
+        assert_eq!(temp.read(&mut buf).unwrap(), 3);
+        assert_eq!(&buf, b"hel");
+        assert_eq!(temp.read(&mut buf).unwrap(), 2);
+        assert_eq!(&buf[..2], b"lo");
+        assert_eq!(temp.read(&mut buf).unwrap(), 0);
+
+        temp.seek(SeekFrom::Start(1)).unwrap();
+        let mut rest = String::new();
+        temp.read_to_string(&mut rest).unwrap();
+        assert_eq!(rest, "ello");
+    }
+
+    #[test]
+    fn accept_matches_the_media_type_only() {
+        assert!(media_type_matches(
+            &["text/plain"],
+            "text/plain; charset=utf-8"
+        ));
+        assert!(media_type_matches(&["Text/Plain"], "text/plain"));
+        assert!(!media_type_matches(&["text/plain"], "application/json"));
+    }
+
+    #[test]
+    fn file_names_are_reduced_to_a_basename() {
+        assert_eq!(sanitize_file_name("../../etc/passwd".to_string()), "passwd");
+        assert_eq!(sanitize_file_name("..".to_string()), "file");
+        assert_eq!(sanitize_file_name("a\0b.txt".to_string()), "ab.txt");
+    }
+}

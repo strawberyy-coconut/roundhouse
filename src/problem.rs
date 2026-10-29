@@ -125,6 +125,19 @@ impl From<ValidationErrors> for Problem {
     }
 }
 
+impl From<crate::multipart::MultipartProblem> for Problem {
+    fn from(value: crate::multipart::MultipartProblem) -> Self {
+        Self {
+            type_uri: value.type_uri,
+            title: value.title,
+            status: value.status,
+            detail: value.detail,
+            errors: value.errors,
+            instance: value.instance,
+        }
+    }
+}
+
 /// A response helper used by [`Problem`] and documented responses.
 pub fn problem_schema() -> serde_json::Value {
     serde_json::json!({

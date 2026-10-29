@@ -217,7 +217,5 @@ conformance harness, the golden document, and the hand-written-vs-discovered dif
 ## Out of scope
 
 Explicit non-goals remain callbacks, links, webhooks, XML, GraphQL, client codegen, TLS termination,
-and dependency injection. The response validator covers the document subset this crate emits
-(types, `$ref`, required/properties, arrays, `oneOf`/`allOf`/`anyOf`, and additional-properties
-policy); it is intentionally not a general JSON Schema engine. The 3.0 downgrade is best-effort for
-the constructs emitted here.
+and dependency injection. Response validation executes the emitted JSON Schema (2020-12) through
+`jsonschema`; the 3.0 downgrade is best-effort for the constructs emitted here.
