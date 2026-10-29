@@ -214,6 +214,21 @@ let json = built.openapi_json();
 std::fs::write("target/openapi.json", json)?;
 ```
 
+### Migrating from utoipa-axum
+
+`roundhouse-codemod` rewrites the handler half of the utoipa-axum idiom mechanically:
+`#[utoipa::path(..)]` becomes `#[handler]`, the attribute's method/path/summary/tags become a
+`routes!` table in the same module, and `.routes(routes!(..))` is removed from the router
+expression. It preserves `path`, `context_path`, `operation_id`, `summary`, `description`, `tag`
+and `tags`; responses, request bodies, params and security are reported for manual migration.
+
+```console
+cargo run -p roundhouse-codemod -- --check src
+cargo run -p roundhouse-codemod -- src
+```
+
+The router construction itself is a one-time `App::new(..)`/`mount!` rewrite.
+
 ## What works (v0.1)
 
 - **Discovery** — `routes!` and `mount!` submit const-evaluable records through `inventory`;

@@ -1,0 +1,13 @@
+[package]
+name = "roundhouse-codemod"
+version = "0.1.1"
+edition = "2024"
+description = "Migrate utoipa-axum handlers to roundhouse #[handler] and routes! tables."
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+prettyplease = "0.2"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "visit-mut"] }
