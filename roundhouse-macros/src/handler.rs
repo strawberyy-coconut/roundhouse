@@ -6,6 +6,7 @@ use syn::{FnArg, ItemFn, ReturnType, Token, Type};
 use crate::util::{outer_ident, single_generic};
 
 pub fn expand(item: ItemFn) -> TokenStream {
+    let krate = crate::util::krate();
     if !item.sig.generics.params.is_empty() {
         return syn::Error::new_spanned(
             &item.sig.generics,
@@ -34,29 +35,29 @@ pub fn expand(item: ItemFn) -> TokenStream {
         if let Some((auth, scopes, optional)) = auth_types(&ty) {
             if state_type.is_none() {
                 state_type = Some(syn::parse_quote!(
-                    <#auth as ::roundhouse::auth::AuthScheme>::State
+                    <#auth as #krate::auth::AuthScheme>::State
                 ));
             }
             let scopes = match scopes {
                 Some(scopes) => quote!(#scopes),
-                None => quote!(::roundhouse::auth::NoScopes),
+                None => quote!(#krate::auth::NoScopes),
             };
             statements.push(quote! {
-                docs.schemes.push(::roundhouse::auth::auth_scheme::<#auth>());
+                docs.schemes.push(#krate::auth::auth_scheme::<#auth>());
             });
             if optional {
                 statements.push(quote! {
                     docs.optional_auth.push(
-                        ::roundhouse::auth::auth_doc::<#auth, #scopes>()
+                        #krate::auth::auth_doc::<#auth, #scopes>()
                     );
                 });
             } else {
                 statements.push(quote! {
                     docs.required_auth.push(
-                        ::roundhouse::auth::auth_doc::<#auth, #scopes>()
+                        #krate::auth::auth_doc::<#auth, #scopes>()
                     );
                     docs.failures.extend(
-                        ::roundhouse::doc::auth_failures::<#auth>()
+                        #krate::doc::auth_failures::<#auth>()
                     );
                 });
             }
@@ -72,15 +73,15 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 if let Some(inner) = single_generic(&ty) {
                     path_type = Some(inner.clone());
                     statements.push(quote! {
-                        docs.params.extend(::roundhouse::doc::path_params::<#inner>());
+                        docs.params.extend(#krate::doc::path_params::<#inner>());
                         docs.path_schema = ::core::option::Option::Some(
-                            <#inner as ::roundhouse::doc::PathNames>::scalar_schema,
+                            <#inner as #krate::doc::PathNames>::scalar_schema,
                         );
                     });
                 }
                 if !handled {
                     statements.push(quote! {
-                        docs.failures.extend(::roundhouse::doc::path_failures());
+                        docs.failures.extend(#krate::doc::path_failures());
                     });
                 }
             }
@@ -88,13 +89,13 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 if let Some(inner) = single_generic(&ty) {
                     statements.push(quote! {
                         docs.params.extend(
-                            ::roundhouse::doc::stored_query_params_for::<#inner>(components)
+                            #krate::doc::stored_query_params_for::<#inner>(components)
                         );
                     });
                 }
                 if !handled {
                     statements.push(quote! {
-                        docs.failures.extend(::roundhouse::doc::query_failures());
+                        docs.failures.extend(#krate::doc::query_failures());
                     });
                 }
             }
@@ -104,7 +105,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     if let Some(inner) = single_generic(&ty) {
                         statements.push(quote! {
                             docs.body = ::core::option::Option::Some(
-                                ::roundhouse::doc::json_body::<#inner>(components)
+                                #krate::doc::json_body::<#inner>(components)
                             );
                             docs.body_type = ::core::option::Option::Some(
                                 || ::core::any::TypeId::of::<#inner>()
@@ -113,7 +114,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     }
                     if !handled {
                         statements.push(quote! {
-                            docs.failures.extend(::roundhouse::doc::json_failures());
+                            docs.failures.extend(#krate::doc::json_failures());
                         });
                     }
                 } else {
@@ -126,7 +127,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     if let Some(inner) = single_generic(&ty) {
                         statements.push(quote! {
                             docs.body = ::core::option::Option::Some(
-                                ::roundhouse::doc::multipart_body::<#inner>(components)
+                                #krate::doc::multipart_body::<#inner>(components)
                             );
                             docs.body_type = ::core::option::Option::Some(
                                 || ::core::any::TypeId::of::<#inner>()
@@ -135,7 +136,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     }
                     if !handled {
                         statements.push(quote! {
-                            docs.failures.extend(::roundhouse::doc::multipart_failures());
+                            docs.failures.extend(#krate::doc::multipart_failures());
                         });
                     }
                 } else {
@@ -148,7 +149,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     if let Some(inner) = single_generic(&ty) {
                         statements.push(quote! {
                             docs.body = ::core::option::Option::Some(
-                                ::roundhouse::doc::form_body::<#inner>(components)
+                                #krate::doc::form_body::<#inner>(components)
                             );
                             docs.body_type = ::core::option::Option::Some(
                                 || ::core::any::TypeId::of::<#inner>()
@@ -157,7 +158,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     }
                     if !handled {
                         statements.push(quote! {
-                            docs.failures.extend(::roundhouse::doc::form_failures());
+                            docs.failures.extend(#krate::doc::form_failures());
                         });
                     }
                 } else {
@@ -172,12 +173,12 @@ pub fn expand(item: ItemFn) -> TokenStream {
             "Bytes" | "Body" => {
                 body_count += 1;
                 statements.push(quote! {
-                    docs.body = ::core::option::Option::Some(::roundhouse::doc::binary_body());
+                    docs.body = ::core::option::Option::Some(#krate::doc::binary_body());
                 });
             }
             "Extension" if !handled => {
                 statements.push(quote! {
-                    docs.failures.extend(::roundhouse::doc::extension_failures());
+                    docs.failures.extend(#krate::doc::extension_failures());
                 });
             }
             _ => {}
@@ -199,7 +200,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
     statements.extend(response_statements);
 
     let path_names = match &path_type {
-        Some(ty) => quote!(<#ty as ::roundhouse::doc::PathNames>::NAMES),
+        Some(ty) => quote!(<#ty as #krate::doc::PathNames>::NAMES),
         None => quote!(&[]),
     };
     let state_ty = match &state_type {
@@ -219,16 +220,16 @@ pub fn expand(item: ItemFn) -> TokenStream {
         #[allow(non_upper_case_globals)]
         #vis const #marker_value: #marker_type = #marker_type;
 
-        impl ::roundhouse::doc::HandlerMeta for #marker_type {
+        impl #krate::doc::HandlerMeta for #marker_type {
             type State = #state_ty;
             const HAS_STATE: bool = #has_state;
             const PATH_NAMES: &'static [&'static str] = #path_names;
 
             fn docs(
                 &self,
-                components: &mut ::roundhouse::utoipa::openapi::schema::Components,
-            ) -> ::roundhouse::doc::HandlerDocs {
-                let mut docs = ::roundhouse::doc::HandlerDocs::default();
+                components: &mut #krate::utoipa::openapi::schema::Components,
+            ) -> #krate::doc::HandlerDocs {
+                let mut docs = #krate::doc::HandlerDocs::default();
                 #(#statements)*
                 docs
             }
@@ -290,9 +291,10 @@ fn generic_types(ty: &Type) -> Vec<Type> {
 }
 
 fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenStream>> {
+    let krate = crate::util::krate();
     let ReturnType::Type(_, ty) = output else {
         return Ok(vec![quote! {
-            docs.responses.push(::roundhouse::doc::ResponseDoc::new(204, "No Content"));
+            docs.responses.push(#krate::doc::ResponseDoc::new(204, "No Content"));
         }]);
     };
 
@@ -303,7 +305,7 @@ fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenStream>> {
         let mut statements = ok_statements(ok, 200)?;
         statements.push(quote! {
             let __before = docs.responses.len();
-            docs.responses.extend(::roundhouse::doc::stored_responses_for::<#err>(components));
+            docs.responses.extend(#krate::doc::stored_responses_for::<#err>(components));
             if docs.responses.len() == __before {
                 docs.undocumented_error = ::core::option::Option::Some(
                     ::core::any::type_name::<#err>(),
@@ -317,12 +319,13 @@ fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenStream>> {
 }
 
 fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
+    let krate = crate::util::krate();
     if let Type::Tuple(tuple) = ty {
         if tuple.elems.is_empty() {
             // Axum responds `200 OK` for `()`, so say that rather than promising a status the
             // runtime does not produce.
             return Ok(vec![quote! {
-                docs.responses.push(::roundhouse::doc::ResponseDoc::new(200, "OK"));
+                docs.responses.push(#krate::doc::ResponseDoc::new(200, "OK"));
             }]);
         }
         if tuple.elems.len() >= 2 {
@@ -338,7 +341,7 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
                 let mut statements = ok_statements(body, 0)?;
                 if statements.is_empty() {
                     statements.push(quote! {
-                        docs.responses.push(::roundhouse::doc::ResponseDoc::default_response());
+                        docs.responses.push(#krate::doc::ResponseDoc::default_response());
                     });
                 }
                 return Ok(statements);
@@ -352,7 +355,7 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
     match kind.as_deref() {
         Some("Json") if !is_wrapper_type(ty) => Ok(vec![quote! {
             docs.unverified = true;
-            docs.responses.push(::roundhouse::doc::ResponseDoc::new(#status_lit, "OK"));
+            docs.responses.push(#krate::doc::ResponseDoc::new(#status_lit, "OK"));
         }]),
         Some("Json") => {
             let inner = single_generic(ty).ok_or_else(|| {
@@ -360,7 +363,7 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
             })?;
             Ok(vec![quote! {
                 docs.responses.extend(
-                    ::roundhouse::doc::json_response::<#inner>(components, #status_lit)
+                    #krate::doc::json_response::<#inner>(components, #status_lit)
                 );
             }])
         }
@@ -368,25 +371,25 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
             let inner = single_generic(ty)
                 .ok_or_else(|| syn::Error::new_spanned(ty, "expected Attachment<T>"))?;
             Ok(vec![quote! {
-                docs.responses.push(::roundhouse::attachment::attachment_response::<#inner>(#status_lit));
+                docs.responses.push(#krate::attachment::attachment_response::<#inner>(#status_lit));
             }])
         }
         Some("File") if is_wrapper_type(ty) => Ok(vec![quote! {
-            docs.responses.push(::roundhouse::attachment::file_response(#status_lit));
+            docs.responses.push(#krate::attachment::file_response(#status_lit));
         }]),
         Some("Sse") if is_wrapper_type(ty) => Ok(vec![quote! {
-            docs.responses.push(::roundhouse::attachment::sse_response(#status_lit));
+            docs.responses.push(#krate::attachment::sse_response(#status_lit));
         }]),
         Some("Html") if !is_wrapper_type(ty) => Ok(vec![quote! {
             docs.unverified = true;
-            docs.responses.push(::roundhouse::doc::ResponseDoc::new(#status_lit, "OK"));
+            docs.responses.push(#krate::doc::ResponseDoc::new(#status_lit, "OK"));
         }]),
         Some("Html") => {
             let inner = single_generic(ty).ok_or_else(|| {
                 syn::Error::new_spanned(ty, "expected `Html<T>` as the response body")
             })?;
             Ok(vec![quote! {
-                docs.responses.push(::roundhouse::doc::text_response::<#inner>(
+                docs.responses.push(#krate::doc::text_response::<#inner>(
                     components,
                     #status_lit,
                     "text/html",
@@ -394,29 +397,29 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
             }])
         }
         Some("StatusCode") => Ok(vec![quote! {
-            docs.responses.push(::roundhouse::doc::ResponseDoc::default_response());
+            docs.responses.push(#krate::doc::ResponseDoc::default_response());
         }]),
         Some("String") => Ok(vec![quote! {
-            docs.responses.push(::roundhouse::doc::plain_text_response(#status_lit));
+            docs.responses.push(#krate::doc::plain_text_response(#status_lit));
         }]),
         Some("Vec") => {
             if single_generic(ty)
                 .is_some_and(|inner| matches!(outer_ident(&inner).as_deref(), Some("u8")))
             {
                 Ok(vec![quote! {
-                    docs.responses.push(::roundhouse::doc::bytes_response(#status_lit));
+                    docs.responses.push(#krate::doc::bytes_response(#status_lit));
                 }])
             } else {
                 let inner = single_generic(ty).unwrap();
                 Ok(vec![quote! {
                     docs.responses.extend(
-                        ::roundhouse::doc::json_response::<#inner>(components, #status_lit)
+                        #krate::doc::json_response::<#inner>(components, #status_lit)
                     );
                 }])
             }
         }
         Some("Bytes") | Some("Body") => Ok(vec![quote! {
-            docs.responses.push(::roundhouse::doc::bytes_response(#status_lit));
+            docs.responses.push(#krate::doc::bytes_response(#status_lit));
         }]),
         Some("Option") => Ok(Vec::new()),
         Some("Infallible") => Ok(Vec::new()),
@@ -425,7 +428,7 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
                 && matches!(outer_ident(&reference.elem).as_deref(), Some("str"))
             {
                 return Ok(vec![quote! {
-                    docs.responses.push(::roundhouse::doc::plain_text_response(#status_lit));
+                    docs.responses.push(#krate::doc::plain_text_response(#status_lit));
                 }]);
             }
             if let Type::ImplTrait(_) = ty {
@@ -433,7 +436,7 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
             }
             Ok(vec![quote! {
                 docs.responses.extend(
-                    ::roundhouse::doc::stored_responses_for::<#ty>(components)
+                    #krate::doc::stored_responses_for::<#ty>(components)
                 );
             }])
         }

@@ -122,6 +122,7 @@ fn parse_string_list(input: ParseStream<'_>) -> Result<Vec<LitStr>> {
 }
 
 pub fn expand(input: MountInput) -> TokenStream {
+    let krate = crate::util::krate();
     let prefix = input
         .prefix
         .as_ref()
@@ -136,17 +137,17 @@ pub fn expand(input: MountInput) -> TokenStream {
     let doc_value = match &input.doc {
         Some(expr) => {
             quote! {
-                fn __roundhouse_mount_doc() -> ::roundhouse::doc::layer::LayerDoc {
+                fn __roundhouse_mount_doc() -> #krate::doc::layer::LayerDoc {
                     #expr
                 }
                 const __ROUNDHOUSE_DOC: ::core::option::Option<
-                    fn() -> ::roundhouse::doc::layer::LayerDoc,
+                    fn() -> #krate::doc::layer::LayerDoc,
                 > = ::core::option::Option::Some(__roundhouse_mount_doc);
             }
         }
         None => quote! {
             const __ROUNDHOUSE_DOC: ::core::option::Option<
-                fn() -> ::roundhouse::doc::layer::LayerDoc,
+                fn() -> #krate::doc::layer::LayerDoc,
             > = ::core::option::Option::None;
         },
     };
@@ -165,8 +166,8 @@ pub fn expand(input: MountInput) -> TokenStream {
             };
             quote! {
                 fn __roundhouse_mount_layer(
-                    router: ::roundhouse::axum::Router,
-                ) -> ::roundhouse::axum::Router {
+                    router: #krate::axum::Router,
+                ) -> #krate::axum::Router {
                     #body
                 }
             }
@@ -183,8 +184,8 @@ pub fn expand(input: MountInput) -> TokenStream {
             #layer
             #doc_value
 
-            ::roundhouse::inventory::submit! {
-                ::roundhouse::registry::MountRecord::__new(
+            #krate::inventory::submit! {
+                #krate::registry::MountRecord::__new(
                     module_path!(),
                     file!(),
                     #line,

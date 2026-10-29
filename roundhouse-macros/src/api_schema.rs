@@ -254,6 +254,7 @@ pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
 }
 
 pub fn expand(input: DeriveInput) -> Result<TokenStream> {
+    let krate = crate::util::krate();
     let ident = input.ident.clone();
     let container_serde = serde_container(&input.attrs)?;
     let container_schema = schema_attrs(&input.attrs)?;
@@ -265,7 +266,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             quote!(#lit.to_string())
         }
         None => quote! {
-            ::roundhouse::doc::component_name(#simple_lit, module_path!())
+            #krate::doc::component_name(#simple_lit, module_path!())
         },
     };
 
@@ -274,7 +275,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         if let syn::GenericParam::Type(param) = param {
             param
                 .bounds
-                .push(syn::parse_quote!(::roundhouse::doc::ApiSchema));
+                .push(syn::parse_quote!(#krate::doc::ApiSchema));
         }
     }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -293,11 +294,11 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let (schema_body, register_block) = if container_schema.via_utoipa {
         (
             quote! {
-                <Self as ::roundhouse::utoipa::PartialSchema>::schema()
+                <Self as #krate::utoipa::PartialSchema>::schema()
             },
             quote! {
                 let mut schemas = ::std::vec::Vec::new();
-                <Self as ::roundhouse::utoipa::ToSchema>::schemas(&mut schemas);
+                <Self as #krate::utoipa::ToSchema>::schemas(&mut schemas);
                 for (name, schema) in schemas {
                     components.schemas.entry(name).or_insert(schema);
                 }
@@ -308,7 +309,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             quote! {
                 {
                     let name = #name_expr;
-                    ::roundhouse::doc::schema::r#ref(name)
+                    #krate::doc::schema::r#ref(name)
                 }
             },
             quote! {
@@ -318,7 +319,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 }
                 components.schemas.insert(
                     name.clone(),
-                    ::roundhouse::doc::schema::any_value(),
+                    #krate::doc::schema::any_value(),
                 );
                 #register_body
             },
@@ -334,8 +335,8 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             None => quote!(::core::option::Option::None),
         };
         quote! {
-            ::roundhouse::inventory::submit! {
-                ::roundhouse::registry::ComponentTypeRecord::__new(
+            #krate::inventory::submit! {
+                #krate::registry::ComponentTypeRecord::__new(
                     #simple_lit,
                     module_path!(),
                     || ::core::any::TypeId::of::<#ident #ty_generics>(),
@@ -348,15 +349,15 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     Ok(quote! {
         #component_record
 
-        impl #impl_generics ::roundhouse::doc::ApiSchema for #ident #ty_generics #where_clause {
-            fn schema() -> ::roundhouse::utoipa::openapi::RefOr<
-                ::roundhouse::utoipa::openapi::schema::Schema,
+        impl #impl_generics #krate::doc::ApiSchema for #ident #ty_generics #where_clause {
+            fn schema() -> #krate::utoipa::openapi::RefOr<
+                #krate::utoipa::openapi::schema::Schema,
             > {
                 #schema_body
             }
 
             fn register(
-                components: &mut ::roundhouse::utoipa::openapi::schema::Components,
+                components: &mut #krate::utoipa::openapi::schema::Components,
             ) {
                 #register_block
             }
@@ -364,7 +365,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             fn validate_at(
                 &self,
                 pointer: &str,
-                errors: &mut ::roundhouse::validate::ValidationErrors,
+                errors: &mut #krate::validate::ValidationErrors,
             ) {
                 #validate_body
             }
@@ -373,6 +374,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 }
 
 fn struct_parts(fields: &Fields, container: &SerdeContainer) -> Result<(TokenStream, TokenStream)> {
+    let krate = crate::util::krate();
     let named = named_fields(fields)?;
     let mut register_calls = Vec::new();
     let mut validations = Vec::new();
@@ -382,7 +384,7 @@ fn struct_parts(fields: &Fields, container: &SerdeContainer) -> Result<(TokenStr
         let field_serde = serde_field(&field.attrs)?;
         let field_schema = schema_attrs(&field.attrs)?;
         register_calls.push(quote! {
-            <#ty as ::roundhouse::doc::ApiSchema>::register(components);
+            <#ty as #krate::doc::ApiSchema>::register(components);
         });
         if field_serde.skip {
             continue;
@@ -409,8 +411,8 @@ fn struct_parts(fields: &Fields, container: &SerdeContainer) -> Result<(TokenStr
     let register_body = quote! {
         #(#register_calls)*
         {
-            let base: ::roundhouse::utoipa::openapi::RefOr<
-                ::roundhouse::utoipa::openapi::schema::Schema,
+            let base: #krate::utoipa::openapi::RefOr<
+                #krate::utoipa::openapi::schema::Schema,
             > = #object;
             components.schemas.insert(name.clone(), base);
         }
@@ -423,6 +425,7 @@ fn enum_parts(
     data: &syn::DataEnum,
     container: &SerdeContainer,
 ) -> Result<(TokenStream, TokenStream)> {
+    let krate = crate::util::krate();
     if container.tag.is_none()
         && !container.untagged
         && data
@@ -444,13 +447,13 @@ fn enum_parts(
         }
         let register_body = quote! {
             {
-                let mut builder = ::roundhouse::doc::schema::object()
-                    .schema_type(::roundhouse::utoipa::openapi::schema::Type::String);
+                let mut builder = #krate::doc::schema::object()
+                    .schema_type(#krate::utoipa::openapi::schema::Type::String);
                 builder = builder.enum_values(Some(::std::vec![
-                    #(::roundhouse::serde_json::json!(#values)),*
+                    #(#krate::serde_json::json!(#values)),*
                 ]));
-                let base: ::roundhouse::utoipa::openapi::RefOr<
-                    ::roundhouse::utoipa::openapi::schema::Schema,
+                let base: #krate::utoipa::openapi::RefOr<
+                    #krate::utoipa::openapi::schema::Schema,
                 > = builder.into();
                 components.schemas.insert(name.clone(), base);
             }
@@ -466,7 +469,7 @@ fn enum_parts(
         for field in variant.fields.iter() {
             let ty = &field.ty;
             register_calls.push(quote! {
-                <#ty as ::roundhouse::doc::ApiSchema>::register(components);
+                <#ty as #krate::doc::ApiSchema>::register(components);
             });
         }
         let variant_serde = serde_field(&variant.attrs)?;
@@ -488,21 +491,21 @@ fn enum_parts(
                 let content_lit = LitStr::new(content, variant.ident.span());
                 if matches!(variant.fields, Fields::Unit) {
                     quote! {
-                        ::roundhouse::doc::schema::object_with(
+                        #krate::doc::schema::object_with(
                             ::std::vec![(
                                 #tag_lit.to_string(),
-                                ::roundhouse::doc::schema::string_enum(#variant_lit),
+                                #krate::doc::schema::string_enum(#variant_lit),
                             )],
                             ::std::vec![#tag_lit.to_string()],
                         )
                     }
                 } else {
                     quote! {
-                        ::roundhouse::doc::schema::object_with(
+                        #krate::doc::schema::object_with(
                             ::std::vec![
                                 (
                                     #tag_lit.to_string(),
-                                    ::roundhouse::doc::schema::string_enum(#variant_lit),
+                                    #krate::doc::schema::string_enum(#variant_lit),
                                 ),
                                 (#content_lit.to_string(), #payload),
                             ],
@@ -515,21 +518,21 @@ fn enum_parts(
                 }
             } else if matches!(variant.fields, Fields::Unit) {
                 quote! {
-                    ::roundhouse::doc::schema::object_with(
+                    #krate::doc::schema::object_with(
                         ::std::vec![(
                             #tag_lit.to_string(),
-                            ::roundhouse::doc::schema::string_enum(#variant_lit),
+                            #krate::doc::schema::string_enum(#variant_lit),
                         )],
                         ::std::vec![#tag_lit.to_string()],
                     )
                 }
             } else {
                 quote! {
-                    ::roundhouse::doc::schema::with_properties(
+                    #krate::doc::schema::with_properties(
                         #payload,
                         ::std::vec![(
                             #tag_lit.to_string(),
-                            ::roundhouse::doc::schema::string_enum(#variant_lit),
+                            #krate::doc::schema::string_enum(#variant_lit),
                         )],
                         ::std::vec![#tag_lit.to_string()],
                     )
@@ -537,7 +540,7 @@ fn enum_parts(
             }
         } else {
             quote! {
-                ::roundhouse::doc::schema::object_with(
+                #krate::doc::schema::object_with(
                     ::std::vec![(#variant_lit.to_string(), #payload)],
                     ::std::vec![#variant_lit.to_string()],
                 )
@@ -546,8 +549,8 @@ fn enum_parts(
 
         variants.push(quote! {
             {
-                let schema: ::roundhouse::utoipa::openapi::RefOr<
-                    ::roundhouse::utoipa::openapi::schema::Schema,
+                let schema: #krate::utoipa::openapi::RefOr<
+                    #krate::utoipa::openapi::schema::Schema,
                 > = #schema;
                 schema
             }
@@ -560,7 +563,7 @@ fn enum_parts(
             let tag = LitStr::new(tag, proc_macro2::Span::call_site());
             quote! {
                 one_of = one_of.discriminator(Some(
-                    ::roundhouse::utoipa::openapi::schema::Discriminator::new(#tag)
+                    #krate::utoipa::openapi::schema::Discriminator::new(#tag)
                 ));
             }
         }
@@ -570,11 +573,11 @@ fn enum_parts(
     let register_body = quote! {
         #(#register_calls)*
         {
-            let mut one_of = ::roundhouse::utoipa::openapi::schema::OneOfBuilder::new();
+            let mut one_of = #krate::utoipa::openapi::schema::OneOfBuilder::new();
             #(one_of = one_of.item(#variants);)*
             #discriminator
-            let base: ::roundhouse::utoipa::openapi::RefOr<
-                ::roundhouse::utoipa::openapi::schema::Schema,
+            let base: #krate::utoipa::openapi::RefOr<
+                #krate::utoipa::openapi::schema::Schema,
             > = one_of.into();
             components.schemas.insert(name.clone(), base);
         }
@@ -597,6 +600,7 @@ fn variant_validation(
     variant: &syn::Variant,
     container: &SerdeContainer,
 ) -> Result<TokenStream> {
+    let krate = crate::util::krate();
     let variant_ident = &variant.ident;
     let variant_serde = serde_field(&variant.attrs)?;
     let variant_name = match &variant_serde.rename {
@@ -616,7 +620,7 @@ fn variant_validation(
                 quote!(__roundhouse_variant_pointer),
                 quote! {
                     let __roundhouse_variant_pointer_store =
-                        ::roundhouse::validate::pointer(pointer, #content_lit);
+                        #krate::validate::pointer(pointer, #content_lit);
                     let __roundhouse_variant_pointer: &str =
                         &__roundhouse_variant_pointer_store;
                 },
@@ -631,7 +635,7 @@ fn variant_validation(
             quote!(__roundhouse_variant_pointer),
             quote! {
                 let __roundhouse_variant_pointer_store =
-                    ::roundhouse::validate::pointer(pointer, #variant_lit);
+                    #krate::validate::pointer(pointer, #variant_lit);
                 let __roundhouse_variant_pointer: &str =
                     &__roundhouse_variant_pointer_store;
             },
@@ -684,14 +688,14 @@ fn variant_validation(
                     quote!(#pointer_base)
                 } else {
                     quote! {
-                        &::roundhouse::validate::pointer(
+                        &#krate::validate::pointer(
                             #pointer_base,
                             &#field_index.to_string(),
                         )
                     }
                 };
                 validations.push(quote! {
-                    <#ty as ::roundhouse::doc::ApiSchema>::validate_at(
+                    <#ty as #krate::doc::ApiSchema>::validate_at(
                         #binding,
                         #pointer,
                         errors,
@@ -723,6 +727,7 @@ fn object_expr_with(
     container: &SerdeContainer,
     extra: Vec<(String, TokenStream)>,
 ) -> Result<TokenStream> {
+    let krate = crate::util::krate();
     let named = named_fields(fields)?;
     let mut properties = Vec::new();
     let mut required = Vec::new();
@@ -764,7 +769,7 @@ fn object_expr_with(
     let deny = if container.deny_unknown_fields {
         quote! {
             builder = builder.additional_properties(Some(
-                ::roundhouse::utoipa::openapi::schema::AdditionalProperties::FreeForm(false)
+                #krate::utoipa::openapi::schema::AdditionalProperties::FreeForm(false)
             ));
         }
     } else {
@@ -774,8 +779,8 @@ fn object_expr_with(
     let base = if flatten.is_empty() {
         quote! {
             {
-                let base: ::roundhouse::utoipa::openapi::RefOr<
-                    ::roundhouse::utoipa::openapi::schema::Schema,
+                let base: #krate::utoipa::openapi::RefOr<
+                    #krate::utoipa::openapi::schema::Schema,
                 > = builder.into();
                 base
             }
@@ -783,16 +788,16 @@ fn object_expr_with(
     } else {
         quote! {
             {
-                let base: ::roundhouse::utoipa::openapi::RefOr<
-                    ::roundhouse::utoipa::openapi::schema::Schema,
+                let base: #krate::utoipa::openapi::RefOr<
+                    #krate::utoipa::openapi::schema::Schema,
                 > = builder.into();
-                let mut all = ::roundhouse::utoipa::openapi::schema::AllOfBuilder::new();
+                let mut all = #krate::utoipa::openapi::schema::AllOfBuilder::new();
                 all = all.item(base);
                 #(all = all.item(#flatten);)*
-                let combined: ::roundhouse::utoipa::openapi::RefOr<
-                    ::roundhouse::utoipa::openapi::schema::Schema,
-                > = ::roundhouse::utoipa::openapi::RefOr::T(
-                    ::roundhouse::utoipa::openapi::schema::Schema::AllOf(all.build())
+                let combined: #krate::utoipa::openapi::RefOr<
+                    #krate::utoipa::openapi::schema::Schema,
+                > = #krate::utoipa::openapi::RefOr::T(
+                    #krate::utoipa::openapi::schema::Schema::AllOf(all.build())
                 );
                 combined
             }
@@ -801,7 +806,7 @@ fn object_expr_with(
 
     Ok(quote! {
         {
-            let mut builder = ::roundhouse::doc::schema::object();
+            let mut builder = #krate::doc::schema::object();
             #(#properties)*
             #(#required)*
             #deny
@@ -811,13 +816,14 @@ fn object_expr_with(
 }
 
 fn variant_payload(fields: &Fields, container: &SerdeContainer) -> Result<TokenStream> {
+    let krate = crate::util::krate();
     match fields {
         Fields::Unit => Ok(quote! {
             {
-                let schema: ::roundhouse::utoipa::openapi::RefOr<
-                    ::roundhouse::utoipa::openapi::schema::Schema,
-                > = ::roundhouse::utoipa::openapi::schema::Object::with_type(
-                    ::roundhouse::utoipa::openapi::schema::Type::Null
+                let schema: #krate::utoipa::openapi::RefOr<
+                    #krate::utoipa::openapi::schema::Schema,
+                > = #krate::utoipa::openapi::schema::Object::with_type(
+                    #krate::utoipa::openapi::schema::Type::Null
                 ).into();
                 schema
             }
@@ -827,15 +833,15 @@ fn variant_payload(fields: &Fields, container: &SerdeContainer) -> Result<TokenS
             if unnamed.unnamed.len() == 1 {
                 let ty = &unnamed.unnamed[0].ty;
                 Ok(quote! {
-                    <#ty as ::roundhouse::doc::ApiSchema>::schema()
+                    <#ty as #krate::doc::ApiSchema>::schema()
                 })
             } else {
                 Ok(quote! {
                     {
-                        let schema: ::roundhouse::utoipa::openapi::RefOr<
-                            ::roundhouse::utoipa::openapi::schema::Schema,
-                        > = ::roundhouse::utoipa::openapi::schema::Object::with_type(
-                            ::roundhouse::utoipa::openapi::schema::Type::Array
+                        let schema: #krate::utoipa::openapi::RefOr<
+                            #krate::utoipa::openapi::schema::Schema,
+                        > = #krate::utoipa::openapi::schema::Object::with_type(
+                            #krate::utoipa::openapi::schema::Type::Array
                         ).into();
                         schema
                     }
@@ -872,58 +878,59 @@ fn field_name(field: &syn::Field, serde: &SerdeField, rule: Option<RenameRule>) 
 }
 
 pub(crate) fn field_schema_expr(ty: &Type, constraints: &Constraints) -> TokenStream {
+    let krate = crate::util::krate();
     let mut calls = TokenStream::new();
     if let Some(value) = &constraints.min_length {
-        calls.extend(quote! { schema = ::roundhouse::doc::schema::with_min_length(schema, (#value) as usize); });
+        calls.extend(quote! { schema = #krate::doc::schema::with_min_length(schema, (#value) as usize); });
     }
     if let Some(value) = &constraints.max_length {
-        calls.extend(quote! { schema = ::roundhouse::doc::schema::with_max_length(schema, (#value) as usize); });
+        calls.extend(quote! { schema = #krate::doc::schema::with_max_length(schema, (#value) as usize); });
     }
     if let Some(value) = &constraints.pattern {
-        calls.extend(quote! { schema = ::roundhouse::doc::schema::with_pattern(schema, #value); });
+        calls.extend(quote! { schema = #krate::doc::schema::with_pattern(schema, #value); });
     }
     if let Some(value) = &constraints.minimum {
         calls.extend(
-            quote! { schema = ::roundhouse::doc::schema::with_minimum(schema, (#value) as f64); },
+            quote! { schema = #krate::doc::schema::with_minimum(schema, (#value) as f64); },
         );
     }
     if let Some(value) = &constraints.maximum {
         calls.extend(
-            quote! { schema = ::roundhouse::doc::schema::with_maximum(schema, (#value) as f64); },
+            quote! { schema = #krate::doc::schema::with_maximum(schema, (#value) as f64); },
         );
     }
     if let Some(value) = &constraints.exclusive_minimum {
-        calls.extend(quote! { schema = ::roundhouse::doc::schema::with_exclusive_minimum(schema, (#value) as f64); });
+        calls.extend(quote! { schema = #krate::doc::schema::with_exclusive_minimum(schema, (#value) as f64); });
     }
     if let Some(value) = &constraints.exclusive_maximum {
-        calls.extend(quote! { schema = ::roundhouse::doc::schema::with_exclusive_maximum(schema, (#value) as f64); });
+        calls.extend(quote! { schema = #krate::doc::schema::with_exclusive_maximum(schema, (#value) as f64); });
     }
     if let Some(value) = &constraints.min_items {
-        calls.extend(quote! { schema = ::roundhouse::doc::schema::with_min_items(schema, (#value) as usize); });
+        calls.extend(quote! { schema = #krate::doc::schema::with_min_items(schema, (#value) as usize); });
     }
     if let Some(value) = &constraints.max_items {
-        calls.extend(quote! { schema = ::roundhouse::doc::schema::with_max_items(schema, (#value) as usize); });
+        calls.extend(quote! { schema = #krate::doc::schema::with_max_items(schema, (#value) as usize); });
     }
     if constraints.unique_items {
-        calls.extend(quote! { schema = ::roundhouse::doc::schema::with_unique_items(schema); });
+        calls.extend(quote! { schema = #krate::doc::schema::with_unique_items(schema); });
     }
     if let Some(value) = &constraints.format {
-        calls.extend(quote! { schema = ::roundhouse::doc::schema::with_format(schema, #value); });
+        calls.extend(quote! { schema = #krate::doc::schema::with_format(schema, #value); });
     }
     if let Some(value) = &constraints.example {
         calls.extend(quote! {
-            schema = ::roundhouse::doc::schema::with_example(
+            schema = #krate::doc::schema::with_example(
                 schema,
-                ::roundhouse::serde_json::json!(#value),
+                #krate::serde_json::json!(#value),
             );
         });
     }
     if constraints.validate_with.is_some() {
         calls.extend(quote! {
-            schema = ::roundhouse::doc::schema::with_extension(
+            schema = #krate::doc::schema::with_extension(
                 schema,
                 "x-validate-with",
-                ::roundhouse::serde_json::json!(true),
+                #krate::serde_json::json!(true),
             );
         });
     }
@@ -943,20 +950,21 @@ pub(crate) fn field_schema_expr(ty: &Type, constraints: &Constraints) -> TokenSt
 }
 
 fn base_schema_expr(ty: &Type) -> TokenStream {
+    let krate = crate::util::krate();
     match crate::util::is_option(ty) {
         Some(inner) if is_vec_u8(&inner) => quote! {
-            ::roundhouse::doc::schema::nullable(::roundhouse::doc::schema::bytes_schema())
+            #krate::doc::schema::nullable(#krate::doc::schema::bytes_schema())
         },
         Some(inner) => {
             let inner = base_schema_expr(&inner);
             quote! {
-                ::roundhouse::doc::schema::nullable(#inner)
+                #krate::doc::schema::nullable(#inner)
             }
         }
         None if is_vec_u8(ty) => quote! {
-            ::roundhouse::doc::schema::bytes_schema()
+            #krate::doc::schema::bytes_schema()
         },
-        None => quote!(<#ty as ::roundhouse::doc::ApiSchema>::schema()),
+        None => quote!(<#ty as #krate::doc::ApiSchema>::schema()),
     }
 }
 
@@ -976,12 +984,13 @@ pub(crate) fn field_validation(
     flatten: bool,
     pointer_base: TokenStream,
 ) -> TokenStream {
+    let krate = crate::util::krate();
     let pointer_ident = format_ident!("__roundhouse_pointer_{index}");
     let pointer = LitStr::new(property_name, proc_macro2::Span::call_site());
     let pointer_init = if flatten {
         quote!(#pointer_base.to_string())
     } else {
-        quote!(::roundhouse::validate::pointer(#pointer_base, #pointer))
+        quote!(#krate::validate::pointer(#pointer_base, #pointer))
     };
 
     let (inner_ty, optional) = match crate::util::is_option(ty) {
@@ -994,35 +1003,35 @@ pub(crate) fn field_validation(
     if let Some(value) = &constraints.min_length {
         checks.extend(quote! {
             if value.chars().count() < (#value) as usize {
-                errors.push(::roundhouse::validate::ValidationError::new(
+                errors.push(#krate::validate::ValidationError::new(
                     #pointer_ident.clone(),
                     "min_length",
                     format!("must be at least {} character(s)", #value),
-                ).with_limit(::roundhouse::serde_json::json!(#value)));
+                ).with_limit(#krate::serde_json::json!(#value)));
             }
         });
     }
     if let Some(value) = &constraints.max_length {
         checks.extend(quote! {
             if value.chars().count() > (#value) as usize {
-                errors.push(::roundhouse::validate::ValidationError::new(
+                errors.push(#krate::validate::ValidationError::new(
                     #pointer_ident.clone(),
                     "max_length",
                     format!("must be at most {} character(s)", #value),
-                ).with_limit(::roundhouse::serde_json::json!(#value)));
+                ).with_limit(#krate::serde_json::json!(#value)));
             }
         });
     }
     if let Some(value) = &constraints.pattern {
         let static_ident = format_ident!("__ROUNDHOUSE_PATTERN_{index}");
         checks.extend(quote! {
-            static #static_ident: ::std::sync::OnceLock<::roundhouse::regex::Regex> =
+            static #static_ident: ::std::sync::OnceLock<#krate::regex::Regex> =
                 ::std::sync::OnceLock::new();
             let pattern = #static_ident.get_or_init(|| {
-                ::roundhouse::regex::Regex::new(#value).expect("invalid #[schema(pattern)]")
+                #krate::regex::Regex::new(#value).expect("invalid #[schema(pattern)]")
             });
             if !pattern.is_match(value) {
-                errors.push(::roundhouse::validate::ValidationError::new(
+                errors.push(#krate::validate::ValidationError::new(
                     #pointer_ident.clone(),
                     "pattern",
                     format!("must match the pattern `{}`", #value),
@@ -1033,44 +1042,44 @@ pub(crate) fn field_validation(
     if let Some(value) = &constraints.minimum {
         checks.extend(quote! {
             if ((*value) as f64) < ((#value) as f64) {
-                errors.push(::roundhouse::validate::ValidationError::new(
+                errors.push(#krate::validate::ValidationError::new(
                     #pointer_ident.clone(),
                     "minimum",
                     format!("must be greater than or equal to {}", #value),
-                ).with_limit(::roundhouse::serde_json::json!(#value)));
+                ).with_limit(#krate::serde_json::json!(#value)));
             }
         });
     }
     if let Some(value) = &constraints.maximum {
         checks.extend(quote! {
             if ((*value) as f64) > ((#value) as f64) {
-                errors.push(::roundhouse::validate::ValidationError::new(
+                errors.push(#krate::validate::ValidationError::new(
                     #pointer_ident.clone(),
                     "maximum",
                     format!("must be less than or equal to {}", #value),
-                ).with_limit(::roundhouse::serde_json::json!(#value)));
+                ).with_limit(#krate::serde_json::json!(#value)));
             }
         });
     }
     if let Some(value) = &constraints.exclusive_minimum {
         checks.extend(quote! {
             if ((*value) as f64) <= ((#value) as f64) {
-                errors.push(::roundhouse::validate::ValidationError::new(
+                errors.push(#krate::validate::ValidationError::new(
                     #pointer_ident.clone(),
                     "exclusive_minimum",
                     format!("must be greater than {}", #value),
-                ).with_limit(::roundhouse::serde_json::json!(#value)));
+                ).with_limit(#krate::serde_json::json!(#value)));
             }
         });
     }
     if let Some(value) = &constraints.exclusive_maximum {
         checks.extend(quote! {
             if ((*value) as f64) >= ((#value) as f64) {
-                errors.push(::roundhouse::validate::ValidationError::new(
+                errors.push(#krate::validate::ValidationError::new(
                     #pointer_ident.clone(),
                     "exclusive_maximum",
                     format!("must be less than {}", #value),
-                ).with_limit(::roundhouse::serde_json::json!(#value)));
+                ).with_limit(#krate::serde_json::json!(#value)));
             }
         });
     }
@@ -1091,7 +1100,7 @@ pub(crate) fn field_validation(
                         None => false,
                     };
                     if !valid {
-                        errors.push(::roundhouse::validate::ValidationError::new(
+                        errors.push(#krate::validate::ValidationError::new(
                             #pointer_ident.clone(),
                             "format",
                             "must be a valid email address",
@@ -1115,7 +1124,7 @@ pub(crate) fn field_validation(
                                 matches!(index, 8 | 13 | 18 | 23) || byte.is_ascii_hexdigit()
                             });
                     if !valid {
-                        errors.push(::roundhouse::validate::ValidationError::new(
+                        errors.push(#krate::validate::ValidationError::new(
                             #pointer_ident.clone(),
                             "format",
                             "must be a valid UUID",
@@ -1127,7 +1136,7 @@ pub(crate) fn field_validation(
                 {
                     let text: &str = ::std::convert::AsRef::<str>::as_ref(value);
                     if !(text.starts_with("http://") || text.starts_with("https://")) {
-                        errors.push(::roundhouse::validate::ValidationError::new(
+                        errors.push(#krate::validate::ValidationError::new(
                             #pointer_ident.clone(),
                             "format",
                             "must be a valid URL",
@@ -1144,22 +1153,22 @@ pub(crate) fn field_validation(
         if let Some(value) = &constraints.min_items {
             checks.extend(quote! {
                 if value.len() < (#value) as usize {
-                    errors.push(::roundhouse::validate::ValidationError::new(
+                    errors.push(#krate::validate::ValidationError::new(
                         #pointer_ident.clone(),
                         "min_items",
                         format!("must contain at least {} item(s)", #value),
-                    ).with_limit(::roundhouse::serde_json::json!(#value)));
+                    ).with_limit(#krate::serde_json::json!(#value)));
                 }
             });
         }
         if let Some(value) = &constraints.max_items {
             checks.extend(quote! {
                 if value.len() > (#value) as usize {
-                    errors.push(::roundhouse::validate::ValidationError::new(
+                    errors.push(#krate::validate::ValidationError::new(
                         #pointer_ident.clone(),
                         "max_items",
                         format!("must contain at most {} item(s)", #value),
-                    ).with_limit(::roundhouse::serde_json::json!(#value)));
+                    ).with_limit(#krate::serde_json::json!(#value)));
                 }
             });
         }
@@ -1169,7 +1178,7 @@ pub(crate) fn field_validation(
                     let mut seen = ::std::collections::HashSet::new();
                     for item in value.iter() {
                         if !seen.insert(item) {
-                            errors.push(::roundhouse::validate::ValidationError::new(
+                            errors.push(#krate::validate::ValidationError::new(
                                 #pointer_ident.clone(),
                                 "unique_items",
                                 "items must be unique",
@@ -1197,7 +1206,7 @@ pub(crate) fn field_validation(
             if let Some(value) = &#field_access {
                 #checks
                 #custom
-                ::roundhouse::doc::ApiSchema::validate_at(
+                #krate::doc::ApiSchema::validate_at(
                     value,
                     &#pointer_ident,
                     errors,
@@ -1212,7 +1221,7 @@ pub(crate) fn field_validation(
                 #checks
                 #custom
             }
-            ::roundhouse::doc::ApiSchema::validate_at(
+            #krate::doc::ApiSchema::validate_at(
                 &#field_access,
                 &#pointer_ident,
                 errors,

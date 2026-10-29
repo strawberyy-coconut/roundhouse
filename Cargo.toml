@@ -10,6 +10,7 @@ members = [
     "examples/uploads",
     "examples/showcase",
     "examples/auth",
+    "examples/renamed",
 ]
 resolver = "2"
 

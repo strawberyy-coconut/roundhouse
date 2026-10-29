@@ -2,6 +2,25 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{LitInt, LitStr, Path};
 
+/// The path to the `roundhouse` crate as the *expanding* crate names it.
+///
+/// Expansions must not hardcode `::roundhouse`: a renamed dependency
+/// (`roundhouse = { package = "roundhouse", ... }` under another key) would fail to resolve
+/// every generated item.
+pub fn krate() -> TokenStream {
+    use proc_macro_crate::{FoundCrate, crate_name};
+
+    match crate_name("roundhouse") {
+        Ok(FoundCrate::Itself) => quote!(crate),
+        Ok(FoundCrate::Name(name)) => {
+            let ident = proc_macro2::Ident::new(&name, proc_macro2::Span::call_site());
+            quote!(::#ident)
+        }
+        // Standalone use of the macros crate (tests, doctests): keep the conventional name.
+        Err(_) => quote!(::roundhouse),
+    }
+}
+
 /// Append a suffix to the final segment: `handlers::show` → `handlers::show_SUFFIX`.
 pub fn append_to_path(path: &Path, suffix: &str) -> Path {
     let mut path = path.clone();

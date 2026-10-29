@@ -88,6 +88,7 @@ struct FieldInfo {
 }
 
 pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
+    let krate = crate::util::krate();
     if !input.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(
             &input.generics,
@@ -172,8 +173,8 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
                 .expect("from_validation implies a field");
             let access = &field.access;
             quote! {
-                let mut response = ::roundhouse::axum::response::IntoResponse::into_response(
-                    ::roundhouse::Problem::from_validation_with_status(
+                let mut response = #krate::axum::response::IntoResponse::into_response(
+                    #krate::Problem::from_validation_with_status(
                         #access,
                         status,
                     )
@@ -182,7 +183,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         } else if let Some(field) = body {
             let access = &field.access;
             quote! {
-                let mut response = ::roundhouse::axum::response::IntoResponse::into_response(#access);
+                let mut response = #krate::axum::response::IntoResponse::into_response(#access);
                 *response.status_mut() = status;
             }
         } else if status >= 400 {
@@ -197,10 +198,10 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
                 quote!()
             };
             quote! {
-                let mut problem = ::roundhouse::Problem::new(status, #problem_title);
+                let mut problem = #krate::Problem::new(status, #problem_title);
                 problem.type_uri = #type_uri.to_string();
                 #detail
-                let mut response = ::roundhouse::axum::response::IntoResponse::into_response(problem);
+                let mut response = #krate::axum::response::IntoResponse::into_response(problem);
             }
         } else {
             quote! {
@@ -220,10 +221,10 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             let convert = if header.optional {
                 quote! {
                     if let Some(value) = #access {
-                        match ::std::convert::TryInto::<::roundhouse::axum::http::HeaderValue>::try_into(value) {
+                        match ::std::convert::TryInto::<#krate::axum::http::HeaderValue>::try_into(value) {
                             Ok(value) => { #method(name, value); }
                             Err(_) => {
-                                return ::roundhouse::Problem::internal(
+                                return #krate::Problem::internal(
                                     "response header could not be converted"
                                 ).into_response();
                             }
@@ -232,10 +233,10 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
                 }
             } else {
                 quote! {
-                    match ::std::convert::TryInto::<::roundhouse::axum::http::HeaderValue>::try_into(#access) {
+                    match ::std::convert::TryInto::<#krate::axum::http::HeaderValue>::try_into(#access) {
                         Ok(value) => { #method(name, value); }
                         Err(_) => {
-                            return ::roundhouse::Problem::internal(
+                            return #krate::Problem::internal(
                                 "response header could not be converted"
                             ).into_response();
                         }
@@ -244,7 +245,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             };
             header_statements.extend(quote! {
                 {
-                    let name = ::roundhouse::axum::http::HeaderName::from_bytes(#name.as_bytes())
+                    let name = #krate::axum::http::HeaderName::from_bytes(#name.as_bytes())
                         .expect("valid response header name");
                     let headers = response.headers_mut();
                     #convert
@@ -255,15 +256,15 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         if let Some(location) = location {
             let access = &location.access;
             header_statements.extend(quote! {
-                match ::std::convert::TryInto::<::roundhouse::axum::http::HeaderValue>::try_into(#access) {
+                match ::std::convert::TryInto::<#krate::axum::http::HeaderValue>::try_into(#access) {
                     Ok(value) => {
                         response.headers_mut().insert(
-                            ::roundhouse::axum::http::header::LOCATION,
+                            #krate::axum::http::header::LOCATION,
                             value,
                         );
                     }
                     Err(_) => {
-                        return ::roundhouse::Problem::internal(
+                        return #krate::Problem::internal(
                             "Location header could not be converted"
                         ).into_response();
                     }
@@ -273,8 +274,8 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
 
         arms.push(quote! {
             #bindings => {
-                let status = ::roundhouse::axum::http::StatusCode::from_u16(#status)
-                    .unwrap_or(::roundhouse::axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+                let status = #krate::axum::http::StatusCode::from_u16(#status)
+                    .unwrap_or(#krate::axum::http::StatusCode::INTERNAL_SERVER_ERROR);
                 #response_body
                 #header_statements
                 response
@@ -286,10 +287,10 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         if let Some(location) = location {
             let required = !location.optional;
             header_docs.push(quote! {
-                ::roundhouse::doc::HeaderDoc {
+                #krate::doc::HeaderDoc {
                     name: "Location".to_string(),
-                    schema: ::roundhouse::doc::schema::string_with_format(
-                        ::roundhouse::utoipa::openapi::schema::SchemaFormat::Custom(
+                    schema: #krate::doc::schema::string_with_format(
+                        #krate::utoipa::openapi::schema::SchemaFormat::Custom(
                             "uri".to_string()
                         )
                     ),
@@ -303,12 +304,12 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             let ty = &header.ty;
             let required = !header.optional;
             registrations.push(quote! {
-                <#ty as ::roundhouse::doc::ApiSchema>::register(components);
+                <#ty as #krate::doc::ApiSchema>::register(components);
             });
             header_docs.push(quote! {
-                ::roundhouse::doc::HeaderDoc {
+                #krate::doc::HeaderDoc {
                     name: #name.to_string(),
-                    schema: <#ty as ::roundhouse::doc::ApiSchema>::schema(),
+                    schema: <#ty as #krate::doc::ApiSchema>::schema(),
                     required: #required,
                     append: #append,
                 }
@@ -322,34 +323,34 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
                 let inner = crate::util::single_generic(ty)
                     .ok_or_else(|| syn::Error::new_spanned(ty, "expected Json<T>"))?;
                 registrations.push(quote! {
-                    <#inner as ::roundhouse::doc::ApiSchema>::register(components);
+                    <#inner as #krate::doc::ApiSchema>::register(components);
                 });
                 docs.push(quote! {
-                    responses.push(::roundhouse::doc::ResponseDoc {
+                    responses.push(#krate::doc::ResponseDoc {
                         status: #status,
                         description: #description.to_string(),
                         content_type: ::core::option::Option::Some("application/json".to_string()),
                         schema: ::core::option::Option::Some(
-                            <#inner as ::roundhouse::doc::ApiSchema>::schema()
+                            <#inner as #krate::doc::ApiSchema>::schema()
                         ),
                         headers: ::std::vec![#(#header_docs),*],
                     });
                 });
             } else if matches!(kind.as_deref(), Some("Problem") | Some("ValidationErrors")) {
                 docs.push(quote! {
-                    responses.push(::roundhouse::doc::ResponseDoc::problem(#status, #problem_title));
+                    responses.push(#krate::doc::ResponseDoc::problem(#status, #problem_title));
                 });
             } else {
                 registrations.push(quote! {
-                    <#ty as ::roundhouse::doc::ApiSchema>::register(components);
+                    <#ty as #krate::doc::ApiSchema>::register(components);
                 });
                 docs.push(quote! {
-                    responses.push(::roundhouse::doc::ResponseDoc {
+                    responses.push(#krate::doc::ResponseDoc {
                         status: #status,
                         description: #description.to_string(),
                         content_type: ::core::option::Option::Some("application/json".to_string()),
                         schema: ::core::option::Option::Some(
-                            <#ty as ::roundhouse::doc::ApiSchema>::schema()
+                            <#ty as #krate::doc::ApiSchema>::schema()
                         ),
                         headers: ::std::vec![#(#header_docs),*],
                     });
@@ -357,11 +358,11 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             }
         } else if status >= 400 || from_validation {
             docs.push(quote! {
-                responses.push(::roundhouse::doc::ResponseDoc::problem(#status, #problem_title));
+                responses.push(#krate::doc::ResponseDoc::problem(#status, #problem_title));
             });
         } else {
             docs.push(quote! {
-                responses.push(::roundhouse::doc::ResponseDoc {
+                responses.push(#krate::doc::ResponseDoc {
                     status: #status,
                     description: #description.to_string(),
                     content_type: ::core::option::Option::None,
@@ -394,9 +395,9 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
     Ok(quote! {
         #error_assert
 
-        impl ::roundhouse::axum::response::IntoResponse for #ident {
-            fn into_response(self) -> ::roundhouse::axum::response::Response {
-                use ::roundhouse::axum::response::IntoResponse;
+        impl #krate::axum::response::IntoResponse for #ident {
+            fn into_response(self) -> #krate::axum::response::Response {
+                use #krate::axum::response::IntoResponse;
                 #detail_prefix
                 match self {
                     #(#arms),*
@@ -406,24 +407,24 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
 
         #[allow(non_snake_case)]
         fn #docs_fn(
-            components: &mut ::roundhouse::utoipa::openapi::schema::Components,
-        ) -> ::std::vec::Vec<::roundhouse::doc::ResponseDoc> {
+            components: &mut #krate::utoipa::openapi::schema::Components,
+        ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {
             let mut responses = ::std::vec::Vec::new();
             #(#registrations)*
             #(#docs)*
             responses
         }
 
-        impl ::roundhouse::doc::ApiResponse for #ident {
+        impl #krate::doc::ApiResponse for #ident {
             fn responses(
-                components: &mut ::roundhouse::utoipa::openapi::schema::Components,
-            ) -> ::std::vec::Vec<::roundhouse::doc::ResponseDoc> {
+                components: &mut #krate::utoipa::openapi::schema::Components,
+            ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {
                 #docs_fn(components)
             }
         }
 
-        ::roundhouse::inventory::submit! {
-            ::roundhouse::registry::ResponseRecord::__new(
+        #krate::inventory::submit! {
+            #krate::registry::ResponseRecord::__new(
                 || ::core::any::type_name::<#ident>(),
                 #docs_fn,
             )

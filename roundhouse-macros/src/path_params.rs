@@ -3,6 +3,7 @@ use quote::quote;
 use syn::{Data, DeriveInput, Fields, LitStr, Result};
 
 pub fn expand(input: DeriveInput) -> Result<TokenStream> {
+    let krate = crate::util::krate();
     if !input.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(
             &input.generics,
@@ -50,28 +51,28 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         ));
         names.push(name_lit.clone());
         params.push(quote! {
-            ::roundhouse::doc::Param::new(
+            #krate::doc::Param::new(
                 #name_lit,
-                ::roundhouse::doc::ParamIn::Path,
+                #krate::doc::ParamIn::Path,
                 #schema_expr,
             )
         });
     }
 
     Ok(quote! {
-        impl ::roundhouse::doc::PathNames for #ident {
+        impl #krate::doc::PathNames for #ident {
             const NAMES: &'static [&'static str] = &[#(#names),*];
 
-            fn params() -> ::std::vec::Vec<::roundhouse::doc::Param> {
+            fn params() -> ::std::vec::Vec<#krate::doc::Param> {
                 ::std::vec![#(#params),*]
             }
         }
 
-        impl ::roundhouse::doc::PathValidate for #ident {
+        impl #krate::doc::PathValidate for #ident {
             fn validate_at(
                 &self,
                 pointer: &str,
-                errors: &mut ::roundhouse::validate::ValidationErrors,
+                errors: &mut #krate::validate::ValidationErrors,
             ) {
                 #(#validations)*
             }

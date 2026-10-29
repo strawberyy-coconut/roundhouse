@@ -229,16 +229,17 @@ pub fn expand(input: RoutesInput) -> TokenStream {
 }
 
 fn method_variant(method: &Ident) -> Result<TokenStream> {
+    let krate = crate::util::krate();
     Ok(match method.to_string().as_str() {
-        "get" => quote!(::roundhouse::registry::Method::Get),
-        "post" => quote!(::roundhouse::registry::Method::Post),
-        "put" => quote!(::roundhouse::registry::Method::Put),
-        "patch" => quote!(::roundhouse::registry::Method::Patch),
-        "delete" => quote!(::roundhouse::registry::Method::Delete),
-        "head" => quote!(::roundhouse::registry::Method::Head),
-        "options" => quote!(::roundhouse::registry::Method::Options),
-        "trace" => quote!(::roundhouse::registry::Method::Trace),
-        "any" => quote!(::roundhouse::registry::Method::Any),
+        "get" => quote!(#krate::registry::Method::Get),
+        "post" => quote!(#krate::registry::Method::Post),
+        "put" => quote!(#krate::registry::Method::Put),
+        "patch" => quote!(#krate::registry::Method::Patch),
+        "delete" => quote!(#krate::registry::Method::Delete),
+        "head" => quote!(#krate::registry::Method::Head),
+        "options" => quote!(#krate::registry::Method::Options),
+        "trace" => quote!(#krate::registry::Method::Trace),
+        "any" => quote!(#krate::registry::Method::Any),
         other => {
             return Err(syn::Error::new(
                 method.span(),
@@ -251,6 +252,7 @@ fn method_variant(method: &Ident) -> Result<TokenStream> {
 }
 
 fn expand_entry(entry: Entry) -> TokenStream {
+    let krate = crate::util::krate();
     if !entry.path.value().starts_with('/') {
         return syn::Error::new(
             entry.path.span(),
@@ -299,12 +301,12 @@ fn expand_entry(entry: Entry) -> TokenStream {
         let status = proc_macro2::Literal::u16_suffixed(*status);
         match body {
             Some(ty) => quote! {
-                __responses.push(::roundhouse::doc::json_response_doc::<#ty>(components, #status));
+                __responses.push(#krate::doc::json_response_doc::<#ty>(components, #status));
             },
             None => quote! {
-                __responses.push(::roundhouse::doc::ResponseDoc::new(
+                __responses.push(#krate::doc::ResponseDoc::new(
                     #status,
-                    ::roundhouse::doc::canonical_reason(#status),
+                    #krate::doc::canonical_reason(#status),
                 ));
             },
         }
@@ -320,8 +322,8 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let layer = match &entry.layer {
         Some(expr) => quote! {
             fn __roundhouse_route_layer(
-                method_router: ::roundhouse::axum::routing::MethodRouter,
-            ) -> ::roundhouse::axum::routing::MethodRouter {
+                method_router: #krate::axum::routing::MethodRouter,
+            ) -> #krate::axum::routing::MethodRouter {
                 method_router.layer(#expr)
             }
         },
@@ -332,32 +334,32 @@ fn expand_entry(entry: Entry) -> TokenStream {
         #(#attrs)*
         #[allow(non_upper_case_globals)]
         const _: () = {
-            const _: () = ::roundhouse::prefix::assert_path_names(
+            const _: () = #krate::prefix::assert_path_names(
                 #path,
-                <#marker_type as ::roundhouse::doc::HandlerMeta>::PATH_NAMES,
+                <#marker_type as #krate::doc::HandlerMeta>::PATH_NAMES,
             );
 
             fn __roundhouse_route()
                 -> ::std::boxed::Box<dyn ::core::any::Any + ::core::marker::Send + ::core::marker::Sync>
             {
-                let method_router: ::roundhouse::axum::routing::MethodRouter<
-                    <#marker_type as ::roundhouse::doc::HandlerMeta>::State,
-                > = ::roundhouse::axum::routing::#method_ident(#handler);
+                let method_router: #krate::axum::routing::MethodRouter<
+                    <#marker_type as #krate::doc::HandlerMeta>::State,
+                > = #krate::axum::routing::#method_ident(#handler);
                 ::std::boxed::Box::new(method_router)
             }
 
             #layer
 
             fn __roundhouse_responses(
-                components: &mut ::roundhouse::utoipa::openapi::schema::Components,
-            ) -> ::std::vec::Vec<::roundhouse::doc::ResponseDoc> {
+                components: &mut #krate::utoipa::openapi::schema::Components,
+            ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {
                 let mut __responses = ::std::vec::Vec::new();
                 #(#responses)*
                 __responses
             }
 
-            ::roundhouse::inventory::submit! {
-                ::roundhouse::registry::RouteRecord::__new(
+            #krate::inventory::submit! {
+                #krate::registry::RouteRecord::__new(
                     module_path!(),
                     file!(),
                     #line,
@@ -375,13 +377,13 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     #public,
                     #response_override,
                     __roundhouse_responses,
-                    || ::roundhouse::doc::handler_state::<#marker_type>(),
+                    || #krate::doc::handler_state::<#marker_type>(),
                     || ::core::any::type_name::<
-                        <#marker_type as ::roundhouse::doc::HandlerMeta>::State,
+                        <#marker_type as #krate::doc::HandlerMeta>::State,
                     >(),
                     __roundhouse_route,
                     #layer_value,
-                    |components| <#marker_type as ::roundhouse::doc::HandlerMeta>::docs(&#marker_value, components),
+                    |components| <#marker_type as #krate::doc::HandlerMeta>::docs(&#marker_value, components),
                 )
             }
         };

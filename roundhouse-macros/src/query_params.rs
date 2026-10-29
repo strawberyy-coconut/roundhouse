@@ -5,6 +5,7 @@ use syn::{Data, DeriveInput, Fields, LitStr, Result};
 use crate::util::is_option;
 
 pub fn expand(input: DeriveInput) -> Result<TokenStream> {
+    let krate = crate::util::krate();
     if !input.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(
             &input.generics,
@@ -63,10 +64,10 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         ));
         params.push(quote! {
             {
-                <#ty as ::roundhouse::doc::ApiSchema>::register(components);
-                ::roundhouse::doc::Param::new(
+                <#ty as #krate::doc::ApiSchema>::register(components);
+                #krate::doc::Param::new(
                     #name_lit,
-                    ::roundhouse::doc::ParamIn::Query,
+                    #krate::doc::ParamIn::Query,
                     #schema_expr,
                 ).required(#required)
             }
@@ -77,29 +78,29 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     Ok(quote! {
         #[allow(non_snake_case)]
         fn #fn_name(
-            components: &mut ::roundhouse::utoipa::openapi::schema::Components,
-        ) -> ::std::vec::Vec<::roundhouse::doc::Param> {
+            components: &mut #krate::utoipa::openapi::schema::Components,
+        ) -> ::std::vec::Vec<#krate::doc::Param> {
             ::std::vec![#(#params),*]
         }
 
-        impl ::roundhouse::doc::QueryParams for #ident {
+        impl #krate::doc::QueryParams for #ident {
             fn params(
-                components: &mut ::roundhouse::utoipa::openapi::schema::Components,
-            ) -> ::std::vec::Vec<::roundhouse::doc::Param> {
+                components: &mut #krate::utoipa::openapi::schema::Components,
+            ) -> ::std::vec::Vec<#krate::doc::Param> {
                 #fn_name(components)
             }
 
             fn validate_at(
                 &self,
                 pointer: &str,
-                errors: &mut ::roundhouse::validate::ValidationErrors,
+                errors: &mut #krate::validate::ValidationErrors,
             ) {
                 #(#validations)*
             }
         }
 
-        ::roundhouse::inventory::submit! {
-            ::roundhouse::registry::QueryDocRecord::__new(
+        #krate::inventory::submit! {
+            #krate::registry::QueryDocRecord::__new(
                 || ::core::any::type_name::<#ident>(),
                 #fn_name,
             )

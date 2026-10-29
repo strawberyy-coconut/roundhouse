@@ -46,6 +46,7 @@ struct FieldSpec {
 }
 
 pub fn expand(input: DeriveInput) -> Result<TokenStream> {
+    let krate = crate::util::krate();
     if !input.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(
             &input.generics,
@@ -115,21 +116,21 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         };
         let required_field = matches!(spec.kind, Kind::File | Kind::TempFile | Kind::Text);
         let kind = match spec.kind {
-            Kind::File => quote!(::roundhouse::multipart::FieldKind::File),
-            Kind::OptionalFile => quote!(::roundhouse::multipart::FieldKind::File),
-            Kind::Files => quote!(::roundhouse::multipart::FieldKind::FileList),
-            Kind::OptionalFiles => quote!(::roundhouse::multipart::FieldKind::FileList),
-            Kind::TempFile => quote!(::roundhouse::multipart::FieldKind::TempFile),
-            Kind::OptionalTempFile => quote!(::roundhouse::multipart::FieldKind::TempFile),
-            Kind::TempFiles => quote!(::roundhouse::multipart::FieldKind::TempFileList),
-            Kind::OptionalTempFiles => quote!(::roundhouse::multipart::FieldKind::TempFileList),
-            Kind::Text => quote!(::roundhouse::multipart::FieldKind::Text),
-            Kind::OptionalText => quote!(::roundhouse::multipart::FieldKind::Text),
-            Kind::Texts => quote!(::roundhouse::multipart::FieldKind::TextList),
-            Kind::OptionalTexts => quote!(::roundhouse::multipart::FieldKind::TextList),
+            Kind::File => quote!(#krate::multipart::FieldKind::File),
+            Kind::OptionalFile => quote!(#krate::multipart::FieldKind::File),
+            Kind::Files => quote!(#krate::multipart::FieldKind::FileList),
+            Kind::OptionalFiles => quote!(#krate::multipart::FieldKind::FileList),
+            Kind::TempFile => quote!(#krate::multipart::FieldKind::TempFile),
+            Kind::OptionalTempFile => quote!(#krate::multipart::FieldKind::TempFile),
+            Kind::TempFiles => quote!(#krate::multipart::FieldKind::TempFileList),
+            Kind::OptionalTempFiles => quote!(#krate::multipart::FieldKind::TempFileList),
+            Kind::Text => quote!(#krate::multipart::FieldKind::Text),
+            Kind::OptionalText => quote!(#krate::multipart::FieldKind::Text),
+            Kind::Texts => quote!(#krate::multipart::FieldKind::TextList),
+            Kind::OptionalTexts => quote!(#krate::multipart::FieldKind::TextList),
         };
         field_specs.push(quote! {
-            ::roundhouse::multipart::FieldSpec::new(#name, #kind)
+            #krate::multipart::FieldSpec::new(#name, #kind)
                 .required(#required_field)
                 .max_bytes(#max)
                 .accept(#accept)
@@ -155,7 +156,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
         let binding = match spec.kind {
             Kind::File => quote! {
-                let #field = ::roundhouse::multipart::require(
+                let #field = #krate::multipart::require(
                     fields.take_files(#name).into_iter().next(),
                     #name,
                     &mut errors,
@@ -165,13 +166,13 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 let #field = fields.take_files(#name).into_iter().next();
             },
             Kind::Files => quote! {
-                let #field: ::std::vec::Vec<::roundhouse::multipart::FilePart> =
+                let #field: ::std::vec::Vec<#krate::multipart::FilePart> =
                     fields.take_files(#name);
             },
             Kind::OptionalFiles => quote! {
                 let __values = fields.take_files(#name);
                 let #field: ::core::option::Option<
-                    ::std::vec::Vec<::roundhouse::multipart::FilePart>,
+                    ::std::vec::Vec<#krate::multipart::FilePart>,
                 > = if __values.is_empty() {
                     ::core::option::Option::None
                 } else {
@@ -179,7 +180,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 };
             },
             Kind::TempFile => quote! {
-                let #field = ::roundhouse::multipart::require(
+                let #field = #krate::multipart::require(
                     fields.take_temp_files(#name).into_iter().next(),
                     #name,
                     &mut errors,
@@ -189,13 +190,13 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 let #field = fields.take_temp_files(#name).into_iter().next();
             },
             Kind::TempFiles => quote! {
-                let #field: ::std::vec::Vec<::roundhouse::multipart::TempFile> =
+                let #field: ::std::vec::Vec<#krate::multipart::TempFile> =
                     fields.take_temp_files(#name);
             },
             Kind::OptionalTempFiles => quote! {
                 let __values = fields.take_temp_files(#name);
                 let #field: ::core::option::Option<
-                    ::std::vec::Vec<::roundhouse::multipart::TempFile>,
+                    ::std::vec::Vec<#krate::multipart::TempFile>,
                 > = if __values.is_empty() {
                     ::core::option::Option::None
                 } else {
@@ -203,12 +204,12 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 };
             },
             Kind::Text => quote! {
-                let #field = ::roundhouse::multipart::require(
+                let #field = #krate::multipart::require(
                     fields
                         .take_texts(#name)
                         .into_iter()
                         .next()
-                        .and_then(|bytes| ::roundhouse::multipart::parse_text::<#ty>(
+                        .and_then(|bytes| #krate::multipart::parse_text::<#ty>(
                             bytes, #name, &mut errors,
                         )),
                     #name,
@@ -222,7 +223,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                         .take_texts(#name)
                         .into_iter()
                         .next()
-                        .and_then(|bytes| ::roundhouse::multipart::parse_text::<#target>(
+                        .and_then(|bytes| #krate::multipart::parse_text::<#target>(
                             bytes, #name, &mut errors,
                         ));
                 }
@@ -233,7 +234,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                     let #field: ::std::vec::Vec<#target> = fields
                         .take_texts(#name)
                         .into_iter()
-                        .filter_map(|bytes| ::roundhouse::multipart::parse_text::<#target>(
+                        .filter_map(|bytes| #krate::multipart::parse_text::<#target>(
                             bytes, #name, &mut errors,
                         ))
                         .collect();
@@ -250,7 +251,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                             ::core::option::Option::Some(
                                 __values
                                     .into_iter()
-                                    .filter_map(|bytes| ::roundhouse::multipart::parse_text::<#target>(
+                                    .filter_map(|bytes| #krate::multipart::parse_text::<#target>(
                                         bytes, #name, &mut errors,
                                     ))
                                     .collect(),
@@ -265,35 +266,35 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         if spec.kind.is_file() {
             if let Some(expr) = &spec.max_bytes {
                 extensions.extend(quote! {
-                    let schema = ::roundhouse::doc::schema::with_extension(
+                    let schema = #krate::doc::schema::with_extension(
                         schema,
                         "x-max-bytes",
-                        ::roundhouse::serde_json::json!((#expr) as usize),
+                        #krate::serde_json::json!((#expr) as usize),
                     );
                 });
             }
             if !spec.accept.is_empty() {
                 let accept_literals = &spec.accept;
                 extensions.extend(quote! {
-                    let schema = ::roundhouse::doc::schema::with_extension(
+                    let schema = #krate::doc::schema::with_extension(
                         schema,
                         "x-accept",
-                        ::roundhouse::serde_json::json!([#(#accept_literals),*]),
+                        #krate::serde_json::json!([#(#accept_literals),*]),
                     );
                 });
             }
         }
         let base_schema = match spec.kind {
-            Kind::File | Kind::TempFile => quote!(::roundhouse::multipart::file_schema()),
+            Kind::File | Kind::TempFile => quote!(#krate::multipart::file_schema()),
             Kind::OptionalFile | Kind::OptionalTempFile => {
-                quote!(::roundhouse::multipart::optional_file_schema())
+                quote!(#krate::multipart::optional_file_schema())
             }
-            Kind::Files | Kind::TempFiles => quote!(::roundhouse::multipart::files_schema()),
+            Kind::Files | Kind::TempFiles => quote!(#krate::multipart::files_schema()),
             Kind::OptionalFiles | Kind::OptionalTempFiles => {
-                quote!(::roundhouse::multipart::optional_files_schema())
+                quote!(#krate::multipart::optional_files_schema())
             }
             Kind::Text | Kind::OptionalText | Kind::Texts | Kind::OptionalTexts => {
-                quote!(<#ty as ::roundhouse::doc::ApiSchema>::schema())
+                quote!(<#ty as #krate::doc::ApiSchema>::schema())
             }
         };
         let schema = if extensions.is_empty() {
@@ -320,38 +321,38 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             Kind::Text | Kind::OptionalText | Kind::Texts | Kind::OptionalTexts
         ) {
             registers.push(quote! {
-                <#ty as ::roundhouse::doc::ApiSchema>::register(components);
+                <#ty as #krate::doc::ApiSchema>::register(components);
             });
         }
     }
 
     Ok(quote! {
-        impl ::roundhouse::multipart::MultipartForm for #ident {
-            fn fields() -> &'static [::roundhouse::multipart::FieldSpec] {
-                const FIELDS: &[::roundhouse::multipart::FieldSpec] = &[#(#field_specs),*];
+        impl #krate::multipart::MultipartForm for #ident {
+            fn fields() -> &'static [#krate::multipart::FieldSpec] {
+                const FIELDS: &[#krate::multipart::FieldSpec] = &[#(#field_specs),*];
                 FIELDS
             }
 
             fn from_fields(
-                fields: &mut ::roundhouse::multipart::FieldValues,
-            ) -> ::core::result::Result<Self, ::roundhouse::multipart::MultipartProblem> {
-                let mut errors = ::roundhouse::validate::ValidationErrors::new();
+                fields: &mut #krate::multipart::FieldValues,
+            ) -> ::core::result::Result<Self, #krate::multipart::MultipartProblem> {
+                let mut errors = #krate::validate::ValidationErrors::new();
                 #(#bindings)*
                 if !errors.is_empty() {
                     return ::core::result::Result::Err(
-                        ::roundhouse::multipart::MultipartProblem::from_validation(errors),
+                        #krate::multipart::MultipartProblem::from_validation(errors),
                     );
                 }
                 ::core::result::Result::Ok(Self { #(#constructor_fields),* })
             }
 
             fn schema(
-                components: &mut ::roundhouse::utoipa::openapi::schema::Components,
-            ) -> ::roundhouse::utoipa::openapi::RefOr<
-                ::roundhouse::utoipa::openapi::schema::Schema,
+                components: &mut #krate::utoipa::openapi::schema::Components,
+            ) -> #krate::utoipa::openapi::RefOr<
+                #krate::utoipa::openapi::schema::Schema,
             > {
                 #(#registers)*
-                let mut builder = ::roundhouse::multipart::schema_object();
+                let mut builder = #krate::multipart::schema_object();
                 #(#properties)*
                 #(#required)*
                 builder.into()
