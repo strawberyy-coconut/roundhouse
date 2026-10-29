@@ -131,6 +131,7 @@ async fn document_reflects_collisions_hidden_routes_and_rejection_policy() {
     );
     assert!(document["paths"]["/internal/health"].is_null());
     assert!(document["paths"]["/echo"].is_null());
+    assert_eq!(document["x-roundhouse-hidden"], true);
 
     let responses = &document["paths"]["/events"]["post"]["responses"];
     assert!(responses.get("400").is_none());

@@ -75,8 +75,10 @@ pub fn build_with_observations(
     let mut used_schemes: BTreeMap<String, (SchemeDoc, crate::build_error::Source)> =
         BTreeMap::new();
 
+    let mut has_hidden = false;
     for route in routes {
         if route.hidden || route.record.hidden {
+            has_hidden = true;
             continue;
         }
         let Some(http_method) = route.method.to_utoipa() else {
@@ -163,6 +165,13 @@ pub fn build_with_observations(
     }
 
     let mut document = OpenApi::new(info, paths);
+    if has_hidden {
+        document.extensions = Some(
+            ExtensionsBuilder::new()
+                .add("x-roundhouse-hidden", true)
+                .build(),
+        );
+    }
     if !components.schemas.is_empty()
         || !components.security_schemes.is_empty()
         || !components.responses.is_empty()
