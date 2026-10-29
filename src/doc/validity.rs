@@ -5,14 +5,12 @@
 //! parameter is used, operation ids are unique, every security requirement names a declared
 //! scheme, and every operation has at least one response.
 
-use utoipa::openapi::OpenApi;
-
 const OPERATIONS: [&str; 8] = [
     "get", "put", "post", "delete", "options", "head", "patch", "trace",
 ];
 
 /// Check the document's internal consistency. Called on every build.
-pub fn validate_document(document: &OpenApi) -> Result<(), String> {
+pub fn validate_document(document: &impl serde::Serialize) -> Result<(), String> {
     let value = serde_json::to_value(document).map_err(|error| error.to_string())?;
 
     let schemes: Vec<&str> = value

@@ -18,6 +18,7 @@ struct Entry {
     security: Vec<LitStr>,
     responses: Vec<(u16, Option<Type>)>,
     layer: Option<Expr>,
+    doc: Option<Expr>,
     hidden: bool,
     absolute: bool,
     validate: bool,
@@ -49,6 +50,7 @@ impl Parse for Entry {
             security: Vec::new(),
             responses: Vec::new(),
             layer: None,
+            doc: None,
             hidden: false,
             absolute: false,
             validate: true,
@@ -80,6 +82,7 @@ fn parse_group_entry(input: ParseStream<'_>, path: LitStr) -> Result<Entry> {
         security: Vec::new(),
         responses: Vec::new(),
         layer: None,
+        doc: None,
         hidden: false,
         absolute: false,
         validate: true,
@@ -127,6 +130,10 @@ fn parse_attrs(content: ParseStream<'_>, entry: &mut Entry) -> Result<()> {
             "layer" => {
                 content.parse::<Token![=]>()?;
                 entry.layer = Some(content.parse()?);
+            }
+            "doc" => {
+                content.parse::<Token![=]>()?;
+                entry.doc = Some(content.parse()?);
             }
             "hidden" => entry.hidden = true,
             "absolute" => entry.absolute = true,
@@ -327,6 +334,22 @@ fn expand_entry(entry: Entry) -> TokenStream {
         None => quote! {},
     };
 
+    let doc_value = if entry.doc.is_some() {
+        quote!(::core::option::Option::Some(__roundhouse_entry_doc))
+    } else {
+        quote!(::core::option::Option::None)
+    };
+
+    let doc = match &entry.doc {
+        Some(expr) => quote! {
+            fn __roundhouse_entry_doc(docs: &mut #krate::doc::HandlerDocs) {
+                let hook: fn(&mut #krate::doc::HandlerDocs) = #expr;
+                hook(docs)
+            }
+        },
+        None => quote! {},
+    };
+
     quote! {
         #(#attrs)*
         #[allow(non_upper_case_globals)]
@@ -346,6 +369,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
             }
 
             #layer
+            #doc
 
             fn __roundhouse_responses(
                 components: &mut #krate::utoipa::openapi::schema::Components,
@@ -382,6 +406,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     __roundhouse_route,
                     #layer_value,
                     |components| <#marker_type as #krate::doc::HandlerMeta>::docs(&#marker_value, components),
+                    #doc_value,
                 )
             }
         };

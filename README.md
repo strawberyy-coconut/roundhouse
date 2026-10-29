@@ -134,7 +134,8 @@ pub async fn show(
 the `/notes` prefix from the parent module.
 
 `examples/notes/src/main.rs` starts the discovered app; `roundhouse::app!(state)` scopes discovery
-to `module_path!()`, so a linked dependency's routes cannot join by accident.
+to the calling crate (`env!("CARGO_CRATE_NAME")`), so a linked dependency's routes cannot join by
+accident and moving the call into a submodule keeps the same scope.
 
 ## API reference
 
@@ -211,11 +212,14 @@ std::fs::write("target/openapi.json", json)?;
   `/{issue_id}` produces `/{project_id}/issues/{issue_id}`, and one `Path<T>` sees both captures.
   A mount prefix cannot contain a catch-all; a final `{*rest}` belongs in the leaf route.
   Group mounts, module layers (full/route), entry layers, `absolute`, `hidden`, `#[cfg]` entries,
-  grouped method tables, scoped discovery (`scope` / `include`), `App::layer`,
+  grouped method tables, scoped discovery (`scope` / `include`), `App::mount(prefix, scope)` for
+  cross-crate composition and several prefixes over one table, `App::layer`,
   `App::layer_documented` for layers that terminate requests, `App::merge`, custom fallbacks, and
   a JSON `404 Problem` default. `scope(..)` selects declarations; mounts above the scope still
   provide the structural prefix (and their tags, security and layers), so scoping below
-  `mount!("/api/v1")` keeps `/api/v1` in routes and documents.
+  `mount!("/api/v1")` keeps `/api/v1` in routes and documents. A router given to `App::merge` is
+  served but not discovered; the document carries `x-roundhouse-merged` and a warning, which
+  `App::strict()` turns into an error.
 - **Fidelity** — `App::router()` returns a real `axum::Router<S>`, `Result<T, E>` works whenever
   both sides are `IntoResponse`, and the example's fidelity test runs the same requests against a
   hand-written router and the discovered one, asserting status, headers and body are equal.
@@ -224,13 +228,16 @@ std::fs::write("target/openapi.json", json)?;
   documentation half plus a compile-time marker, so a handler listed in `routes!` without
   `#[handler]` fails at the table line. Derivation is loud: a route that derives no 2xx/3xx
   response and declares none is a build error, a foreign `axum::Json` body marks the operation
-  `x-roundhouse-unverified-body` (a warning by default, a `BuildError` under `App::strict()`), a
-  custom extractor whose parameters the macro cannot infer is marked
+  `x-roundhouse-unverified-body` (a warning by default, a `BuildError` under `App::strict()`) and
+  is still documented from `T` when `T: utoipa::ToSchema` (the marker means *unenforced*, not
+  unknown), a custom extractor whose parameters the macro cannot infer is marked
   `x-roundhouse-unverified-extractor` (also a warning by default), and
   `-> StatusCode` or `(StatusCode, Json<T>)` documents a `default` response. `responses(200 = Post)`
   uses `Post`'s schema; replacing an inferred body needs `override` and emits
   `x-roundhouse-overridden-response`. `deprecated` and `public` emit `deprecated: true` and
-  `x-roundhouse-public: true`.
+  `x-roundhouse-public: true`. A `doc = |docs| ..` hook on a table entry fills the gap for anything
+  inference cannot see; it runs before the parameter conflict and capture checks, so hand-written
+  documentation is checked like derived documentation.
 - **Auth** — `AuthScheme` is pure metadata (`NAME`, `KIND`, failure statuses, `type Identity`);
   `Authenticate` receives `&Self::State` (normally `&AppState`) and returns the identity, so token
   lookups use app state instead of hiding a store in request extensions. `Auth<A>` yields the
@@ -264,9 +271,10 @@ std::fs::write("target/openapi.json", json)?;
   and headers.
 - **Module-local tables** — a leaf module can keep its `routes!` table beside its handler and needs
   no `mount!`; only the module that owns the subtree declares the prefix. Descendants inherit its
-  prefix, tags, security, and layers. `mount!` is once per module, so serving `/v1` and `/v2` over
-  the same handlers currently means duplicated route tables (or `absolute` entries); merged
-  routers are served but not discovered for the document.
+  prefix, tags, security, and layers. Serving `/v1` and `/v2` over the same table is
+  `App::mount("/v1", "crate::routes")` and `App::mount("/v2", "crate::routes")`; the same
+  declarations, checks and layers apply at both prefixes. Merged hand-written routers are served
+  but not discovered for the document; `App::merge` marks the document `x-roundhouse-merged`.
 - **Erased-style handlers** — a handler that takes `Extension<Arc<T>>` instead of `State<T>` is
   stateless, so it works with unit app state; no feature flag or new request context is needed.
 - **OpenAPI 3.1** — paths, operations, path parameters, JSON/form bodies, success and error
@@ -307,7 +315,8 @@ std::fs::write("target/openapi.json", json)?;
   are disambiguated by module path automatically; `#[schema(name = "..")]` overrides it.
   `App::max_body` sets the global request limit; with the `multipart` feature, `App::max_parts`
   bounds multipart part counts. `Built::routes()` exposes the resolved table with each
-  declaration's source.
+  declaration's source. `roundhouse::openapi::{Info, OpenApi, Components}` is the stable facade over
+  the document model; `as_utoipa()`/`into_utoipa()` are the explicit interop escape hatch.
 
 ## Auth backends
 
@@ -343,8 +352,9 @@ struct schemas, recursive schemas and component-name collisions, multipart/files
 headers, rejection suppression, validation status, `validate = false`, layer docs, docs UI, 3.0
 downgrade, response validation, scope selection, duplicate-route, duplicate-operation-id,
 normalised-template, undeclared-success, state-mismatch, empty-scope and empty-app diagnostics, the
-schema-execution conformance harness, the golden document, and the hand-written-vs-discovered
-differential.
+schema-execution conformance harness, the golden document, the hand-written-vs-discovered
+differential, `doc = |docs| ..` hooks, foreign utoipa schemas, `app!` crate scoping, `App::mount`,
+and the `App::merge` receipt.
 
 Two tests encode the invariant the project is named for: `examples/auth` walks every operation with
 a security requirement and asserts an unauthenticated request is rejected, and the path tests assert

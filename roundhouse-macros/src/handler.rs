@@ -117,6 +117,25 @@ pub fn expand(item: ItemFn) -> TokenStream {
                             docs.failures.extend(#krate::doc::json_failures());
                         });
                     }
+                } else if let Some(inner) = single_generic(&ty) {
+                    // A foreign `axum::Json<T>` names its schema through utoipa when `T` has
+                    // one. The body is documented, but remains unverified: roundhouse does not
+                    // enforce `T`'s constraints at runtime.
+                    statements.push(quote! {
+                        if let Some(__schema) = {
+                            use #krate::doc::ForeignSchemaProbe as _;
+                            (&#krate::doc::ForeignSchema::<#inner>::new())
+                                .foreign_schema(components)
+                        } {
+                            docs.body = ::core::option::Option::Some(#krate::doc::BodyDoc {
+                                content_type: "application/json".to_string(),
+                                schema: __schema,
+                                required: true,
+                                description: ::core::option::Option::None,
+                            });
+                        }
+                        docs.unverified = true;
+                    });
                 } else {
                     statements.push(quote! { docs.unverified = true; });
                 }
@@ -391,10 +410,29 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
     let status_lit = proc_macro2::Literal::u16_unsuffixed(status);
     let kind = outer_ident(ty);
     match kind.as_deref() {
-        Some("Json") if !is_wrapper_type(ty) => Ok(vec![quote! {
-            docs.unverified = true;
-            docs.responses.push(#krate::doc::ResponseDoc::new(#status_lit, "OK"));
-        }]),
+        Some("Json") if !is_wrapper_type(ty) => {
+            let inner = single_generic(ty).ok_or_else(|| {
+                syn::Error::new_spanned(ty, "expected `Json<T>` as the response body")
+            })?;
+            Ok(vec![quote! {
+                if let Some(__schema) = {
+                    use #krate::doc::ForeignSchemaProbe as _;
+                    (&#krate::doc::ForeignSchema::<#inner>::new())
+                        .foreign_schema(components)
+                } {
+                    docs.responses.push(#krate::doc::ResponseDoc::json(
+                        #status_lit,
+                        __schema,
+                    ));
+                } else {
+                    docs.responses.push(#krate::doc::ResponseDoc::new(
+                        #status_lit,
+                        "OK",
+                    ));
+                }
+                docs.unverified = true;
+            }])
+        }
         Some("Json") => {
             let inner = single_generic(ty).ok_or_else(|| {
                 syn::Error::new_spanned(ty, "expected `Json<T>` as the response body")

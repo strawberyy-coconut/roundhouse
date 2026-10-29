@@ -15,12 +15,12 @@ use utoipa::openapi::{
 use super::{BodyDoc, Param, ParamIn, ResponseDoc};
 use crate::router::ResolvedRoute;
 
-pub fn build(info: Info, routes: &[ResolvedRoute]) -> OpenApi {
+pub fn build(info: impl Into<Info>, routes: &[ResolvedRoute]) -> OpenApi {
     build_with_options(info, routes, true, false).unwrap_or_else(|error| panic!("{error}"))
 }
 
 pub fn build_with_options(
-    info: Info,
+    info: impl Into<Info>,
     routes: &[ResolvedRoute],
     include_rejections: bool,
     strict: bool,
@@ -39,7 +39,7 @@ pub fn build_with_options(
 
 /// Build the document, collecting non-fatal observations into `diagnostics`.
 pub fn build_with_diagnostics(
-    info: Info,
+    info: impl Into<Info>,
     routes: &[ResolvedRoute],
     include_rejections: bool,
     strict: bool,
@@ -59,7 +59,7 @@ pub fn build_with_diagnostics(
 /// Build the document and collect every documented request body's inline schema, keyed by the
 /// Rust type, so schema mode can enforce composite bodies (`Vec<T>`, `Option<T>`, maps, tuples).
 pub fn build_with_observations(
-    info: Info,
+    info: impl Into<Info>,
     routes: &[ResolvedRoute],
     include_rejections: bool,
     strict: bool,
@@ -69,6 +69,7 @@ pub fn build_with_observations(
         utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
     )>,
 ) -> Result<OpenApi, BuildError> {
+    let info = info.into();
     let mut components = utoipa::openapi::schema::Components::new();
     let mut paths = Paths::new();
     let mut used_schemes: BTreeMap<String, (SchemeDoc, crate::build_error::Source)> =
@@ -94,7 +95,10 @@ pub fn build_with_observations(
             continue;
         };
 
-        let docs = (route.record.docs)(&mut components);
+        let mut docs = (route.record.docs)(&mut components);
+        if let Some(custom) = route.record.doc {
+            custom(&mut docs);
+        }
         if docs.unverified {
             if strict {
                 return Err(BuildError::UnverifiedBody {

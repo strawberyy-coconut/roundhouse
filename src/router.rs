@@ -12,15 +12,35 @@ use axum::http::Request;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{MethodRouter, Route};
 use tower::{Layer, Service, ServiceExt};
-use utoipa::openapi::{Info, OpenApi};
 
 use crate::build_error::BuildError;
 use crate::doc::{self, HandlerDocs};
+use crate::openapi::{Info, OpenApi};
 use crate::prefix;
 use crate::problem::Problem;
 use crate::registry::{self, Method, MountLayer, MountRecord, RouteRecord};
 
 type RouterLayer = Box<dyn Fn(Router<()>) -> Router<()> + Send + Sync>;
+
+/// A hand-written router merged with `App::merge`, plus where it was merged.
+struct MergeRecord {
+    router: Router<()>,
+    source: crate::build_error::Source,
+}
+
+impl MergeRecord {
+    fn source(&self) -> crate::build_error::Source {
+        self.source
+    }
+}
+
+/// `App::mount(prefix, scope)`: an additional prefix for routes declared under `scope`.
+#[derive(Clone, Copy)]
+struct MountBinding {
+    prefix: &'static str,
+    scope: &'static str,
+    source: crate::build_error::Source,
+}
 
 /// Whether extractor rejection responses are added to the document.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -60,7 +80,8 @@ pub struct App<S> {
     global_layers: Vec<RouterLayer>,
     global_layer_docs: Vec<fn() -> crate::doc::layer::LayerDoc>,
     fallback: Option<RouterLayer>,
-    merges: Vec<Router<()>>,
+    merges: Vec<MergeRecord>,
+    mounts: Vec<MountBinding>,
     info: Option<Box<dyn Fn() -> Info + Send + Sync>>,
     openapi_route: Option<&'static str>,
     docs_route: Option<&'static str>,
@@ -86,6 +107,7 @@ where
             global_layer_docs: Vec::new(),
             fallback: None,
             merges: Vec::new(),
+            mounts: Vec::new(),
             info: None,
             openapi_route: None,
             docs_route: None,
@@ -150,17 +172,42 @@ where
     }
 
     /// Merge a hand-written router. Escape hatch in the other direction.
+    ///
+    /// Merged routes are served but cannot be discovered for the document. The document is marked
+    /// `x-roundhouse-merged` and a warning is emitted; `App::strict()` turns it into an error.
+    #[track_caller]
     pub fn merge(mut self, router: Router<()>) -> Self {
-        self.merges.push(router);
+        let location = std::panic::Location::caller();
+        self.merges.push(MergeRecord {
+            router,
+            source: crate::build_error::Source::new("App::merge", location.file(), location.line()),
+        });
+        self
+    }
+
+    /// Serve routes declared under `scope` at `prefix` as well as their normal location.
+    ///
+    /// This is the composition path for a route table owned by another crate, and for serving one
+    /// table at more than one versioned prefix. The selected declarations go through the same
+    /// state, conflict, capture, security and response checks as every other route.
+    #[track_caller]
+    pub fn mount(mut self, prefix: &'static str, scope: &'static str) -> Self {
+        let location = std::panic::Location::caller();
+        self.mounts.push(MountBinding {
+            prefix,
+            scope,
+            source: crate::build_error::Source::new("App::mount", location.file(), location.line()),
+        });
         self
     }
 
     /// Enable `/openapi.json` and set the document info.
-    pub fn openapi<F>(mut self, info: F) -> Self
+    pub fn openapi<F, I>(mut self, info: F) -> Self
     where
-        F: Fn() -> Info + Send + Sync + 'static,
+        F: Fn() -> I + Send + Sync + 'static,
+        I: Into<Info>,
     {
-        self.info = Some(Box::new(info));
+        self.info = Some(Box::new(move || info().into()));
         self.openapi_route = Some("/openapi.json");
         self
     }
@@ -255,6 +302,17 @@ where
     pub fn try_build(self) -> Result<Built, BuildError> {
         let mut diagnostics = Vec::new();
         let resolved = self.resolve(&mut diagnostics)?;
+        for merge in &self.merges {
+            crate::build_error::report(
+                &mut diagnostics,
+                self.strict,
+                crate::build_error::Diagnostic::new(
+                    merge.source(),
+                    "a router given to `App::merge` is served but not documented; the document \
+                     is marked `x-roundhouse-merged`",
+                ),
+            )?;
+        }
         let serve_openapi =
             self.info.is_some() || self.openapi_route.is_some() || self.docs_route.is_some();
         let info = self
@@ -263,14 +321,23 @@ where
             .map(|info| info())
             .unwrap_or_else(|| Info::new("API", "0.1.0"));
         let mut bodies = Vec::new();
-        let built_document = doc::build::build_with_observations(
-            info,
+        let mut built_document = doc::build::build_with_observations(
+            info.into_utoipa(),
             &resolved,
             self.document_rejections == DocumentRejections::Auto,
             self.strict,
             &mut diagnostics,
             &mut bodies,
         )?;
+        if !self.merges.is_empty() {
+            let extensions = utoipa::openapi::extensions::ExtensionsBuilder::new()
+                .add("x-roundhouse-merged", true)
+                .build();
+            match &mut built_document.extensions {
+                Some(existing) => existing.merge(extensions),
+                None => built_document.extensions = Some(extensions),
+            }
+        }
         let schema_engine = if self.validation == crate::extract::Validation::Schema {
             let components = built_document.components.clone().unwrap_or_default();
             let types = inventory::iter::<registry::ComponentTypeRecord>
@@ -290,7 +357,7 @@ where
             None
         };
         let document = if serve_openapi || self.validate_responses {
-            Some(Arc::new(built_document))
+            Some(Arc::new(OpenApi::from(built_document)))
         } else {
             None
         };
@@ -298,7 +365,7 @@ where
         let mut router = self.assemble(&resolved)?;
 
         for merged in self.merges {
-            router = router.merge(merged);
+            router = router.merge(merged.router);
         }
 
         if serve_openapi && let (Some(document), Some(path)) = (&document, self.openapi_route) {
@@ -343,11 +410,13 @@ where
             }
             #[cfg(feature = "schema-engine")]
             {
-                let validator = Arc::new(doc::response::ResponseValidator::new(document).map_err(
-                    |error| BuildError::SchemaCompilation {
-                        message: error.to_string(),
-                    },
-                )?);
+                let validator = Arc::new(
+                    doc::response::ResponseValidator::new(document.as_utoipa()).map_err(
+                        |error| BuildError::SchemaCompilation {
+                            message: error.to_string(),
+                        },
+                    )?,
+                );
                 let layer = axum::middleware::from_fn_with_state::<
                     _,
                     _,
@@ -417,6 +486,7 @@ where
     ) -> Result<Vec<ResolvedRoute>, BuildError> {
         resolve_routes(
             &self.scopes,
+            &self.mounts,
             self.strict,
             &self.global_layer_docs,
             Some(TypeId::of::<S>()),
@@ -536,8 +606,10 @@ fn selected(scopes: &[&'static str], module: &str) -> bool {
     scopes.is_empty() || scopes.iter().any(|scope| prefix::in_scope(scope, module))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_routes(
     scopes: &[&'static str],
+    app_mounts: &[MountBinding],
     strict: bool,
     global_layer_docs: &[fn() -> crate::doc::layer::LayerDoc],
     expected_state: Option<TypeId>,
@@ -545,9 +617,14 @@ fn resolve_routes(
     merges: usize,
     diagnostics: &mut Vec<crate::build_error::Diagnostic>,
 ) -> Result<Vec<ResolvedRoute>, BuildError> {
+    let selected_by_mount = |module: &str| {
+        app_mounts
+            .iter()
+            .any(|mount| prefix::in_scope(mount.scope, module))
+    };
     let records: Vec<&'static RouteRecord> = inventory::iter::<registry::RouteRecord>
         .into_iter()
-        .filter(|route| selected(scopes, route.module_path))
+        .filter(|route| selected(scopes, route.module_path) || selected_by_mount(route.module_path))
         .collect();
     // A scope selects a subtree, not a new root. Mounts above the scope still provide the
     // structural prefix, tags, security and layers for every route inside it.
@@ -585,6 +662,22 @@ fn resolve_routes(
     }
 
     let mut resolved = Vec::new();
+
+    for mount in app_mounts {
+        if let Err(reason) = prefix::validate_mount_prefix(mount.prefix) {
+            return Err(BuildError::InvalidMountPrefix {
+                prefix: mount.prefix.to_string(),
+                reason,
+                source: mount.source,
+            });
+        }
+        if !records
+            .iter()
+            .any(|route| prefix::in_scope(mount.scope, route.module_path))
+        {
+            return Err(BuildError::EmptyScope { scope: mount.scope });
+        }
+    }
 
     for scope in scopes {
         let matches = inventory::iter::<registry::RouteRecord>
@@ -642,56 +735,73 @@ fn resolve_routes(
         };
         layer_docs.extend(global_layer_docs.iter().map(|doc| doc()));
 
-        let (path, tags, security, hidden) = if record.absolute {
-            (
-                prefix::join("", record.path),
-                Vec::new(),
-                Vec::new(),
-                record.hidden,
-            )
+        let normal = selected(scopes, record.module_path);
+        let mut bindings: Vec<Option<MountBinding>> = Vec::new();
+        if record.absolute {
+            // `absolute` means the entry owns its full path, so it is emitted once even if more
+            // than one app mount covers its scope.
+            bindings.push(None);
         } else {
-            let path = prefix::join_all(ancestors.iter().map(|mount| mount.prefix), record.path);
-            let tags = ancestors
-                .iter()
-                .flat_map(|mount| mount.tags.iter().copied())
-                .collect();
-            let security = ancestors
-                .iter()
-                .flat_map(|mount| mount.security.iter().copied())
-                .collect();
-            let hidden = record.hidden || ancestors.iter().any(|mount| mount.hidden);
-            (path, tags, security, hidden)
-        };
+            if normal {
+                bindings.push(None);
+            }
+            bindings.extend(
+                app_mounts
+                    .iter()
+                    .copied()
+                    .filter(|mount| prefix::in_scope(mount.scope, record.module_path))
+                    .map(Some),
+            );
+        }
 
-        let normalised = prefix::normalise_template(&path);
-        let mut captures = prefix::captures(&path);
-        let total = captures.len();
-        captures.sort();
-        captures.dedup();
-        if captures.len() != total {
-            return Err(BuildError::InvalidTemplate {
-                reason: format!("`{path}` declares the same capture name more than once"),
-                source: record.source_ref(),
-            });
-        }
-        let operation_id = record
-            .operation_id
-            .map(str::to_string)
-            .unwrap_or_else(|| default_operation_id(record, &path));
-        let key = (record.method, normalised.clone());
-        if let Some(previous) = seen.get(&key) {
-            return Err(BuildError::DuplicateRoute {
-                method: record.method,
-                path,
-                first: previous.source_ref(),
-                second: record.source_ref(),
-            });
-        }
-        for ((existing_method, existing_path), previous) in &seen {
-            if *existing_path == normalised
-                && (*existing_method == Method::Any || record.method == Method::Any)
-                && *existing_method != record.method
-            {
+        for binding in bindings {
+            let (path, tags, security, hidden) = if record.absolute {
+                (
+                    prefix::join("", record.path),
+                    Vec::new(),
+                    Vec::new(),
+                    record.hidden,
+                )
+            } else {
+                let path = match binding {
+                    Some(mount) => prefix::join_all(
+                        std::iter::once(mount.prefix)
+                            .chain(ancestors.iter().map(|mount| mount.prefix)),
+                        record.path,
+                    ),
+                    None => {
+                        prefix::join_all(ancestors.iter().map(|mount| mount.prefix), record.path)
+                    }
+                };
+                let tags = ancestors
+                    .iter()
+                    .flat_map(|mount| mount.tags.iter().copied())
+                    .collect();
+                let security = ancestors
+                    .iter()
+                    .flat_map(|mount| mount.security.iter().copied())
+                    .collect();
+                let hidden = record.hidden || ancestors.iter().any(|mount| mount.hidden);
+                (path, tags, security, hidden)
+            };
+
+            let normalised = prefix::normalise_template(&path);
+            let mut captures = prefix::captures(&path);
+            let total = captures.len();
+            captures.sort();
+            captures.dedup();
+            if captures.len() != total {
+                return Err(BuildError::InvalidTemplate {
+                    reason: format!("`{path}` declares the same capture name more than once"),
+                    source: record.source_ref(),
+                });
+            }
+            let operation_id = record
+                .operation_id
+                .map(str::to_string)
+                .unwrap_or_else(|| default_operation_id(record, &path));
+            let key = (record.method, normalised.clone());
+            if let Some(previous) = seen.get(&key) {
                 return Err(BuildError::DuplicateRoute {
                     method: record.method,
                     path,
@@ -699,20 +809,33 @@ fn resolve_routes(
                     second: record.source_ref(),
                 });
             }
-        }
-        seen.insert(key, record);
+            for ((existing_method, existing_path), previous) in &seen {
+                if *existing_path == normalised
+                    && (*existing_method == Method::Any || record.method == Method::Any)
+                    && *existing_method != record.method
+                {
+                    return Err(BuildError::DuplicateRoute {
+                        method: record.method,
+                        path,
+                        first: previous.source_ref(),
+                        second: record.source_ref(),
+                    });
+                }
+            }
+            seen.insert(key, record);
 
-        resolved.push(ResolvedRoute {
-            method: record.method,
-            path,
-            operation_id,
-            module_path: record.module_path,
-            record,
-            tags,
-            security,
-            hidden,
-            layer_docs,
-        });
+            resolved.push(ResolvedRoute {
+                method: record.method,
+                path,
+                operation_id,
+                module_path: record.module_path,
+                record,
+                tags,
+                security,
+                hidden,
+                layer_docs: layer_docs.clone(),
+            });
+        }
     }
 
     resolved.sort_by(|a, b| {
@@ -1050,7 +1173,7 @@ impl Built {
     pub fn openapi_30(&self) -> Option<serde_json::Value> {
         self.document
             .as_ref()
-            .map(|document| doc::downgrade::to_openapi_30(document))
+            .map(|document| doc::downgrade::to_openapi_30(document.as_utoipa()))
     }
 
     pub fn openapi_30_json(&self) -> Option<String> {

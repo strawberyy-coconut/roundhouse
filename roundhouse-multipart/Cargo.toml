@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Typed multipart extraction for roundhouse."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/axum-roundhouse/axum-roundhouse"
+repository = "https://github.com/strawberyy-coconut/roundhouse"
 rust-version = "1.88"
 
 [features]
@@ -15,8 +15,8 @@ multipart-tempfile = ["dep:tempfile"]
 [dependencies]
 axum = { version = "0.8", features = ["multipart"] }
 bytes = "1"
-roundhouse-problem = { path = "../roundhouse-problem" }
-roundhouse-schema = { path = "../roundhouse-schema" }
+roundhouse-problem = { path = "../roundhouse-problem", version = "0.1.0" }
+roundhouse-schema = { path = "../roundhouse-schema", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = { version = "3", optional = true }

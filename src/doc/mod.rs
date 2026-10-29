@@ -124,6 +124,12 @@ pub struct HandlerDocs {
 }
 
 /// Implemented by the marker type `#[handler]` emits beside each handler.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a roundhouse handler marker",
+    label = "add `#[handler]` to the handler function",
+    note = "`routes!` needs the marker that `#[handler]` generates beside the handler; \
+            a plain `async fn` has no handler documentation to derive"
+)]
 pub trait HandlerMeta: Send + Sync + 'static {
     /// The state type read from `State<T>`, or `()` for a stateless handler.
     type State: 'static;
@@ -141,6 +147,49 @@ pub fn handler_state<M: HandlerMeta>() -> Option<TypeId> {
     if M::HAS_STATE {
         Some(TypeId::of::<M::State>())
     } else {
+        None
+    }
+}
+
+/// Probe used by the handler macro to document a foreign `axum::Json<T>` from utoipa.
+///
+/// The method call is deliberately made at the handler's concrete type, not through a generic
+/// helper: stable Rust resolves the two implementations by autoref, choosing the `ToSchema` one
+/// when it applies and the no-op one otherwise. A foreign type without utoipa support therefore
+/// keeps compiling, and is still marked unverified.
+pub struct ForeignSchema<T>(std::marker::PhantomData<T>);
+
+impl<T> ForeignSchema<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for ForeignSchema<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ForeignSchemaProbe {
+    fn foreign_schema(self, components: &mut Components) -> Option<RefOr<Schema>>;
+}
+
+impl<T: utoipa::ToSchema> ForeignSchemaProbe for &ForeignSchema<T> {
+    fn foreign_schema(self, components: &mut Components) -> Option<RefOr<Schema>> {
+        let name = T::name().into_owned();
+        let mut referenced = Vec::new();
+        <T as utoipa::ToSchema>::schemas(&mut referenced);
+        for (component, schema) in referenced {
+            components.schemas.insert(component, schema);
+        }
+        components.schemas.insert(name.clone(), T::schema());
+        Some(utoipa::openapi::Ref::from_schema_name(name).into())
+    }
+}
+
+impl<T> ForeignSchemaProbe for &&ForeignSchema<T> {
+    fn foreign_schema(self, _components: &mut Components) -> Option<RefOr<Schema>> {
         None
     }
 }

@@ -18,6 +18,7 @@ pub mod auth;
 pub mod build_error;
 pub mod doc;
 pub mod extract;
+pub mod openapi;
 pub mod prefix;
 pub mod problem;
 pub mod registry;
@@ -48,10 +49,6 @@ pub use router::{App, Built, DocumentRejections, ResolvedRoute};
 
 pub use axum;
 pub use http;
-pub mod openapi {
-    //! Convenience re-exports for configuring `App::openapi(..)`.
-    pub use utoipa::openapi::{Info, OpenApi};
-}
 pub use inventory;
 pub use regex;
 pub use serde_json;
@@ -65,10 +62,13 @@ pub use roundhouse_macros::{
 };
 
 /// Start an app, scoped to the calling crate so linked dependencies' routes stay out.
+///
+/// The scope is the crate name, not the calling module: moving `main` into a submodule must not
+/// silently produce an empty app.
 #[macro_export]
 macro_rules! app {
     ($state:expr) => {
-        $crate::App::new($state).scope(module_path!())
+        $crate::App::new($state).scope(env!("CARGO_CRATE_NAME"))
     };
 }
 

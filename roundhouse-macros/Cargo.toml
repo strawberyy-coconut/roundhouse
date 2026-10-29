@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Proc macros for roundhouse: routes!, mount!, #[handler] and the derives."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/axum-roundhouse/axum-roundhouse"
+repository = "https://github.com/strawberyy-coconut/roundhouse"
 rust-version = "1.88"
 
 [lib]
