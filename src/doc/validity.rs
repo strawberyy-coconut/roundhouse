@@ -115,7 +115,15 @@ fn validate_patterns(value: &serde_json::Value) -> Result<(), String> {
                     format!("schema pattern `{pattern}` is not a valid regular expression: {error}")
                 })?;
             }
-            for value in object.values() {
+            for (key, value) in object {
+                // These keywords hold instance data, not schemas; an example object may contain
+                // a field called `pattern` without being a regular expression.
+                if matches!(
+                    key.as_str(),
+                    "example" | "examples" | "default" | "enum" | "const"
+                ) {
+                    continue;
+                }
                 validate_patterns(value)?;
             }
         }

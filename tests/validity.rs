@@ -86,3 +86,21 @@ fn an_invalid_schema_pattern_is_a_build_error_not_a_runtime_panic() {
     ));
     assert!(error.to_string().contains("not a valid regular expression"));
 }
+
+#[test]
+fn an_example_field_named_pattern_is_not_compiled_as_a_regex() {
+    let document = serde_json::json!({
+        "openapi": "3.1.0",
+        "info": { "title": "Example", "version": "0.1.0" },
+        "paths": {},
+        "components": {
+            "schemas": {
+                "Payload": {
+                    "type": "object",
+                    "example": { "pattern": "(" }
+                }
+            }
+        }
+    });
+    validate_document(&document).expect("example data is not a schema pattern");
+}
