@@ -21,6 +21,9 @@ The opinions are deliberate:
 
 ## Quickstart
 
+Requires Rust 1.88 (the declared MSRV, checked in CI). The JSON Schema executor is behind the
+optional `schema-engine` feature; the default build uses the generated checks.
+
 ```toml
 [dependencies]
 roundhouse = "0.2"
