@@ -4,7 +4,6 @@ members = [
     "roundhouse-problem",
     "roundhouse-schema",
     "roundhouse-multipart",
-    "roundhouse-codemod",
     "examples/notes",
     "examples/blog",
     "examples/layers",
