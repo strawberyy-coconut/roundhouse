@@ -83,6 +83,8 @@ pub struct App<S> {
     merges: Vec<MergeRecord>,
     mounts: Vec<MountBinding>,
     info: Option<Box<dyn Fn() -> Info + Send + Sync>>,
+    servers: Vec<utoipa::openapi::Server>,
+    document_hooks: Vec<Box<dyn Fn(&mut OpenApi) + Send + Sync>>,
     openapi_route: Option<&'static str>,
     docs_route: Option<&'static str>,
     document_rejections: DocumentRejections,
@@ -109,6 +111,8 @@ where
             merges: Vec::new(),
             mounts: Vec::new(),
             info: None,
+            servers: Vec::new(),
+            document_hooks: Vec::new(),
             openapi_route: None,
             docs_route: None,
             document_rejections: DocumentRejections::Auto,
@@ -209,6 +213,37 @@ where
     {
         self.info = Some(Box::new(move || info().into()));
         self.openapi_route = Some("/openapi.json");
+        self
+    }
+
+    /// Add one `servers` entry to the document.
+    ///
+    /// Servers are deployment facts, so they come from the app rather than from a route
+    /// declaration.
+    pub fn server(mut self, server: impl Into<utoipa::openapi::Server>) -> Self {
+        self.servers.push(server.into());
+        self
+    }
+
+    /// Add several `servers` entries to the document.
+    pub fn servers<I, T>(mut self, servers: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<utoipa::openapi::Server>,
+    {
+        self.servers.extend(servers.into_iter().map(Into::into));
+        self
+    }
+
+    /// Run a hook over the finished document before it is served or returned.
+    ///
+    /// This is the escape hatch for document metadata the declarations cannot derive, such as
+    /// `tags` with descriptions. Hooks run in registration order after route assembly.
+    pub fn document<F>(mut self, hook: F) -> Self
+    where
+        F: Fn(&mut OpenApi) + Send + Sync + 'static,
+    {
+        self.document_hooks.push(Box::new(hook));
         self
     }
 
@@ -356,7 +391,18 @@ where
         } else {
             None
         };
-        let document = Arc::new(OpenApi::from(built_document));
+        let mut document = OpenApi::from(built_document);
+        if !self.servers.is_empty() {
+            document
+                .as_utoipa_mut()
+                .servers
+                .get_or_insert_with(Vec::new)
+                .extend(self.servers.iter().cloned());
+        }
+        for hook in &self.document_hooks {
+            hook(&mut document);
+        }
+        let document = Arc::new(document);
 
         let mut router = self.assemble(&resolved)?;
 
