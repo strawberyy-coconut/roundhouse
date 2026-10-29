@@ -1,6 +1,6 @@
 //! # roundhouse
 //!
-//! A thin layer over axum that turns declarations into a `Router` and an OpenAPI document.
+//! An opinionated metaframework for axum: declarations become a `Router` and an OpenAPI document.
 //!
 //! ```ignore
 //! mount!("/blog", tags = ["blog"]);

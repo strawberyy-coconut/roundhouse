@@ -1,7 +1,20 @@
 # roundhouse
 
-A thin layer over axum that turns declarations into a `Router` and an OpenAPI document — with a
-set of runnable examples that exercise different parts of the surface.
+An opinionated metaframework for axum. You declare routes, parameters, schemas, auth and errors;
+roundhouse assembles a real `axum::Router` and the OpenAPI 3.1 document that describes it. There is
+no separate wiring step and no hand-maintained spec.
+
+The opinions are deliberate:
+
+- **Declarations, not wiring.** A route lives beside its handler in a `routes!` table and a subtree
+  declares its prefix once in `mount!`. `App::build()` joins the tables and is the only place the
+  application is assembled.
+- **One source of truth.** Paths, query parameters, bodies, responses and security requirements are
+  derived from the same declarations the router runs, so what is documented is what is enforced.
+- **Loud by default.** Missing success responses, duplicate routes, drifting parameter names and
+  unsupported state are build errors instead of silent omissions.
+- **The document is a build artifact.** `Built::openapi()` and the `roundhouse` binary expose the
+  same document the server serves, so CI can diff it.
 
 The repository is a Cargo workspace with `roundhouse` as the root package:
 
@@ -20,7 +33,6 @@ The repository is a Cargo workspace with `roundhouse` as the root package:
 | `examples/auth/` | `Auth<A>`, scopes, optional auth, two-scheme AND, security registry, `WWW-Authenticate` |
 | `tests/` | the framework's surface, conflict and golden-document tests |
 | `examples/*/tests/` | each example's integration tests |
-| `specs/` | the design spec: crate boundaries, macro surface, document and validation decisions |
 
 The example app has no `router()` function. Its wiring is declarations:
 
@@ -58,12 +70,8 @@ to `module_path!()`, so a linked dependency's routes cannot join by accident.
 
 ## API reference
 
-The README and rustdoc are the contract for what the framework does today. `specs/roundhouse-spec.md`
-is the design record — crate boundaries, the macro surface, and the decisions still ahead of the
-implementation (v0.3 codegen mode, erased-state mode, the separate conformance tool). The v0.2
-milestone is in place: crate split, multipart rewrite, loud derivation, schema execution and
-response validation on the same engine. Where the two disagree, the README is current behaviour and
-the spec is the target.
+The README and rustdoc are the contract for what the framework does today: the crate split, loud
+derivation, and schema execution and response validation on the same engine.
 
 ```sh
 cargo doc --workspace --no-deps --open
