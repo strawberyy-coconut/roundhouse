@@ -251,6 +251,9 @@ fn app_merge_is_visible_and_strict_rejects_it() {
             .iter()
             .any(|diagnostic| diagnostic.message.contains("App::merge"))
     );
+    assert_eq!(built.merges().len(), 1);
+    assert_eq!(built.merges()[0].source().module_path, "App::merge");
+    assert!(built.merges()[0].location().contains("roadmap.rs"));
 
     let strict = App::new(State)
         .scope(concat!(module_path!(), "::mounted"))

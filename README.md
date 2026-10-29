@@ -230,13 +230,15 @@ std::fs::write("target/openapi.json", json)?;
   A mount prefix cannot contain a catch-all; a final `{*rest}` belongs in the leaf route.
   Group mounts, module layers (full/route), entry layers, `absolute`, `hidden`, `#[cfg]` entries,
   grouped method tables, scoped discovery (`scope` / `include`), `App::mount(prefix, scope)` for
-  cross-crate composition and several prefixes over one table, `App::layer`,
+  cross-crate composition and several prefixes over one table, `mount!`'s typed `MOUNT` handle,
+  `App::layer`,
   `App::layer_documented` for layers that terminate requests, `App::merge`, custom fallbacks, and
   JSON `404 Problem` and `405 Problem` defaults. `scope(..)` selects declarations; mounts above the scope still
   provide the structural prefix (and their tags, security and layers), so scoping below
   `mount!("/api/v1")` keeps `/api/v1` in routes and documents. A router given to `App::merge` is
-  served but not discovered; the document carries `x-roundhouse-merged` and a warning, which
-  `App::strict()` turns into an error.
+  served but not discovered, so **the served document is incomplete**; it carries
+  `x-roundhouse-merged` and a warning, which `App::strict()` turns into an error, and
+  `Built::merges()` exposes each merge source for an app's own CI ledger.
 - **Fidelity** — `App::router()` returns a real `axum::Router<S>`, `Result<T, E>` works whenever
   both sides are `IntoResponse`, and the example's fidelity test runs the same requests against a
   hand-written router and the discovered one, asserting status, headers and body are equal.
@@ -248,7 +250,8 @@ std::fs::write("target/openapi.json", json)?;
   `x-roundhouse-unverified-body` (a warning by default, a `BuildError` under `App::strict()`) and
   is still documented from `T` when `T: utoipa::ToSchema` (the marker means *unenforced*, not
   unknown), a custom extractor whose parameters the macro cannot infer is marked
-  `x-roundhouse-unverified-extractor` (also a warning by default), and
+  `x-roundhouse-unverified-extractor` (also a warning by default), a file field without
+  `max_bytes` is named in a warning (an error under `strict`), and
   `-> StatusCode` or `(StatusCode, Json<T>)` documents a `default` response. `responses(200 = Post)`
   uses `Post`'s schema; replacing an inferred body needs `override` and emits
   `x-roundhouse-overridden-response`. `deprecated` and `public` emit `deprecated: true` and

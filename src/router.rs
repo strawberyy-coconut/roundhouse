@@ -70,14 +70,27 @@ impl From<MountHandle> for Scope {
 }
 
 /// A hand-written router merged with `App::merge`, plus where it was merged.
-struct MergeRecord {
+struct PendingMerge {
     router: Router<()>,
     source: crate::build_error::Source,
 }
 
+/// One entry in a built app's merge ledger.
+///
+/// A merged router is served but not discovered for the document, so the document is incomplete.
+/// An application can assert its own migration debt with [`Built::merges`] in CI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MergeRecord {
+    source: crate::build_error::Source,
+}
+
 impl MergeRecord {
-    fn source(&self) -> crate::build_error::Source {
+    pub fn source(&self) -> crate::build_error::Source {
         self.source
+    }
+
+    pub fn location(&self) -> String {
+        format!("{}:{}", self.source.file, self.source.line)
     }
 }
 
@@ -127,7 +140,7 @@ pub struct App<S> {
     global_layers: Vec<RouterLayer>,
     global_layer_docs: Vec<fn() -> crate::doc::layer::LayerDoc>,
     fallback: Option<RouterLayer>,
-    merges: Vec<MergeRecord>,
+    merges: Vec<PendingMerge>,
     mounts: Vec<MountBinding>,
     info: Option<Box<dyn Fn() -> Info + Send + Sync>>,
     servers: Vec<utoipa::openapi::Server>,
@@ -231,7 +244,7 @@ where
     #[track_caller]
     pub fn merge(mut self, router: Router<()>) -> Self {
         let location = std::panic::Location::caller();
-        self.merges.push(MergeRecord {
+        self.merges.push(PendingMerge {
             router,
             source: crate::build_error::Source::new("App::merge", location.file(), location.line()),
         });
@@ -398,7 +411,7 @@ where
                 &mut diagnostics,
                 self.strict,
                 crate::build_error::Diagnostic::new(
-                    merge.source(),
+                    merge.source,
                     "a router given to `App::merge` is served but not documented; the document \
                      is marked `x-roundhouse-merged`",
                 ),
@@ -459,6 +472,14 @@ where
             hook(&mut document);
         }
         let document = Arc::new(document);
+
+        let merge_ledger: Vec<MergeRecord> = self
+            .merges
+            .iter()
+            .map(|merge| MergeRecord {
+                source: merge.source,
+            })
+            .collect();
 
         let mut router = self.assemble(&resolved)?;
 
@@ -560,6 +581,7 @@ where
             router,
             routes: resolved,
             document,
+            merges: merge_ledger,
             diagnostics,
         })
     }
@@ -1266,6 +1288,7 @@ pub struct Built {
     router: Router<()>,
     routes: Vec<ResolvedRoute>,
     document: Arc<OpenApi>,
+    merges: Vec<MergeRecord>,
     diagnostics: Vec<crate::build_error::Diagnostic>,
 }
 
@@ -1284,6 +1307,13 @@ impl Built {
     /// also served at a route.
     pub fn document(&self) -> &OpenApi {
         &self.document
+    }
+
+    /// Hand-written routers merged into this app, with the `App::merge` call site.
+    ///
+    /// Every entry means the served router has routes the document does not describe.
+    pub fn merges(&self) -> &[MergeRecord] {
+        &self.merges
     }
 
     /// Non-fatal observations collected while resolving and documenting the app.
