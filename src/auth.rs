@@ -9,19 +9,25 @@
 //! cannot be documented without an enforcement decision. Several required `Auth<A>` extractors
 //! AND into one requirement; `Option<Auth<A>>` adds the unauthenticated alternative.
 //!
-//! `mount!(security = [...])` is accepted only when the operation also enforces that scheme.
-//! Scheme kinds are never guessed from names.
+//! `mount!(security = [A, ...])` names scheme *types*, not strings. Each entry installs the
+//! `Auth<A>` check on every route below the mount as well as publishing the requirement, so the
+//! document cannot advertise a check the router does not perform. Scheme kinds are never guessed
+//! from names.
 //!
 //! The schemes in `examples/auth` are a reference implementation, not a supported backend. See
 //! the crate README for production guidance, and use a maintained library or gateway for token
 //! verification.
 
-use axum::extract::{FromRequestParts, OptionalFromRequestParts};
+use std::any::{Any, TypeId};
+use std::future::Future;
+
+use axum::extract::{FromRequestParts, OptionalFromRequestParts, Request, State};
 use axum::http::StatusCode;
 use axum::http::header;
 use axum::http::request::Parts;
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use std::future::Future;
+use axum::routing::MethodRouter;
 use utoipa::openapi::SecurityRequirement;
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme};
 
@@ -74,6 +80,82 @@ pub fn auth_doc<A: AuthScheme, Scopes: AuthScopes>() -> AuthDoc {
     }
 }
 
+/// A security requirement that also installs its own enforcer.
+///
+/// `mount!(security = [Bearer])` and a `routes!` entry's `security = [Bearer]` expand to these.
+/// The guard is applied to the route's `MethodRouter`, so the declaration and the check are the
+/// same piece of code: the document cannot advertise a scheme that nothing authenticates.
+#[derive(Clone, Copy)]
+pub struct AuthGuard {
+    pub name: &'static str,
+    pub scheme: SchemeDoc,
+    pub(crate) state: fn() -> TypeId,
+    pub(crate) state_name: fn() -> &'static str,
+    pub(crate) failures: fn() -> Vec<crate::doc::ResponseDoc>,
+    pub(crate) apply: fn(MethodRouter<()>, &dyn Any) -> MethodRouter<()>,
+}
+
+impl AuthGuard {
+    /// Construct a guard. Called by `mount!`/`routes!`; not part of the stable API.
+    #[doc(hidden)]
+    pub const fn __new<A: Authenticate>() -> Self {
+        Self {
+            name: A::NAME,
+            scheme: SchemeDoc {
+                name: A::NAME,
+                kind: A::KIND,
+            },
+            state: state_id::<A>,
+            state_name: state_name::<A>,
+            failures: failures::<A>,
+            apply: apply::<A>,
+        }
+    }
+
+    pub(crate) fn doc(self) -> AuthDoc {
+        AuthDoc {
+            name: self.name,
+            scopes: &[],
+        }
+    }
+}
+
+fn state_id<A: AuthScheme>() -> TypeId {
+    TypeId::of::<A::State>()
+}
+
+fn state_name<A: AuthScheme>() -> &'static str {
+    std::any::type_name::<A::State>()
+}
+
+fn failures<A: AuthScheme>() -> Vec<crate::doc::ResponseDoc> {
+    crate::doc::auth_failures::<A>()
+}
+
+fn apply<A: Authenticate>(method_router: MethodRouter<()>, state: &dyn Any) -> MethodRouter<()> {
+    let state = state
+        .downcast_ref::<A::State>()
+        .expect("roundhouse: auth guard state was validated at build time")
+        .clone();
+    method_router.layer(axum::middleware::from_fn_with_state(state, enforce::<A>))
+}
+
+async fn enforce<A: Authenticate>(
+    State(state): State<A::State>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let (mut parts, body) = request.into_parts();
+    match A::authenticate(&mut parts, &state).await {
+        Ok(_) => next.run(Request::from_parts(parts, body)).await,
+        Err(problem) => AuthRejection {
+            problem,
+            scheme: A::KIND,
+        }
+        .into_response(),
+    }
+}
+
 /// Pure scheme metadata for `Auth<A>`.
 ///
 /// This type never carries the authenticated user. It only names the scheme, describes it in the
@@ -81,7 +163,10 @@ pub fn auth_doc<A: AuthScheme, Scopes: AuthScopes>() -> AuthDoc {
 pub trait AuthScheme: Sized + Send + Sync + 'static {
     /// The app state this scheme authenticates against. A handler using `Auth<A>` pins its
     /// `MethodRouter` to this type, just like `State<Self::State>`.
-    type State: Send + Sync + 'static;
+    ///
+    /// `Clone` is required so a `mount!(security = [A])` guard can capture the state it
+    /// authenticates against. Application states are already `Clone` for `App`.
+    type State: Clone + Send + Sync + 'static;
 
     /// The authenticated principal returned by `Auth<A>`.
     type Identity: Send + Sync + 'static;

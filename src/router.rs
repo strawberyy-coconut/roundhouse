@@ -38,7 +38,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{MethodRouter, Route};
 use tower::{Layer, Service, ServiceExt};
 
-use crate::build_error::BuildError;
+use crate::auth::AuthGuard;
+use crate::build_error::{BuildError, Source};
 use crate::doc::{self, HandlerDocs};
 use crate::openapi::{Info, OpenApi};
 use crate::prefix;
@@ -741,7 +742,7 @@ where
         let mut absolute: Vec<(&'static RouteRecord, MethodRouter<()>)> = Vec::new();
 
         for route in resolved {
-            let method_router = build_method_router::<S>(route.record, &self.state)?;
+            let method_router = build_method_router::<S>(route, &self.state)?;
             if route.record.absolute {
                 absolute.push((route.record, method_router));
             } else {
@@ -864,6 +865,36 @@ fn resolve_routes(
                     .any(|route| prefix::is_ancestor(mount.module_path, route.module_path))
         })
         .collect();
+
+    // A guard captures the app state when the router is assembled. Reject a scheme whose
+    // `AuthScheme::State` is a different type now, while the source location is still useful,
+    // instead of panicking inside the generated layer.
+    if let Some(expected) = expected_state {
+        for mount in &mounts {
+            for guard in mount.security {
+                if (guard.state)() != expected {
+                    return Err(BuildError::SecurityStateMismatch {
+                        name: guard.name.to_string(),
+                        expected: expected_state_name,
+                        actual: (guard.state_name)(),
+                        source: Source::new(mount.module_path, mount.file, mount.line),
+                    });
+                }
+            }
+        }
+        for record in &records {
+            for guard in record.security {
+                if (guard.state)() != expected {
+                    return Err(BuildError::SecurityStateMismatch {
+                        name: guard.name.to_string(),
+                        expected: expected_state_name,
+                        actual: (guard.state_name)(),
+                        source: record.source_ref(),
+                    });
+                }
+            }
+        }
+    }
 
     for mount in &mounts {
         if let Err(reason) = prefix::validate_mount_prefix(mount.prefix) {
@@ -999,14 +1030,21 @@ fn resolve_routes(
             );
         }
 
+        // `absolute` owns its full URL, so it sees only the guards declared on the entry itself.
+        let auth = if record.absolute {
+            dedup_guards(record.security.iter().copied())
+        } else {
+            dedup_guards(
+                ancestors
+                    .iter()
+                    .flat_map(|mount| mount.security.iter().copied())
+                    .chain(record.security.iter().copied()),
+            )
+        };
+
         for binding in bindings {
-            let (path, tags, security, hidden) = if record.absolute {
-                (
-                    prefix::join("", record.path),
-                    Vec::new(),
-                    Vec::new(),
-                    record.hidden,
-                )
+            let (path, tags, hidden) = if record.absolute {
+                (prefix::join("", record.path), Vec::new(), record.hidden)
             } else {
                 let path = match binding {
                     Some(mount) => prefix::join_all(
@@ -1022,12 +1060,8 @@ fn resolve_routes(
                     .iter()
                     .flat_map(|mount| mount.tags.iter().copied())
                     .collect();
-                let security = ancestors
-                    .iter()
-                    .flat_map(|mount| mount.security.iter().copied())
-                    .collect();
                 let hidden = record.hidden || ancestors.iter().any(|mount| mount.hidden);
-                (path, tags, security, hidden)
+                (path, tags, hidden)
             };
 
             let normalised = prefix::normalise_template(&path);
@@ -1077,7 +1111,7 @@ fn resolve_routes(
                 module_path: record.module_path,
                 record,
                 tags,
-                security,
+                auth: auth.clone(),
                 hidden,
                 layer_docs: layer_docs.clone(),
             });
@@ -1135,6 +1169,20 @@ fn resolve_routes(
     }
 
     Ok(resolved)
+}
+
+/// Inherited guards plus the entry's own, with one guard per scheme name.
+///
+/// A handler that takes `Auth<A>` skips the guard for `A` at assembly time, so a scheme that is
+/// declared twice is authenticated once.
+fn dedup_guards(guards: impl Iterator<Item = AuthGuard>) -> Vec<AuthGuard> {
+    let mut deduped: Vec<AuthGuard> = Vec::new();
+    for guard in guards {
+        if !deduped.iter().any(|existing| existing.name == guard.name) {
+            deduped.push(guard);
+        }
+    }
+    deduped
 }
 
 fn merge_router(
@@ -1321,13 +1369,11 @@ fn apply_mount_layer(router: Router<()>, layer: MountLayer) -> Router<()> {
     layer(router)
 }
 
-fn build_method_router<S>(
-    record: &'static RouteRecord,
-    state: &S,
-) -> Result<MethodRouter<()>, BuildError>
+fn build_method_router<S>(route: &ResolvedRoute, state: &S) -> Result<MethodRouter<()>, BuildError>
 where
     S: Clone + Send + Sync + 'static,
 {
+    let record = route.record;
     let boxed = (record.handler)();
 
     let mut method_router = if (record.state)().is_some() {
@@ -1367,6 +1413,15 @@ where
     }
     if let Some(layer) = record.layer {
         method_router = layer(method_router);
+    }
+    // Apply guards last so they wrap route layers: a layer that short-circuits must not be able
+    // to answer before the scheme is checked. A handler that already takes `Auth<A>` performs the
+    // same check during extraction, so skip that guard instead of authenticating twice.
+    for guard in &route.auth {
+        if record.required_auth.contains(&guard.name) {
+            continue;
+        }
+        method_router = (guard.apply)(method_router, state);
     }
     Ok(method_router)
 }
@@ -1416,7 +1471,9 @@ pub struct ResolvedRoute {
     pub module_path: &'static str,
     pub record: &'static RouteRecord,
     pub tags: Vec<&'static str>,
-    pub security: Vec<&'static str>,
+    /// Auth guards inherited from mounts plus this entry's own `security`; installed on the
+    /// method router unless the handler already requires the same scheme.
+    pub auth: Vec<AuthGuard>,
     pub hidden: bool,
     pub layer_docs: Vec<crate::doc::layer::LayerDoc>,
 }

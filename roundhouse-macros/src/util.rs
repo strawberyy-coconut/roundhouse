@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{LitInt, LitStr, Path};
+use syn::parse::ParseStream;
+use syn::{LitInt, LitStr, Path, Type};
 
 /// The path to the `roundhouse` crate as the *expanding* crate names it.
 ///
@@ -54,6 +55,53 @@ pub fn string_slice(literals: &[LitStr]) -> TokenStream {
         quote!(&[])
     } else {
         quote!(&[#(#literals),*])
+    }
+}
+
+/// Parse a `security = [..]` list. Entries are scheme *types*: the guard is monomorphized over
+/// `A`, so the declaration and the check cannot drift apart.
+pub fn parse_security_types(input: ParseStream<'_>) -> syn::Result<Vec<Type>> {
+    let content;
+    syn::bracketed!(content in input);
+    let mut values: Vec<Type> = Vec::new();
+    while !content.is_empty() {
+        if content.peek(LitStr) {
+            let literal: LitStr = content.parse()?;
+            return Err(syn::Error::new(
+                literal.span(),
+                format!(
+                    "security takes scheme types, not the string `{}`; name the type that \
+                     implements `AuthScheme` (for example `Bearer`)",
+                    literal.value()
+                ),
+            ));
+        }
+        values.push(content.parse::<Type>()?);
+        if content.peek(syn::Token![,]) {
+            content.parse::<syn::Token![,]>()?;
+        } else {
+            break;
+        }
+    }
+    for ty in &values {
+        if matches!(outer_ident(ty).as_deref(), Some("Auth") | Some("Option")) {
+            return Err(syn::Error::new_spanned(
+                ty,
+                "security names a scheme type, not `Auth<..>` or `Option<..>`; write `Bearer` \
+                 and put scopes or optionality on the handler argument",
+            ));
+        }
+    }
+    Ok(values)
+}
+
+/// Expand scheme types into the const slice a `RouteRecord`/`MountRecord` stores.
+pub fn auth_slice(types: &[Type]) -> TokenStream {
+    if types.is_empty() {
+        quote!(&[])
+    } else {
+        let krate = krate();
+        quote!(&[#(#krate::auth::AuthGuard::__new::<#types>()),*])
     }
 }
 

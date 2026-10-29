@@ -1,14 +1,14 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::{Expr, Ident, LitStr, Result, Token};
+use syn::{Expr, Ident, LitStr, Result, Token, Type};
 
-use crate::util::string_slice;
+use crate::util::{auth_slice, parse_security_types, string_slice};
 
 pub struct MountInput {
     prefix: Option<LitStr>,
     tags: Vec<LitStr>,
-    security: Vec<LitStr>,
+    security: Vec<Type>,
     layer: Option<Expr>,
     layer_mode: LayerMode,
     hidden: bool,
@@ -57,7 +57,7 @@ impl Parse for MountInput {
                 }
                 "security" => {
                     input.parse::<Token![=]>()?;
-                    security = parse_string_list(input)?;
+                    security = parse_security_types(input)?;
                 }
                 "layer" => {
                     input.parse::<Token![=]>()?;
@@ -134,7 +134,7 @@ pub fn expand(input: MountInput) -> TokenStream {
         .unwrap_or_default();
     let prefix_lit = LitStr::new(&prefix, proc_macro2::Span::call_site());
     let tags = string_slice(&input.tags);
-    let security = string_slice(&input.security);
+    let security = auth_slice(&input.security);
     let hidden = input.hidden;
     let line = proc_macro2::Span::call_site().start().line as u32;
 

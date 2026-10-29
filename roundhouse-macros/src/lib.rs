@@ -76,10 +76,11 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// # Options
 ///
 /// - `tags = ["tag", ...]` — tags added to every non-`absolute` operation below this module.
-/// - `security = ["scheme", ...]` — security requirements added to every non-`absolute`
-///   operation below this module. The scheme must actually be enforced by the operation (for
-///   example by an `Auth<A>` argument or a documented auth layer); an unenforced claim is a
-///   build error.
+/// - `security = [Scheme, ...]` — scheme *types* installed as an `Auth<Scheme>` guard on every
+///   non-`absolute` operation below this module, and published in the document. Several schemes
+///   form one AND requirement. Write `[Bearer]`, not `["bearer"]` or `[Auth<Bearer>]`; scopes
+///   belong on the handler argument (`Auth<Bearer, ReadPosts>`). A handler that already takes
+///   `Auth<Scheme>` is not authenticated twice.
 /// - `layer = expression` — a tower layer applied to the module's router. The expression is
 ///   evaluated once while the app is built.
 /// - `layer_mode = full` (default) — apply the layer to the whole subtree, like
@@ -106,7 +107,7 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// mount!(
 ///     "/api/v1",
 ///     tags = ["notes"],
-///     security = ["bearer"],
+///     security = [Bearer],
 ///     layer = tower_http::trace::TraceLayer::new_for_http(),
 ///     doc = roundhouse::doc::layer::rate_limit(429),
 /// );
@@ -196,8 +197,9 @@ pub fn mount(input: TokenStream) -> TokenStream {
 /// - `operation_id = "..."` — an explicit operation id. When omitted, an id is derived from the
 ///   method, module path and handler name. Explicit ids must be unique within a document.
 /// - `tags = ["tag", ...]` — operation tags, appended to the tags inherited from `mount!`.
-/// - `security = ["scheme", ...]` — security requirements, appended to the ones inherited from
-///   `mount!`. As with `mount!`, the scheme must be enforced by the handler or a documented layer.
+/// - `security = [Scheme, ...]` — scheme types installed as an `Auth<Scheme>` guard on this
+///   entry, appended to the guards inherited from `mount!`. As with `mount!`, entries are types
+///   (`Bearer`), not strings.
 /// - `responses(status, status = Type, ...)` — declare responses that the handler's return type
 ///   cannot express. A bare status documents an empty response; `status = Type` documents a JSON
 ///   body of `Type`. Declarations add to or refine the inferred responses.
@@ -213,7 +215,7 @@ pub fn mount(input: TokenStream) -> TokenStream {
 ///   validation.
 /// - `hidden` — serve the route but omit it from the document.
 /// - `absolute` — the path owns the full URL. Module prefixes and mount-level tags, security and
-///   hidden flags do not apply.
+///   hidden flags do not apply; a `security` declared on the entry itself still does.
 /// - `deprecated` — mark the operation deprecated in the document.
 /// - `public` — add the `x-roundhouse-public` extension to the operation.
 /// - `validate = false` — parse the request as usual but skip `#[schema(..)]` constraint

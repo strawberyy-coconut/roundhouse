@@ -211,6 +211,35 @@ fn operation(
         docs.schemes.extend(layer.schemes.clone());
     }
 
+    // Mount- and entry-level guards are installed on the method router by construction, so
+    // their requirements are enforced, not asserted. A handler's scoped `Auth<A, Scopes>`
+    // declaration wins over the bare guard for the same scheme.
+    for guard in &route.auth {
+        if !docs
+            .required_auth
+            .iter()
+            .any(|auth| auth.name == guard.name)
+        {
+            docs.required_auth.push(guard.doc());
+        }
+        if !docs.schemes.iter().any(|scheme| scheme.name == guard.name) {
+            docs.schemes.push(guard.scheme);
+        }
+        docs.failures.extend((guard.failures)());
+    }
+    // A guard turns an `Option<Auth<A, Scopes>>` alternative into a requirement. Keep the
+    // handler's scopes on the promoted requirement so the document still names them.
+    for optional in &docs.optional_auth {
+        if let Some(required) = docs
+            .required_auth
+            .iter_mut()
+            .find(|required| required.name == optional.name)
+            && required.scopes.is_empty()
+        {
+            required.scopes = optional.scopes;
+        }
+    }
+
     if unverified_extractor {
         crate::build_error::report(
             diagnostics,
@@ -349,31 +378,14 @@ fn operation(
         merge_scheme(used_schemes, *scheme, route.record.source_ref())?;
     }
 
-    // A mount-level `security = [...]` is a claim. Accept it only when the operation itself
-    // requires that scheme (an `Auth<A>` argument or a documented auth layer enforces it);
-    // otherwise the document would advertise protection the router does not provide.
-    let enforced: Vec<&'static str> = docs.required_auth.iter().map(|auth| auth.name).collect();
-    let mut required = docs.required_auth;
-    for scheme in route
-        .security
-        .iter()
-        .chain(route.record.security.iter())
-        .copied()
-    {
-        if !enforced.contains(&scheme) {
-            return Err(BuildError::UnverifiedSecurity {
-                name: scheme.to_string(),
-                source: route.record.source_ref(),
-            });
-        }
-        if !required.iter().any(|auth| auth.name == scheme) {
-            required.push(crate::auth::AuthDoc {
-                name: scheme,
-                scopes: &[],
-            });
-        }
-    }
-    let optional = docs.optional_auth;
+    let required = docs.required_auth;
+    // A mount guard plus `Option<Auth<A>>` on the handler must not publish the same scheme as
+    // both required and optional.
+    let optional: Vec<_> = docs
+        .optional_auth
+        .into_iter()
+        .filter(|optional| !required.iter().any(|auth| auth.name == optional.name))
+        .collect();
 
     let mut security: Vec<SecurityRequirement> = Vec::new();
     for auth in required.iter().chain(optional.iter()) {

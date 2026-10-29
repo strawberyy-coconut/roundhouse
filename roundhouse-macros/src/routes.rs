@@ -4,7 +4,9 @@ use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::{Attribute, Expr, Ident, LitInt, LitStr, Path, Result, Token, Type};
 
-use crate::util::{last_segment, marker_type, parse_u16, string_slice};
+use crate::util::{
+    auth_slice, last_segment, marker_type, parse_security_types, parse_u16, string_slice,
+};
 
 struct Entry {
     attrs: Vec<Attribute>,
@@ -16,7 +18,7 @@ struct Entry {
     description: Option<LitStr>,
     operation_id: Option<LitStr>,
     tags: Vec<LitStr>,
-    security: Vec<LitStr>,
+    security: Vec<Type>,
     responses: Vec<(u16, Option<Type>)>,
     layer: Option<Expr>,
     doc: Option<Expr>,
@@ -127,7 +129,7 @@ fn parse_attrs(content: ParseStream<'_>, entry: &mut Entry) -> Result<()> {
             }
             "security" => {
                 content.parse::<Token![=]>()?;
-                entry.security = parse_string_list(content)?;
+                entry.security = parse_security_types(content)?;
             }
             "responses" => {
                 let responses;
@@ -311,7 +313,8 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let summary = option_lit(&entry.summary);
     let description = option_lit(&entry.description);
     let tags = string_slice(&entry.tags);
-    let security = string_slice(&entry.security);
+    let security = auth_slice(&entry.security);
+    let required_auth = quote!(<#marker_type as #krate::doc::HandlerMeta>::REQUIRED_AUTH);
     let hidden = entry.hidden;
     let absolute = entry.absolute;
     let validate = entry.validate;
@@ -415,6 +418,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     #description,
                     #tags,
                     #security,
+                    #required_auth,
                     #hidden,
                     #absolute,
                     #validate,

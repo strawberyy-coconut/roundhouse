@@ -163,6 +163,12 @@ pub trait HandlerMeta: Send + Sync + 'static {
     /// Capture names declared by the handler's `Path<T>` extractor, in template order.
     const PATH_NAMES: &'static [&'static str] = &[];
 
+    /// Scheme names the handler requires with `Auth<A>` (`Option<Auth<A>>` does not count).
+    ///
+    /// A mount-level guard for the same scheme is skipped: the extractor already performs the
+    /// check during extraction, so the request must not be authenticated twice.
+    const REQUIRED_AUTH: &'static [&'static str] = &[];
+
     fn docs(components: &mut Components) -> HandlerDocs;
 }
 

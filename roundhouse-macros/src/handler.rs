@@ -21,6 +21,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
     let mut state_type: Option<Type> = None;
     let mut path_type: Option<Type> = None;
     let mut statements: Vec<TokenStream> = Vec::new();
+    let mut required_auth: Vec<TokenStream> = Vec::new();
     let mut body_count = 0usize;
 
     for argument in &item.sig.inputs {
@@ -51,6 +52,9 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     );
                 });
             } else {
+                required_auth.push(quote!(
+                    <#auth as #krate::auth::AuthScheme>::NAME
+                ));
                 statements.push(quote! {
                     docs.required_auth.push(
                         #krate::auth::auth_doc::<#auth, #scopes>()
@@ -138,6 +142,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
             type State = #state_ty;
             const HAS_STATE: bool = #has_state;
             const PATH_NAMES: &'static [&'static str] = #path_names;
+            const REQUIRED_AUTH: &'static [&'static str] = &[#(#required_auth),*];
 
             fn docs(
                 components: &mut #krate::utoipa::openapi::schema::Components,

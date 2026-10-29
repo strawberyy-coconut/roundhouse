@@ -1,0 +1,5 @@
+error: security takes scheme types, not the string `bearer`; name the type that implements `AuthScheme` (for example `Bearer`)
+ --> tests/ui/security_string_scheme.rs:3:20
+  |
+3 | mount!(security = ["bearer"]);
+  |                    ^^^^^^^^

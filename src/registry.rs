@@ -11,6 +11,7 @@ use axum::Router;
 use axum::routing::MethodRouter;
 use utoipa::openapi::schema::Components;
 
+use crate::auth::AuthGuard;
 use crate::doc::HandlerDocs;
 
 /// HTTP methods a table entry may declare.
@@ -108,7 +109,11 @@ pub struct RouteRecord {
     pub(crate) summary: Option<&'static str>,
     pub(crate) description: Option<&'static str>,
     pub(crate) tags: &'static [&'static str],
-    pub(crate) security: &'static [&'static str],
+    /// Guards declared on this table entry; applied unless the handler already requires the
+    /// same scheme.
+    pub(crate) security: &'static [AuthGuard],
+    /// Scheme names the handler itself requires (`Auth<A>`, not `Option<Auth<A>>`).
+    pub(crate) required_auth: &'static [&'static str],
     pub(crate) hidden: bool,
     pub(crate) absolute: bool,
     pub(crate) validate: bool,
@@ -143,7 +148,8 @@ impl RouteRecord {
         summary: Option<&'static str>,
         description: Option<&'static str>,
         tags: &'static [&'static str],
-        security: &'static [&'static str],
+        security: &'static [AuthGuard],
+        required_auth: &'static [&'static str],
         hidden: bool,
         absolute: bool,
         validate: bool,
@@ -171,6 +177,7 @@ impl RouteRecord {
             description,
             tags,
             security,
+            required_auth,
             hidden,
             absolute,
             validate,
@@ -207,7 +214,7 @@ pub struct MountRecord {
     pub(crate) line: u32,
     pub(crate) prefix: &'static str,
     pub(crate) tags: &'static [&'static str],
-    pub(crate) security: &'static [&'static str],
+    pub(crate) security: &'static [AuthGuard],
     pub(crate) hidden: bool,
     pub(crate) layer: Option<MountLayer>,
     pub(crate) doc: Option<fn() -> crate::doc::layer::LayerDoc>,
@@ -223,7 +230,7 @@ impl MountRecord {
         line: u32,
         prefix: &'static str,
         tags: &'static [&'static str],
-        security: &'static [&'static str],
+        security: &'static [AuthGuard],
         hidden: bool,
         layer: Option<MountLayer>,
         doc: Option<fn() -> crate::doc::layer::LayerDoc>,

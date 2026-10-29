@@ -252,6 +252,29 @@ async fn every_documented_security_requirement_is_enforced() {
 }
 
 #[tokio::test]
+async fn mount_security_guards_a_whole_subtree() {
+    let app = built();
+
+    let response = request(&app, "/guarded/whoami", &[]).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(response.headers()[header::WWW_AUTHENTICATE], "Bearer");
+
+    let response = request(
+        &app,
+        "/guarded/whoami",
+        &[(header::AUTHORIZATION.as_str(), "Bearer reader")],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let document = serde_json::to_value(app.document()).unwrap();
+    assert_eq!(
+        document["paths"]["/guarded/whoami"]["get"]["security"][0]["bearer"],
+        serde_json::json!([])
+    );
+}
+
+#[tokio::test]
 async fn auth_failures_are_documented_and_the_ui_is_served() {
     let app = built();
     let document = serde_json::to_value(app.document()).unwrap();

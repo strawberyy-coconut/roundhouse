@@ -65,8 +65,16 @@ pub enum BuildError {
         first: Source,
         second: Source,
     },
-    /// A security requirement with no extractor or documented layer enforcing it.
+    /// A security requirement with no registered scheme kind.
     UnverifiedSecurity { name: String, source: Source },
+    /// A mount- or entry-level security guard authenticates against a different state than the
+    /// app.
+    SecurityStateMismatch {
+        name: String,
+        expected: &'static str,
+        actual: &'static str,
+        source: Source,
+    },
     /// A declared response contradicts the inferred one without `override`.
     ConflictingResponse {
         operation_id: String,
@@ -177,9 +185,20 @@ impl fmt::Display for BuildError {
             ),
             BuildError::UnverifiedSecurity { name, source } => write!(
                 f,
-                "error: security requirement `{name}` is documented but nothing enforces it\n  {source}\n\
-                 hint: add an `Auth<A>` argument or `layer_documented(auth::<A>())` for that scheme, \
-                 or remove it from `security`"
+                "error: security requirement `{name}` has no registered scheme kind\n  {source}\n\
+                 hint: declare it with `security = [Scheme]` or add an `Auth<Scheme>` argument"
+            ),
+            BuildError::SecurityStateMismatch {
+                name,
+                expected,
+                actual,
+                source,
+            } => write!(
+                f,
+                "error: security requirement `{name}` authenticates against state `{actual}`, but the app \
+                 state is `{expected}`\n  {source}\n\
+                 hint: use a scheme whose `AuthScheme::State` is the app state, or enforce it in the \
+                 handler"
             ),
             BuildError::ConflictingResponse {
                 operation_id,

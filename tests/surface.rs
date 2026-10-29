@@ -162,7 +162,7 @@ mod secured {
         }
     }
 
-    mount!("/secured", security = ["bearer"]);
+    mount!("/secured", security = [Bearer]);
 
     routes! { get("/me", me) }
 
