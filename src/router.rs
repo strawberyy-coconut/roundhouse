@@ -21,6 +21,7 @@ use crate::problem::Problem;
 use crate::registry::{self, Method, MountLayer, MountRecord, RouteRecord};
 
 type RouterLayer = Box<dyn Fn(Router<()>) -> Router<()> + Send + Sync>;
+type DocumentHook = Box<dyn Fn(&mut OpenApi) + Send + Sync>;
 
 /// A typed handle to a module's route declarations, exported by `mount!` as `MOUNT`.
 ///
@@ -144,7 +145,7 @@ pub struct App<S> {
     mounts: Vec<MountBinding>,
     info: Option<Box<dyn Fn() -> Info + Send + Sync>>,
     servers: Vec<utoipa::openapi::Server>,
-    document_hooks: Vec<Box<dyn Fn(&mut OpenApi) + Send + Sync>>,
+    document_hooks: Vec<DocumentHook>,
     openapi_route: Option<&'static str>,
     docs_route: Option<&'static str>,
     document_rejections: DocumentRejections,
@@ -442,8 +443,24 @@ where
                 None => built_document.extensions = Some(extensions),
             }
         }
+        let mut document = OpenApi::from(built_document);
+        if !self.servers.is_empty() {
+            document
+                .as_utoipa_mut()
+                .servers
+                .get_or_insert_with(Vec::new)
+                .extend(self.servers.iter().cloned());
+        }
+        for hook in &self.document_hooks {
+            hook(&mut document);
+        }
+        // The hook is part of the document too: re-run the structural checks so it cannot
+        // publish a path that contradicts its own parameters.
+        doc::validate_document(document.as_utoipa())
+            .map_err(|message| BuildError::InvalidDocument { message })?;
+
         let schema_engine = if self.validation == crate::extract::Validation::Schema {
-            let components = built_document.components.clone().unwrap_or_default();
+            let components = document.as_utoipa().components.clone().unwrap_or_default();
             let types = inventory::iter::<registry::ComponentTypeRecord>
                 .into_iter()
                 .map(|record| ((record.type_id)(), doc::record_component_name(record)));
@@ -460,17 +477,6 @@ where
         } else {
             None
         };
-        let mut document = OpenApi::from(built_document);
-        if !self.servers.is_empty() {
-            document
-                .as_utoipa_mut()
-                .servers
-                .get_or_insert_with(Vec::new)
-                .extend(self.servers.iter().cloned());
-        }
-        for hook in &self.document_hooks {
-            hook(&mut document);
-        }
         let document = Arc::new(document);
 
         let merge_ledger: Vec<MergeRecord> = self

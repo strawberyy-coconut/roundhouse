@@ -69,9 +69,7 @@ fn main() -> ExitCode {
         }
     }
 
-    if failed {
-        ExitCode::FAILURE
-    } else if check && changed {
+    if failed || (check && changed) {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS

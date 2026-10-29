@@ -296,7 +296,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let assert_path = option_lit(&entry.assert_path);
     let handler = &entry.handler;
     let marker_type = marker_type(handler);
-        let operation_id = option_lit(&entry.operation_id);
+    let operation_id = option_lit(&entry.operation_id);
     let handler_name = LitStr::new(&last_segment(handler), entry.path.span());
     // `assert!` treats its message as a format string. Escape the template's braces so a capture
     // is printed literally in the compile error.

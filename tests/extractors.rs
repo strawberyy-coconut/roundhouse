@@ -97,9 +97,8 @@ async fn axum_json_accepts_a_body_that_violates_the_roundhouse_constraint() {
 fn an_alias_of_roundhouse_json_still_documents_and_enforces_the_constraint() {
     let built = app(concat!(module_path!(), "::roundhouse_alias"));
     let document = serde_json::to_value(built.document()).unwrap();
-    let schema =
-        &document["paths"]["/roundhouse-alias"]["post"]["requestBody"]["content"]["application/json"]
-            ["schema"];
+    let schema = &document["paths"]["/roundhouse-alias"]["post"]["requestBody"]["content"]["application/json"]
+        ["schema"];
     assert_eq!(schema["$ref"], "#/components/schemas/Contact");
     assert_eq!(
         document["components"]["schemas"]["Contact"]["properties"]["title"]["minLength"],
@@ -111,11 +110,7 @@ fn an_alias_of_roundhouse_json_still_documents_and_enforces_the_constraint() {
 async fn an_alias_of_roundhouse_json_still_validates_at_runtime() {
     let built = app(concat!(module_path!(), "::roundhouse_alias"));
     let response = built
-        .oneshot_json(
-            http::Method::POST,
-            "/roundhouse-alias",
-            r#"{"title":"ab"}"#,
-        )
+        .oneshot_json(http::Method::POST, "/roundhouse-alias", r#"{"title":"ab"}"#)
         .await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }

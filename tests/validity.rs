@@ -54,6 +54,7 @@ fn the_validator_rejects_a_requirement_without_a_scheme() {
 }
 
 mod invalid_pattern {
+    #![allow(clippy::invalid_regex)]
     use super::*;
 
     mount!("/invalid-pattern");
@@ -79,6 +80,9 @@ fn an_invalid_schema_pattern_is_a_build_error_not_a_runtime_panic() {
         .try_build()
         .err()
         .expect("an invalid pattern must fail the build");
-    assert!(matches!(error, roundhouse::BuildError::InvalidDocument { .. }));
+    assert!(matches!(
+        error,
+        roundhouse::BuildError::InvalidDocument { .. }
+    ));
     assert!(error.to_string().contains("not a valid regular expression"));
 }

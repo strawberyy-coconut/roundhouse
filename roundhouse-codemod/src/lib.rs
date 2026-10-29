@@ -9,9 +9,7 @@
 use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{self, VisitMut};
-use syn::{
-    Attribute, Expr, ExprLit, Ident, Item, ItemFn, ItemMacro, Lit, LitStr, Meta, Token,
-};
+use syn::{Attribute, Expr, ExprLit, Ident, Item, ItemFn, ItemMacro, Lit, LitStr, Meta, Token};
 
 /// The result of migrating one file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +48,7 @@ pub fn migrate(source: &str) -> Result<Migration, syn::Error> {
     })
 }
 
+#[allow(clippy::ptr_arg)]
 fn migrate_items(
     items: &mut Vec<Item>,
     module: &str,
@@ -90,11 +89,7 @@ fn migrate_function(
     module: &str,
     warnings: &mut Vec<String>,
 ) -> Result<Option<Entry>, syn::Error> {
-    let Some(index) = function
-        .attrs
-        .iter()
-        .position(|attribute| is_utoipa_path(attribute))
-    else {
+    let Some(index) = function.attrs.iter().position(is_utoipa_path) else {
         return Ok(None);
     };
 
@@ -115,8 +110,7 @@ fn migrate_function(
     let mut tags = Vec::new();
     let mut skipped = Vec::new();
 
-    let metas = attribute
-        .parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
+    let metas = attribute.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
     for meta in metas {
         match &meta {
             Meta::Path(value) => {
@@ -241,7 +235,9 @@ fn add_import(items: &mut Vec<Item>) {
         text.contains("roundhouse") && text.contains("prelude")
     });
     if !already {
-        let import: Item = syn::parse_quote!(use roundhouse::prelude::*;);
+        let import: Item = syn::parse_quote!(
+            use roundhouse::prelude::*;
+        );
         items.insert(0, import);
     }
 }
@@ -283,11 +279,7 @@ fn string_array(expression: &Expr) -> Vec<String> {
     let Expr::Array(array) = expression else {
         return Vec::new();
     };
-    array
-        .elems
-        .iter()
-        .filter_map(string_value)
-        .collect()
+    array.elems.iter().filter_map(string_value).collect()
 }
 
 fn join_paths(prefix: &str, path: &str) -> String {
@@ -336,7 +328,6 @@ fn is_routes_macro(expression: &Expr) -> bool {
 pub fn looks_unmigrated(source: &str) -> bool {
     source.contains("utoipa::path") || source.contains("utoipa_axum")
 }
-
 
 #[cfg(test)]
 mod tests {

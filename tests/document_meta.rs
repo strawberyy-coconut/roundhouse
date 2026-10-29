@@ -1,8 +1,8 @@
 //! App-level document metadata: servers, tag descriptions and the document hook.
 
 use roundhouse::prelude::*;
-use roundhouse::utoipa::openapi::tag::Tag;
 use roundhouse::utoipa::openapi::Server;
+use roundhouse::utoipa::openapi::tag::Tag;
 
 #[derive(Clone, Default)]
 pub struct State;
@@ -36,10 +36,7 @@ fn servers_and_the_document_hook_reach_the_built_document() {
 
     let document = serde_json::to_value(built.document()).unwrap();
     assert_eq!(document["servers"][0]["url"], "https://api.example.com");
-    assert_eq!(
-        document["servers"][1]["url"],
-        "https://staging.example.com"
-    );
+    assert_eq!(document["servers"][1]["url"], "https://staging.example.com");
     assert_eq!(document["info"]["description"], "written by a hook");
     assert_eq!(document["tags"][0]["name"], "things");
     assert_eq!(
