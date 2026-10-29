@@ -38,6 +38,7 @@ pub struct App<S> {
     state: S,
     scopes: Vec<&'static str>,
     global_layers: Vec<RouterLayer>,
+    global_layer_docs: Vec<fn() -> crate::doc::layer::LayerDoc>,
     fallback: Option<RouterLayer>,
     merges: Vec<Router<()>>,
     info: Option<Box<dyn Fn() -> Info + Send + Sync>>,
@@ -61,6 +62,7 @@ where
             state,
             scopes: Vec::new(),
             global_layers: Vec::new(),
+            global_layer_docs: Vec::new(),
             fallback: None,
             merges: Vec::new(),
             info: None,
@@ -99,6 +101,20 @@ where
         self.global_layers
             .push(Box::new(move |router| router.layer(layer.clone())));
         self
+    }
+
+    /// Apply a tower layer globally and document what it guarantees (§6.1).
+    pub fn layer_documented<L>(self, layer: L, doc: fn() -> crate::doc::layer::LayerDoc) -> Self
+    where
+        L: Layer<Route> + Clone + Send + Sync + 'static,
+        L::Service: Service<Request<Body>> + Clone + Send + Sync + 'static,
+        <L::Service as Service<Request<Body>>>::Response: IntoResponse + 'static,
+        <L::Service as Service<Request<Body>>>::Error: Into<Infallible> + 'static,
+        <L::Service as Service<Request<Body>>>::Future: Send + 'static,
+    {
+        let mut app = self.layer(layer);
+        app.global_layer_docs.push(doc);
+        app
     }
 
     /// Set the fallback for unmatched requests. The default is a JSON `404 Problem`.
@@ -410,7 +426,7 @@ where
             let mut ancestors = ancestors;
             ancestors.sort_by_key(|mount| prefix::depth(mount.module_path));
 
-            let layer_docs: Vec<crate::doc::layer::LayerDoc> = if record.absolute {
+            let mut layer_docs: Vec<crate::doc::layer::LayerDoc> = if record.absolute {
                 Vec::new()
             } else {
                 ancestors
@@ -419,6 +435,7 @@ where
                     .map(|doc| doc())
                     .collect()
             };
+            layer_docs.extend(self.global_layer_docs.iter().map(|doc| doc()));
 
             let (path, tags, security, hidden) = if record.absolute {
                 (

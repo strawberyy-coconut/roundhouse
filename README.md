@@ -126,8 +126,8 @@ cargo run -q --bin roundhouse -- routes -p notes-example
   panicking convenience over it.
 - **Routing** — module nesting is Rust module nesting; `mount!` prefixes, group mounts, module
   layers (full/route), entry layers, `absolute`, `hidden`, `#[cfg]` entries, grouped method tables,
-  scoped discovery (`scope` / `include`), `App::layer`, `App::merge`, custom fallbacks, and a JSON
-  `404 Problem` default.
+  scoped discovery (`scope` / `include`), `App::layer`, `App::layer_documented` for layers that
+  terminate requests, `App::merge`, custom fallbacks, and a JSON `404 Problem` default.
 - **Fidelity** — `App::router()` returns a real `axum::Router<S>`, `Result<T, E>` works whenever
   both sides are `IntoResponse`, and the example's fidelity test runs the same requests against a
   hand-written router and the discovered one, asserting status, headers and body are equal.
