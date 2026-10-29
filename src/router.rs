@@ -518,13 +518,32 @@ where
         Router::<S>::new().fallback_service(built.router)
     }
 
-    /// Build and serve on `addr`.
+    /// Build and serve on `addr`, without a graceful-shutdown signal.
+    ///
+    /// Use [`App::serve_with`] to stop accepting connections and let in-flight requests finish
+    /// when the process receives `SIGTERM`/`SIGINT`.
     pub async fn serve(self, addr: impl Into<String>) -> std::io::Result<()> {
+        self.serve_with(addr, std::future::pending()).await
+    }
+
+    /// Build and serve on `addr` until `shutdown` resolves.
+    ///
+    /// ```ignore
+    /// app.serve_with("0.0.0.0:3000", async {
+    ///     tokio::signal::ctrl_c().await.ok();
+    /// }).await?;
+    /// ```
+    pub async fn serve_with<F>(self, addr: impl Into<String>, shutdown: F) -> std::io::Result<()>
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
         let addr: String = addr.into();
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         let built = self.build();
         tracing::info!("listening on http://{}", listener.local_addr()?);
-        axum::serve(listener, built.router).await
+        axum::serve(listener, built.router)
+            .with_graceful_shutdown(shutdown)
+            .await
     }
 
     fn resolve(
