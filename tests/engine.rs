@@ -95,11 +95,19 @@ mod schema_mode {
 
     routes! {
         post("/notes", create, operation_id = "schema_create_note"),
+        post("/notes/bulk", create_bulk, operation_id = "schema_create_bulk"),
     }
 
     #[handler]
     pub async fn create(Json(note): Json<Note>) -> Json<NoteOut> {
         Json(NoteOut { ok: note.views > 0 })
+    }
+
+    #[handler]
+    pub async fn create_bulk(Json(notes): Json<Vec<Note>>) -> Json<NoteOut> {
+        Json(NoteOut {
+            ok: !notes.is_empty(),
+        })
     }
 }
 
@@ -147,6 +155,37 @@ async fn schema_mode_rejects_unknown_properties() {
         )
         .await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn schema_mode_compiles_composite_bodies() {
+    let app = app(Validation::Schema);
+    // The body is `Json<Vec<Note>>`: it has no component of its own, so the engine must compile
+    // the operation's inline array schema rather than silently skipping validation.
+    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    assert_eq!(
+        document["paths"]["/schema/notes/bulk"]["post"]["requestBody"]["content"]["application/json"]
+            ["schema"]["type"],
+        "array"
+    );
+
+    let response = app
+        .oneshot_json(
+            http::Method::POST,
+            "/schema/notes/bulk",
+            r#"[{"title":"","views":1,"slug":"ok"}]"#,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = app
+        .oneshot_json(
+            http::Method::POST,
+            "/schema/notes/bulk",
+            r#"[{"title":"a","views":1,"slug":"a-b"}]"#,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

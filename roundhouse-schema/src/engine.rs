@@ -48,6 +48,20 @@ impl SchemaEngine {
         components: &Components,
         types: impl IntoIterator<Item = (TypeId, String)>,
     ) -> Result<Self, SchemaError> {
+        Self::from_components_and_bodies(components, types, std::iter::empty())
+    }
+
+    /// Compile named components and inline body schemas in one pass.
+    ///
+    /// Composite bodies (`Vec<T>`, `Option<T>`, maps, tuples) have no component of their own; the
+    /// document knows their inline schema, so schema mode compiles that instead of skipping them.
+    pub fn from_components_and_bodies(
+        components: &Components,
+        types: impl IntoIterator<Item = (TypeId, String)>,
+        bodies: impl IntoIterator<
+            Item = (TypeId, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>),
+        >,
+    ) -> Result<Self, SchemaError> {
         let defs = defs_from_components(components)?;
         let mut validators = HashMap::new();
         for (type_id, name) in types {
@@ -55,6 +69,11 @@ impl SchemaEngine {
                 continue;
             }
             let validator = compile_ref(&defs, &name)?;
+            validators.insert(type_id, Arc::new(validator));
+        }
+        for (type_id, schema) in bodies {
+            let value = serde_json::to_value(&schema)?;
+            let validator = compile_schema(value, &defs)?;
             validators.insert(type_id, Arc::new(validator));
         }
         Ok(Self { validators })

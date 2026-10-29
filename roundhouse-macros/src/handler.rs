@@ -106,6 +106,9 @@ pub fn expand(item: ItemFn) -> TokenStream {
                             docs.body = ::core::option::Option::Some(
                                 ::roundhouse::doc::json_body::<#inner>(components)
                             );
+                            docs.body_type = ::core::option::Option::Some(
+                                || ::core::any::TypeId::of::<#inner>()
+                            );
                         });
                     }
                     if !handled {
@@ -125,6 +128,9 @@ pub fn expand(item: ItemFn) -> TokenStream {
                             docs.body = ::core::option::Option::Some(
                                 ::roundhouse::doc::multipart_body::<#inner>(components)
                             );
+                            docs.body_type = ::core::option::Option::Some(
+                                || ::core::any::TypeId::of::<#inner>()
+                            );
                         });
                     }
                     if !handled {
@@ -143,6 +149,9 @@ pub fn expand(item: ItemFn) -> TokenStream {
                         statements.push(quote! {
                             docs.body = ::core::option::Option::Some(
                                 ::roundhouse::doc::form_body::<#inner>(components)
+                            );
+                            docs.body_type = ::core::option::Option::Some(
+                                || ::core::any::TypeId::of::<#inner>()
                             );
                         });
                     }

@@ -248,12 +248,14 @@ where
             .as_ref()
             .map(|info| info())
             .unwrap_or_else(|| Info::new("API", "0.1.0"));
-        let built_document = doc::build::build_with_diagnostics(
+        let mut bodies = Vec::new();
+        let built_document = doc::build::build_with_observations(
             info,
             &resolved,
             self.document_rejections == DocumentRejections::Auto,
             self.strict,
             &mut diagnostics,
+            &mut bodies,
         )?;
         let schema_engine = if self.validation == crate::extract::Validation::Schema {
             let components = built_document.components.clone().unwrap_or_default();
@@ -261,10 +263,14 @@ where
                 .into_iter()
                 .map(|record| ((record.type_id)(), doc::record_component_name(record)));
             Some(Arc::new(
-                roundhouse_schema::engine::SchemaEngine::from_components(&components, types)
-                    .map_err(|error| BuildError::SchemaCompilation {
-                        message: error.to_string(),
-                    })?,
+                roundhouse_schema::engine::SchemaEngine::from_components_and_bodies(
+                    &components,
+                    types,
+                    bodies,
+                )
+                .map_err(|error| BuildError::SchemaCompilation {
+                    message: error.to_string(),
+                })?,
             ))
         } else {
             None

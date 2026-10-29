@@ -26,12 +26,14 @@ pub fn build_with_options(
     strict: bool,
 ) -> Result<OpenApi, BuildError> {
     let mut diagnostics = Vec::new();
-    build_with_diagnostics(
+    let mut bodies = Vec::new();
+    build_with_observations(
         info,
         routes,
         include_rejections,
         strict,
         &mut diagnostics,
+        &mut bodies,
     )
 }
 
@@ -42,6 +44,27 @@ pub fn build_with_diagnostics(
     include_rejections: bool,
     strict: bool,
     diagnostics: &mut Vec<Diagnostic>,
+) -> Result<OpenApi, BuildError> {
+    let mut bodies = Vec::new();
+    build_with_observations(
+        info,
+        routes,
+        include_rejections,
+        strict,
+        diagnostics,
+        &mut bodies,
+    )
+}
+
+/// Build the document and collect every documented request body's inline schema, keyed by the
+/// Rust type, so schema mode can enforce composite bodies (`Vec<T>`, `Option<T>`, maps, tuples).
+pub fn build_with_observations(
+    info: Info,
+    routes: &[ResolvedRoute],
+    include_rejections: bool,
+    strict: bool,
+    diagnostics: &mut Vec<Diagnostic>,
+    bodies: &mut Vec<(std::any::TypeId, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>)>,
 ) -> Result<OpenApi, BuildError> {
     let mut components = utoipa::openapi::schema::Components::new();
     let mut paths = Paths::new();
@@ -107,6 +130,7 @@ pub fn build_with_diagnostics(
             include_rejections,
             strict,
             diagnostics,
+            bodies,
         )?;
         paths.add_path_operation(&route.path, vec![http_method], operation);
     }
@@ -135,6 +159,7 @@ fn operation(
     include_rejections: bool,
     strict: bool,
     diagnostics: &mut Vec<Diagnostic>,
+    bodies: &mut Vec<(std::any::TypeId, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>)>,
 ) -> Result<utoipa::openapi::path::Operation, BuildError> {
     let unverified = docs.unverified;
     let mut docs = docs;
@@ -325,6 +350,9 @@ fn operation(
         builder = builder.tags(Some(tags));
     }
     if let Some(body) = docs.body {
+        if let Some(body_type) = docs.body_type {
+            bodies.push((body_type(), body.schema.clone()));
+        }
         builder = builder.request_body(Some(build_body(body)));
     }
     if !parameters.is_empty() {
