@@ -146,7 +146,7 @@ pub trait HandlerMeta: Send + Sync + 'static {
     /// Capture names declared by the handler's `Path<T>` extractor, in template order.
     const PATH_NAMES: &'static [&'static str] = &[];
 
-    fn docs(&self, components: &mut Components) -> HandlerDocs;
+    fn docs(components: &mut Components) -> HandlerDocs;
 }
 
 pub fn handler_state<M: HandlerMeta>() -> Option<TypeId> {

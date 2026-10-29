@@ -15,8 +15,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
         .to_compile_error();
     }
     let name = item.sig.ident.clone();
-    let marker_type = format_ident!("{}_ROUNDHOUSE_MISSING_HANDLER_TYPE", name);
-    let marker_value = format_ident!("{}_ROUNDHOUSE_MISSING_HANDLER", name);
+    let marker_type = format_ident!("{}_missing_roundhouse_handler_attribute", name);
     let vis = item.vis.clone();
 
     let mut state_type: Option<Type> = None;
@@ -135,17 +134,12 @@ pub fn expand(item: ItemFn) -> TokenStream {
         #[allow(non_camel_case_types)]
         #vis struct #marker_type;
 
-        #[doc(hidden)]
-        #[allow(non_upper_case_globals)]
-        #vis const #marker_value: #marker_type = #marker_type;
-
         impl #krate::doc::HandlerMeta for #marker_type {
             type State = #state_ty;
             const HAS_STATE: bool = #has_state;
             const PATH_NAMES: &'static [&'static str] = #path_names;
 
             fn docs(
-                &self,
                 components: &mut #krate::utoipa::openapi::schema::Components,
             ) -> #krate::doc::HandlerDocs {
                 let mut docs = #krate::doc::HandlerDocs::default();

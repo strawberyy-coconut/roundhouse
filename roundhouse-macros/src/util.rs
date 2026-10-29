@@ -31,11 +31,7 @@ pub fn append_to_path(path: &Path, suffix: &str) -> Path {
 }
 
 pub fn marker_type(path: &Path) -> Path {
-    append_to_path(path, "_ROUNDHOUSE_MISSING_HANDLER_TYPE")
-}
-
-pub fn marker_value(path: &Path) -> Path {
-    append_to_path(path, "_ROUNDHOUSE_MISSING_HANDLER")
+    append_to_path(path, "_missing_roundhouse_handler_attribute")
 }
 
 pub fn last_segment(path: &Path) -> String {

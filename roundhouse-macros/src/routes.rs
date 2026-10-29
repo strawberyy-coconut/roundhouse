@@ -4,7 +4,7 @@ use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::{Attribute, Expr, Ident, LitInt, LitStr, Path, Result, Token, Type};
 
-use crate::util::{last_segment, marker_type, marker_value, parse_u16, string_slice};
+use crate::util::{last_segment, marker_type, parse_u16, string_slice};
 
 struct Entry {
     attrs: Vec<Attribute>,
@@ -288,8 +288,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let path = &entry.path;
     let handler = &entry.handler;
     let marker_type = marker_type(handler);
-    let marker_value = marker_value(handler);
-    let operation_id = option_lit(&entry.operation_id);
+        let operation_id = option_lit(&entry.operation_id);
     let handler_name = LitStr::new(&last_segment(handler), entry.path.span());
     let summary = option_lit(&entry.summary);
     let description = option_lit(&entry.description);
@@ -405,7 +404,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     >(),
                     __roundhouse_route,
                     #layer_value,
-                    |components| <#marker_type as #krate::doc::HandlerMeta>::docs(&#marker_value, components),
+                    <#marker_type as #krate::doc::HandlerMeta>::docs,
                     #doc_value,
                 )
             }
