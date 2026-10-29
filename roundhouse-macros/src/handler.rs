@@ -157,6 +157,12 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     state_type = Some(inner);
                 }
             }
+            "Bytes" | "Body" => {
+                body_count += 1;
+                statements.push(quote! {
+                    docs.body = ::core::option::Option::Some(::roundhouse::doc::binary_body());
+                });
+            }
             "Extension" if !handled => {
                 statements.push(quote! {
                     docs.failures.extend(::roundhouse::doc::extension_failures());

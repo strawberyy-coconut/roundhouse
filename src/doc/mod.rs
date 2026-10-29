@@ -239,6 +239,18 @@ pub fn form_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
     }
 }
 
+/// A raw `Bytes` or `Body` request. The content type is the contract, not a schema.
+pub fn binary_body() -> BodyDoc {
+    BodyDoc {
+        content_type: "application/octet-stream".to_string(),
+        schema: schema::string_with_format(utoipa::openapi::schema::SchemaFormat::KnownFormat(
+            utoipa::openapi::schema::KnownFormat::Binary,
+        )),
+        required: true,
+        description: None,
+    }
+}
+
 pub fn json_response<T: ApiSchema>(components: &mut Components, status: u16) -> Vec<ResponseDoc> {
     T::register(components);
     vec![ResponseDoc::json(status, T::schema())]
