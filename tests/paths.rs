@@ -157,7 +157,10 @@ fn a_foreign_path_extractor_still_yields_a_valid_parameter() {
 
 #[test]
 fn a_derived_path_struct_documents_its_fields() {
-    let parameters = path_parameters(concat!(module_path!(), "::derived"), "/derived/posts/{post_id}");
+    let parameters = path_parameters(
+        concat!(module_path!(), "::derived"),
+        "/derived/posts/{post_id}",
+    );
     assert_eq!(parameters.len(), 1);
     assert_eq!(parameters[0]["name"], "post_id");
     assert_eq!(parameters[0]["schema"]["type"], "integer");

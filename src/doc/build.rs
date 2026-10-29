@@ -64,7 +64,10 @@ pub fn build_with_observations(
     include_rejections: bool,
     strict: bool,
     diagnostics: &mut Vec<Diagnostic>,
-    bodies: &mut Vec<(std::any::TypeId, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>)>,
+    bodies: &mut Vec<(
+        std::any::TypeId,
+        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+    )>,
 ) -> Result<OpenApi, BuildError> {
     let mut components = utoipa::openapi::schema::Components::new();
     let mut paths = Paths::new();
@@ -148,9 +151,12 @@ pub fn build_with_observations(
     {
         document.components = Some(components);
     }
+    super::validate_document(&document)
+        .map_err(|message| BuildError::InvalidDocument { message })?;
     Ok(document)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn operation(
     route: &ResolvedRoute,
     docs: super::HandlerDocs,
@@ -159,7 +165,10 @@ fn operation(
     include_rejections: bool,
     strict: bool,
     diagnostics: &mut Vec<Diagnostic>,
-    bodies: &mut Vec<(std::any::TypeId, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>)>,
+    bodies: &mut Vec<(
+        std::any::TypeId,
+        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+    )>,
 ) -> Result<utoipa::openapi::path::Operation, BuildError> {
     let unverified = docs.unverified;
     let mut docs = docs;
@@ -280,7 +289,12 @@ fn operation(
     // otherwise the document would advertise protection the router does not provide.
     let enforced: Vec<&'static str> = docs.required_auth.iter().map(|auth| auth.name).collect();
     let mut required = docs.required_auth;
-    for scheme in route.security.iter().chain(route.record.security.iter()).copied() {
+    for scheme in route
+        .security
+        .iter()
+        .chain(route.record.security.iter())
+        .copied()
+    {
         if !enforced.contains(&scheme) {
             return Err(BuildError::UnverifiedSecurity {
                 name: scheme.to_string(),

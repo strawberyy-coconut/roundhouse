@@ -59,7 +59,10 @@ impl SchemaEngine {
         components: &Components,
         types: impl IntoIterator<Item = (TypeId, String)>,
         bodies: impl IntoIterator<
-            Item = (TypeId, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>),
+            Item = (
+                TypeId,
+                utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+            ),
         >,
     ) -> Result<Self, SchemaError> {
         let defs = defs_from_components(components)?;

@@ -35,7 +35,7 @@ pub use auth::{
 };
 pub use axum::response::sse::{Event, KeepAlive, Sse};
 pub use build_error::{BuildError, Source};
-pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams};
+pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams, validate_document};
 pub use extract::{Extension, Form, Json, Path, Query, Validation};
 pub use multipart::{FilePart, Multipart, MultipartForm, MultipartProblem, TempFile};
 pub use problem::Problem;

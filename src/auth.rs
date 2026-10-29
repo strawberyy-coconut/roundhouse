@@ -111,10 +111,12 @@ impl AuthScopes for NoScopes {}
 /// compile without it. `NoScopes` is the only built-in implementation and grants everything.
 pub trait Authorize<A: AuthScheme>: AuthScopes {
     /// Return `Ok(())` when `identity` may exercise this route, or the rejection to send.
+    #[allow(clippy::result_large_err)]
     fn authorize(identity: &A::Identity) -> Result<(), Problem>;
 }
 
 impl<A: AuthScheme> Authorize<A> for NoScopes {
+    #[allow(clippy::result_large_err)]
     fn authorize(_identity: &A::Identity) -> Result<(), Problem> {
         Ok(())
     }

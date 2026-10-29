@@ -66,10 +66,7 @@ pub enum BuildError {
         second: Source,
     },
     /// A security requirement with no extractor or documented layer enforcing it.
-    UnverifiedSecurity {
-        name: String,
-        source: Source,
-    },
+    UnverifiedSecurity { name: String, source: Source },
     /// A declared response contradicts the inferred one without `override`.
     ConflictingResponse {
         operation_id: String,
@@ -109,6 +106,8 @@ pub enum BuildError {
         message: String,
         source: Source,
     },
+    /// The assembled document failed its own structural invariants.
+    InvalidDocument { message: String },
     /// The emitted document could not be compiled into a validator.
     SchemaCompilation { message: String },
     /// `App::strict()` promoted a warning into an error.
@@ -227,6 +226,9 @@ impl fmt::Display for BuildError {
                 f,
                 "error: handler for `{operation_id}` could not be built: {message}\n  {source}"
             ),
+            BuildError::InvalidDocument { message } => {
+                write!(f, "error: the generated document is not valid\n  {message}")
+            }
             BuildError::SchemaCompilation { message } => {
                 write!(
                     f,

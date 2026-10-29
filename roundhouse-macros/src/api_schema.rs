@@ -273,9 +273,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let mut generics = input.generics.clone();
     for param in &mut generics.params {
         if let syn::GenericParam::Type(param) = param {
-            param
-                .bounds
-                .push(syn::parse_quote!(#krate::doc::ApiSchema));
+            param.bounds.push(syn::parse_quote!(#krate::doc::ApiSchema));
         }
     }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -881,10 +879,14 @@ pub(crate) fn field_schema_expr(ty: &Type, constraints: &Constraints) -> TokenSt
     let krate = crate::util::krate();
     let mut calls = TokenStream::new();
     if let Some(value) = &constraints.min_length {
-        calls.extend(quote! { schema = #krate::doc::schema::with_min_length(schema, (#value) as usize); });
+        calls.extend(
+            quote! { schema = #krate::doc::schema::with_min_length(schema, (#value) as usize); },
+        );
     }
     if let Some(value) = &constraints.max_length {
-        calls.extend(quote! { schema = #krate::doc::schema::with_max_length(schema, (#value) as usize); });
+        calls.extend(
+            quote! { schema = #krate::doc::schema::with_max_length(schema, (#value) as usize); },
+        );
     }
     if let Some(value) = &constraints.pattern {
         calls.extend(quote! { schema = #krate::doc::schema::with_pattern(schema, #value); });
@@ -906,10 +908,14 @@ pub(crate) fn field_schema_expr(ty: &Type, constraints: &Constraints) -> TokenSt
         calls.extend(quote! { schema = #krate::doc::schema::with_exclusive_maximum(schema, (#value) as f64); });
     }
     if let Some(value) = &constraints.min_items {
-        calls.extend(quote! { schema = #krate::doc::schema::with_min_items(schema, (#value) as usize); });
+        calls.extend(
+            quote! { schema = #krate::doc::schema::with_min_items(schema, (#value) as usize); },
+        );
     }
     if let Some(value) = &constraints.max_items {
-        calls.extend(quote! { schema = #krate::doc::schema::with_max_items(schema, (#value) as usize); });
+        calls.extend(
+            quote! { schema = #krate::doc::schema::with_max_items(schema, (#value) as usize); },
+        );
     }
     if constraints.unique_items {
         calls.extend(quote! { schema = #krate::doc::schema::with_unique_items(schema); });

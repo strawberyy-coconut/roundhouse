@@ -192,9 +192,11 @@ async fn every_documented_security_requirement_is_enforced() {
             continue;
         };
         // An empty requirement (`{}`) is an explicit anonymous alternative.
-        let anonymous_allowed = security
-            .iter()
-            .any(|requirement| requirement.as_object().is_some_and(|object| object.is_empty()));
+        let anonymous_allowed = security.iter().any(|requirement| {
+            requirement
+                .as_object()
+                .is_some_and(|object| object.is_empty())
+        });
         if security.is_empty() || anonymous_allowed {
             continue;
         }
@@ -210,7 +212,10 @@ async fn every_documented_security_requirement_is_enforced() {
         checked += 1;
     }
 
-    assert!(checked >= 4, "expected several secured operations, saw {checked}");
+    assert!(
+        checked >= 4,
+        "expected several secured operations, saw {checked}"
+    );
 }
 
 #[tokio::test]

@@ -43,7 +43,10 @@ impl SchemaEngine {
         _components: &utoipa::openapi::schema::Components,
         _types: impl IntoIterator<Item = (std::any::TypeId, String)>,
         _bodies: impl IntoIterator<
-            Item = (std::any::TypeId, utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>),
+            Item = (
+                std::any::TypeId,
+                utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+            ),
         >,
     ) -> Result<Self, SchemaError> {
         Err(feature_error())

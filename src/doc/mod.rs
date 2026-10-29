@@ -4,7 +4,9 @@ pub mod build;
 pub mod downgrade;
 #[cfg(feature = "schema-engine")]
 pub mod response;
+pub mod validity;
 pub use build::{build, build_with_options};
+pub use validity::validate_document;
 pub mod layer;
 
 /// Schema derivation and constraint helpers, re-exported from `roundhouse-schema`.
@@ -111,7 +113,8 @@ pub struct HandlerDocs {
     /// A `Result<_, E>` whose `E` registered no documented responses.
     pub undocumented_error: Option<&'static str>,
     /// The schema of a scalar `Path<T>`; the parameter's name comes from the template.
-    pub path_schema: Option<fn() -> Option<utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>>>,
+    pub path_schema:
+        Option<fn() -> Option<utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>>>,
     /// The Rust type of the request body, so schema mode can compile the body's own schema even
     /// when it is composite (`Vec<T>`, `Option<T>`, maps, tuples).
     pub body_type: Option<fn() -> std::any::TypeId>,

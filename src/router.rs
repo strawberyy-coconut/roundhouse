@@ -469,7 +469,10 @@ where
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, NO_OPENAPI))
     }
 
-    fn resolve(&self, diagnostics: &mut Vec<crate::build_error::Diagnostic>) -> Result<Vec<ResolvedRoute>, BuildError> {
+    fn resolve(
+        &self,
+        diagnostics: &mut Vec<crate::build_error::Diagnostic>,
+    ) -> Result<Vec<ResolvedRoute>, BuildError> {
         let mounts: Vec<&'static MountRecord> = inventory::iter::<registry::MountRecord>
             .into_iter()
             .filter(|mount| self.selected(mount.module_path))
@@ -526,7 +529,10 @@ where
                 && expected != TypeId::of::<S>()
             {
                 return Err(BuildError::StateMismatch {
-                    operation_id: record.operation_id.unwrap_or(record.handler_name).to_string(),
+                    operation_id: record
+                        .operation_id
+                        .unwrap_or(record.handler_name)
+                        .to_string(),
                     expected: (record.state_name)(),
                     actual: std::any::type_name::<S>(),
                     source: record.source_ref(),
@@ -945,25 +951,34 @@ where
     let boxed = (record.handler)();
 
     let mut method_router = if (record.state)().is_some() {
-        let method_router = boxed.downcast::<MethodRouter<S>>().map_err(|_| {
-            BuildError::HandlerBuild {
-                operation_id: record.operation_id.unwrap_or(record.handler_name).to_string(),
-                message: format!(
-                    "registered for state `{}` but the handler was built for another state",
-                    (record.state_name)()
-                ),
-                source: record.source_ref(),
-            }
-        })?;
+        let method_router =
+            boxed
+                .downcast::<MethodRouter<S>>()
+                .map_err(|_| BuildError::HandlerBuild {
+                    operation_id: record
+                        .operation_id
+                        .unwrap_or(record.handler_name)
+                        .to_string(),
+                    message: format!(
+                        "registered for state `{}` but the handler was built for another state",
+                        (record.state_name)()
+                    ),
+                    source: record.source_ref(),
+                })?;
         method_router.with_state::<()>(state.clone())
     } else {
-        let method_router = boxed
-            .downcast::<MethodRouter<()>>()
-            .map_err(|_| BuildError::HandlerBuild {
-                operation_id: record.operation_id.unwrap_or(record.handler_name).to_string(),
-                message: "registered as stateless but the handler was built for a state".to_string(),
-                source: record.source_ref(),
-            })?;
+        let method_router =
+            boxed
+                .downcast::<MethodRouter<()>>()
+                .map_err(|_| BuildError::HandlerBuild {
+                    operation_id: record
+                        .operation_id
+                        .unwrap_or(record.handler_name)
+                        .to_string(),
+                    message: "registered as stateless but the handler was built for a state"
+                        .to_string(),
+                    source: record.source_ref(),
+                })?;
         method_router.with_state::<()>(())
     };
 

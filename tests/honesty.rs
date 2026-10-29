@@ -108,6 +108,7 @@ mod problem_error {
 
     routes! { get("/x", x, operation_id = "problem_error_x") }
 
+    #[allow(clippy::result_large_err)]
     #[handler]
     pub async fn x() -> Result<Json<Payload>, Problem> {
         Ok(Json(Payload { value: 1 }))
@@ -439,7 +440,10 @@ async fn docs_implies_the_document_route() {
         .try_build()
         .expect("docs() supplies a document even without openapi()");
     assert!(app.document().is_some(), "docs() must imply openapi()");
-    assert_eq!(app.oneshot_get("/openapi.json").await.status(), StatusCode::OK);
+    assert_eq!(
+        app.oneshot_get("/openapi.json").await.status(),
+        StatusCode::OK
+    );
     assert_eq!(app.oneshot_get("/docs").await.status(), StatusCode::OK);
 }
 
@@ -451,8 +455,8 @@ fn a_missing_extension_documents_the_problem_it_produces() {
         .expect("extension route builds");
     let document = serde_json::to_value(app.document().unwrap()).unwrap();
     assert_eq!(
-        document["paths"]["/extension/x"]["get"]["responses"]["500"]["content"]
-            ["application/problem+json"]["schema"]["required"],
+        document["paths"]["/extension/x"]["get"]["responses"]["500"]["content"]["application/problem+json"]
+            ["schema"]["required"],
         serde_json::json!(["type", "title", "status"])
     );
 }
