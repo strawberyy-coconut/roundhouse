@@ -114,7 +114,7 @@ async fn create_is_created_and_documented() {
         .await;
     assert_eq!(response.status(), StatusCode::CREATED);
 
-    let document = app.document().unwrap();
+    let document = app.document();
     let json = serde_json::to_value(document).unwrap();
     assert_eq!(json["openapi"], "3.1.0");
     assert!(json["paths"]["/notes"]["post"]["responses"]["201"].is_object());

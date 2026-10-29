@@ -356,11 +356,7 @@ where
         } else {
             None
         };
-        let document = if serve_openapi || self.validate_responses {
-            Some(Arc::new(OpenApi::from(built_document)))
-        } else {
-            None
-        };
+        let document = Arc::new(OpenApi::from(built_document));
 
         let mut router = self.assemble(&resolved)?;
 
@@ -368,7 +364,7 @@ where
             router = router.merge(merged.router);
         }
 
-        if serve_openapi && let (Some(document), Some(path)) = (&document, self.openapi_route) {
+        if serve_openapi && let Some(path) = self.openapi_route {
             let for_route = document.clone();
             router = router.route(
                 path,
@@ -379,10 +375,7 @@ where
             );
         }
 
-        if serve_openapi
-            && document.is_some()
-            && let Some(docs_path) = self.docs_route
-        {
+        if serve_openapi && let Some(docs_path) = self.docs_route {
             let spec_path = self.openapi_route.unwrap_or("/openapi.json");
             let html = docs_html(spec_path);
             router = router.route(
@@ -398,12 +391,9 @@ where
             router = router.layer(axum::extract::DefaultBodyLimit::max(max));
         }
 
-        if self.validate_responses
-            && let Some(document) = &document
-        {
+        if self.validate_responses {
             #[cfg(not(feature = "schema-engine"))]
             {
-                let _ = document;
                 return Err(BuildError::SchemaCompilation {
                     message: "response validation requires the `schema-engine` feature".to_string(),
                 });
@@ -1136,7 +1126,7 @@ impl ResolvedRoute {
 pub struct Built {
     router: Router<()>,
     routes: Vec<ResolvedRoute>,
-    document: Option<Arc<OpenApi>>,
+    document: Arc<OpenApi>,
     diagnostics: Vec<crate::build_error::Diagnostic>,
 }
 
@@ -1151,9 +1141,10 @@ impl Built {
         &self.routes
     }
 
-    /// The generated document, when `App::openapi(..)` was called.
-    pub fn document(&self) -> Option<&OpenApi> {
-        self.document.as_deref()
+    /// The generated document. It is always built; `App::openapi(..)` controls whether it is
+    /// also served at a route.
+    pub fn document(&self) -> &OpenApi {
+        &self.document
     }
 
     /// Non-fatal observations collected while resolving and documenting the app.
@@ -1161,24 +1152,19 @@ impl Built {
         &self.diagnostics
     }
 
-    pub fn openapi_json(&self) -> Option<String> {
-        self.document.as_ref().map(|document| {
-            document
-                .to_pretty_json()
-                .expect("OpenAPI document serializes")
-        })
+    pub fn openapi_json(&self) -> String {
+        self.document
+            .to_pretty_json()
+            .expect("OpenAPI document serializes")
     }
 
     /// A 3.0.3-shaped JSON document.
-    pub fn openapi_30(&self) -> Option<serde_json::Value> {
-        self.document
-            .as_ref()
-            .map(|document| doc::downgrade::to_openapi_30(document.as_utoipa()))
+    pub fn openapi_30(&self) -> serde_json::Value {
+        doc::downgrade::to_openapi_30(self.document.as_utoipa())
     }
 
-    pub fn openapi_30_json(&self) -> Option<String> {
-        self.openapi_30()
-            .map(|value| serde_json::to_string_pretty(&value).expect("JSON serializes"))
+    pub fn openapi_30_json(&self) -> String {
+        serde_json::to_string_pretty(&self.openapi_30()).expect("JSON serializes")
     }
 
     /// Send one request through the router.

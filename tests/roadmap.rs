@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub struct State;
 
 fn document(built: &roundhouse::Built) -> serde_json::Value {
-    serde_json::to_value(built.document().expect("openapi enabled")).unwrap()
+    serde_json::to_value(built.document()).unwrap()
 }
 
 mod manual {
@@ -273,6 +273,6 @@ fn the_facade_covers_info_openapi_and_components() {
         .scope(concat!(module_path!(), "::mounted"))
         .openapi(move || info.clone())
         .build();
-    let document: &roundhouse::openapi::OpenApi = built.document().unwrap();
+    let document: &roundhouse::openapi::OpenApi = built.document();
     assert_eq!(document.as_utoipa().info.title, "Facade");
 }

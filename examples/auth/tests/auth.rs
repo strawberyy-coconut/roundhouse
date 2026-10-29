@@ -98,7 +98,7 @@ async fn scopes_and_optional_auth_are_documented_and_enforced() {
         .to_bytes();
     assert_eq!(&body[..], br#"{"message":"authenticated"}"#);
 
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["paths"]["/scoped"]["get"]["security"][0]["bearer"],
         serde_json::json!(["read:posts"])
@@ -149,7 +149,7 @@ async fn a_scope_gate_does_not_replace_resource_policy() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
     // The document can only describe the scope, not membership.
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["paths"]["/projects/{project_id}"]["get"]["security"][0]["bearer"],
         serde_json::json!(["read:posts"])
@@ -190,7 +190,7 @@ async fn two_required_extractors_and_into_one_requirement() {
     .await;
     assert_eq!(response.status(), StatusCode::OK);
 
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let security = document["paths"]["/admin"]["get"]["security"]
         .as_array()
         .unwrap();
@@ -214,7 +214,7 @@ async fn two_required_extractors_and_into_one_requirement() {
 #[tokio::test]
 async fn every_documented_security_requirement_is_enforced() {
     let app = built();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
 
     let mut checked = 0;
     for (path, item) in document["paths"].as_object().unwrap() {
@@ -254,7 +254,7 @@ async fn every_documented_security_requirement_is_enforced() {
 #[tokio::test]
 async fn auth_failures_are_documented_and_the_ui_is_served() {
     let app = built();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert!(document["paths"]["/private"]["get"]["responses"]["401"].is_object());
     assert!(document["paths"]["/private"]["get"]["responses"]["403"].is_object());
     assert_eq!(

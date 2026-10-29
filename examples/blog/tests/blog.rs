@@ -110,7 +110,7 @@ async fn hidden_and_absolute_routes_behave_differently() {
 #[tokio::test]
 async fn document_models_the_nested_tree() {
     let app = built();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
 
     assert!(document["paths"]["/api/blog/posts"]["get"].is_object());
     assert!(document["paths"]["/api/blog/posts"]["post"].is_object());
@@ -214,7 +214,7 @@ async fn auth_is_enforced_documented_and_optional_when_asked() {
         "authenticated"
     );
 
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["paths"]["/api/blog/admin/audit"]["get"]["security"][0]["bearer"],
         serde_json::json!([])
@@ -250,7 +250,7 @@ async fn query_and_path_constraints_are_enforced_and_documented() {
     assert_eq!(value["errors"][0]["pointer"], "/id");
     assert_eq!(value["errors"][0]["code"], "minimum");
 
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let params = document["paths"]["/api/blog/posts"]["get"]["parameters"]
         .as_array()
         .unwrap();

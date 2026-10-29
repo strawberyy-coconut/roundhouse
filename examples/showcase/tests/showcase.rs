@@ -71,7 +71,7 @@ async fn validate_with_and_utoipa_interop_work() {
 
     let response = app.oneshot_get("/utoipa").await;
     assert_eq!(response.status(), StatusCode::OK);
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let schema = &document["paths"]["/utoipa"]["get"]["responses"]["200"]["content"]["application/json"]
         ["schema"];
     assert_eq!(schema["type"], "object");
@@ -121,7 +121,7 @@ async fn collisions_hidden_any_erased_and_cfg_are_all_served() {
 #[tokio::test]
 async fn document_reflects_collisions_hidden_routes_and_rejection_policy() {
     let app = built();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
 
     assert!(
         document["components"]["schemas"]["showcase_example.routes.collisions.a.Thing"].is_object()

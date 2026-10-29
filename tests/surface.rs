@@ -625,7 +625,7 @@ async fn route_layer_does_not_wrap_404s() {
 #[tokio::test]
 async fn security_from_mount_reaches_the_document() {
     let app = app();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let security = &document["paths"]["/secured/me"]["get"]["security"][0]["bearer"];
     assert!(security.is_array());
     assert_eq!(
@@ -637,7 +637,7 @@ async fn security_from_mount_reaches_the_document() {
 #[tokio::test]
 async fn schema_derives_cover_enums_and_serde_names() {
     let app = app();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let color = &document["components"]["schemas"]["Color"];
     assert_eq!(color["type"], "string");
     assert_eq!(color["enum"][1], "dark-blue");
@@ -668,7 +668,7 @@ async fn api_response_enum_sets_status_body_and_headers() {
     assert_eq!(response.headers()[header::LOCATION], "/shapes/1");
     assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
 
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let responses = &document["paths"]["/shapes/created"]["post"]["responses"];
     assert!(responses["201"].is_object());
     assert!(responses["409"].is_object());
@@ -689,7 +689,7 @@ async fn document_rejections_can_be_suppressed() {
         .document_rejections(false)
         .openapi(|| Info::new("Surface", "0.1.0"))
         .build();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let responses = &document["paths"]["/shapes/created"]["post"]["responses"];
     assert!(responses.get("400").is_none());
     assert!(responses.get("415").is_none());
@@ -761,7 +761,7 @@ async fn format_constraints_are_documented_and_enforced() {
         .await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["components"]["schemas"]["Contact"]["properties"]["email"]["format"],
         "email"
@@ -800,7 +800,7 @@ async fn nested_and_collection_violations_arrive_together() {
 #[tokio::test]
 async fn recursive_schemas_use_a_reference_instead_of_looping() {
     let app = app();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["components"]["schemas"]["Node"]["properties"]["children"]["items"]["$ref"],
         "#/components/schemas/Node"
@@ -826,7 +826,7 @@ async fn route_tables_in_leaf_modules_inherit_the_parent_mount() {
     assert_eq!(get(&app, "/split-notes").await.status(), StatusCode::OK);
     assert_eq!(get(&app, "/split-notes/7").await.status(), StatusCode::OK);
 
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["paths"]["/split-notes"]["get"]["tags"],
         serde_json::json!(["split"])
@@ -913,7 +913,7 @@ async fn validate_with_runs_next_to_the_declared_constraints() {
 #[tokio::test]
 async fn schema_can_delegate_to_utoipa() {
     let app = app();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["paths"]["/shapes/utoipa"]["get"]["responses"]["200"]["content"]["application/json"]
             ["schema"]["type"],
@@ -924,7 +924,7 @@ async fn schema_can_delegate_to_utoipa() {
 #[tokio::test]
 async fn colliding_component_names_get_their_module_path() {
     let app = app();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let schemas = &document["components"]["schemas"];
     assert!(schemas["surface.collision_a.Collision"].is_object());
     assert!(schemas["surface.collision_b.Collision"].is_object());
@@ -938,7 +938,7 @@ async fn colliding_component_names_get_their_module_path() {
 #[tokio::test]
 async fn declared_layer_docs_merge_into_the_operation() {
     let app = app();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let responses = &document["paths"]["/documented/ok"]["get"]["responses"];
     assert!(responses["429"].is_object());
     assert_eq!(
@@ -972,7 +972,7 @@ async fn swagger_ui_is_served_when_requested() {
 #[tokio::test]
 async fn documents_can_be_downgraded_to_openapi_30() {
     let app = app();
-    let value = app.openapi_30().expect("openapi enabled");
+    let value = app.openapi_30();
     assert_eq!(value["openapi"], "3.0.3");
     let event = &value["components"]["schemas"]["Note"];
     assert_eq!(event["properties"]["subtitle"]["type"], "string");
@@ -1001,7 +1001,7 @@ async fn erased_style_handlers_use_unit_state_and_extensions() {
 #[tokio::test]
 async fn complex_recursive_enums_terminate() {
     let app = app();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let tree = &document["components"]["schemas"]["Tree"];
     assert!(tree["oneOf"].is_array());
     assert_eq!(

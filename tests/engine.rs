@@ -162,7 +162,7 @@ async fn schema_mode_compiles_composite_bodies() {
     let app = app(Validation::Schema);
     // The body is `Json<Vec<Note>>`: it has no component of its own, so the engine must compile
     // the operation's inline array schema rather than silently skipping validation.
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["paths"]["/schema/notes/bulk"]["post"]["requestBody"]["content"]["application/json"]
             ["schema"]["type"],

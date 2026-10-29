@@ -13,7 +13,7 @@ fn scoped(module: &'static str) -> App<State> {
 }
 
 fn document(app: Built) -> serde_json::Value {
-    serde_json::to_value(app.document().expect("openapi enabled")).unwrap()
+    serde_json::to_value(app.document()).unwrap()
 }
 
 mod undeclared {
@@ -399,7 +399,7 @@ async fn a_status_bearing_tuple_documents_default_not_200() {
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("dynamic status builds");
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let responses = &document["paths"]["/dynamic-status/x"]["post"]["responses"];
     assert!(responses["default"].is_object());
     assert!(responses["200"].is_null(), "200 would be a lie for 201");
@@ -439,7 +439,6 @@ async fn docs_implies_the_document_route() {
         .docs()
         .try_build()
         .expect("docs() supplies a document even without openapi()");
-    assert!(app.document().is_some(), "docs() must imply openapi()");
     assert_eq!(
         app.oneshot_get("/openapi.json").await.status(),
         StatusCode::OK
@@ -453,7 +452,7 @@ fn a_missing_extension_documents_the_problem_it_produces() {
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("extension route builds");
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert_eq!(
         document["paths"]["/extension/x"]["get"]["responses"]["500"]["content"]["application/problem+json"]
             ["schema"]["required"],

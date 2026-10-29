@@ -236,7 +236,7 @@ async fn attachments_and_raw_files_set_download_headers() {
 #[tokio::test]
 async fn multipart_and_attachment_are_documented() {
     let app = app();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let media = &document["paths"]["/files/upload"]["post"]["requestBody"]["content"]["multipart/form-data"];
     let body = &media["schema"];
     assert_eq!(body["properties"]["file"]["format"], "binary");

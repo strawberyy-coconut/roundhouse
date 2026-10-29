@@ -22,7 +22,7 @@ fn app(module: &'static str) -> roundhouse::Built {
 }
 
 fn document(module: &'static str) -> serde_json::Value {
-    serde_json::to_value(app(module).document().unwrap()).unwrap()
+    serde_json::to_value(app(module).document()).unwrap()
 }
 
 async fn get(module: &'static str, uri: &str) -> (StatusCode, String) {

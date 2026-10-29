@@ -385,7 +385,7 @@ mod validated {
 }
 
 fn path_parameters(app: &roundhouse::Built, path: &str, method: &str) -> Vec<serde_json::Value> {
-    let document = serde_json::to_value(app.document().expect("document enabled")).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     document["paths"][path][method]["parameters"]
         .as_array()
         .cloned()
@@ -673,7 +673,7 @@ async fn a_scope_below_a_mount_keeps_the_ancestor_prefix() {
     let app = scoped(concat!(module_path!(), "::scoped_below::issues")).build();
     assert_eq!(app.routes().len(), 1);
     assert_eq!(app.routes()[0].path, "/api/v1");
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     assert!(document["paths"]["/api/v1"].is_object());
     let response = app.oneshot_get("/api/v1").await;
     assert_eq!(response.status(), StatusCode::OK);

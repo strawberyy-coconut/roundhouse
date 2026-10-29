@@ -71,7 +71,7 @@ mod body_alias {
 #[test]
 fn axum_json_is_not_documented_as_the_validating_extractor() {
     let built = app(concat!(module_path!(), "::axum_alias"));
-    let document = serde_json::to_value(built.document().unwrap()).unwrap();
+    let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/axum-alias"]["post"];
 
     assert_eq!(operation["x-roundhouse-unverified-body"], true);
@@ -96,7 +96,7 @@ async fn axum_json_accepts_a_body_that_violates_the_roundhouse_constraint() {
 #[test]
 fn an_alias_of_roundhouse_json_still_documents_and_enforces_the_constraint() {
     let built = app(concat!(module_path!(), "::roundhouse_alias"));
-    let document = serde_json::to_value(built.document().unwrap()).unwrap();
+    let document = serde_json::to_value(built.document()).unwrap();
     let schema =
         &document["paths"]["/roundhouse-alias"]["post"]["requestBody"]["content"]["application/json"]
             ["schema"];
@@ -123,7 +123,7 @@ async fn an_alias_of_roundhouse_json_still_validates_at_runtime() {
 #[test]
 fn a_json_extractor_aliased_as_body_is_not_documented_as_octet_stream() {
     let built = app(concat!(module_path!(), "::body_alias"));
-    let document = serde_json::to_value(built.document().unwrap()).unwrap();
+    let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/body-alias"]["post"];
 
     assert_eq!(operation["x-roundhouse-unverified-body"], true);

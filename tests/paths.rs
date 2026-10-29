@@ -129,7 +129,7 @@ fn default_operation_ids_use_the_resolved_path() {
 
 fn path_parameters(module: &'static str, path: &str) -> Vec<serde_json::Value> {
     let app = scoped(module).try_build().expect("valid document");
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     document["paths"][path]["get"]["parameters"]
         .as_array()
         .cloned()

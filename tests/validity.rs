@@ -29,13 +29,13 @@ fn built() -> roundhouse::Built {
 #[test]
 fn a_generated_document_is_structurally_valid() {
     let app = built();
-    validate_document(app.document().unwrap()).expect("the document validates on its own");
+    validate_document(app.document()).expect("the document validates on its own");
 }
 
 #[test]
 fn the_validator_rejects_a_capture_without_a_parameter() {
     let app = built();
-    let mut value = serde_json::to_value(app.document().unwrap()).unwrap();
+    let mut value = serde_json::to_value(app.document()).unwrap();
     value["paths"]["/validity/items/{id}"]["get"]["parameters"] = serde_json::json!([]);
     let broken: roundhouse::utoipa::openapi::OpenApi = serde_json::from_value(value).unwrap();
     let error = validate_document(&broken).expect_err("a missing parameter is invalid");
@@ -45,7 +45,7 @@ fn the_validator_rejects_a_capture_without_a_parameter() {
 #[test]
 fn the_validator_rejects_a_requirement_without_a_scheme() {
     let app = built();
-    let mut value = serde_json::to_value(app.document().unwrap()).unwrap();
+    let mut value = serde_json::to_value(app.document()).unwrap();
     value["paths"]["/validity/items/{id}"]["get"]["security"] =
         serde_json::json!([{ "ghost": [] }]);
     let broken: roundhouse::utoipa::openapi::OpenApi = serde_json::from_value(value).unwrap();

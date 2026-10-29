@@ -17,8 +17,9 @@ The opinions are deliberate:
   undocumented error types and unsupported state are build diagnostics — errors under
   `App::strict()`, and `App::try_build()` never panics. A path capture that no `Path<T>` covers is
   documented as a string and reported the same way, so the document never silently guesses.
-- **The document is a build artifact.** `Built::openapi_json()` exposes the same document the
-  server serves, so CI can diff it.
+- **The document is a build artifact.** It is always built; `App::openapi(..)` only decides
+  whether it is also served. `Built::openapi_json()` exposes the same document the server
+  serves, so CI can diff it.
 
 ## Quickstart
 
@@ -186,14 +187,14 @@ docs UI at `/reference`; showcase serves `/openapi.json` and `/docs`.
 
 ### Read the document from a build
 
-The framework produces the document; emitting it is the application's job. After `App::build()`,
-`Built::openapi_json()` and `Built::openapi_30_json()` return pretty JSON, `Built::document()`
-returns the `OpenApi` value, and `Built::routes()` exposes the resolved table with each
-declaration's source location:
+The framework produces the document; emitting it is the application's job. The document is built
+whether or not it is served. After `App::build()`, `Built::openapi_json()` and
+`Built::openapi_30_json()` return pretty JSON, `Built::document()` returns the `OpenApi` value,
+and `Built::routes()` exposes the resolved table with each declaration's source location:
 
 ```rust
 let built = app(state).build();
-let json = built.openapi_json().expect("openapi enabled");
+let json = built.openapi_json();
 std::fs::write("target/openapi.json", json)?;
 ```
 

@@ -130,7 +130,7 @@ async fn domain_errors_use_the_same_problem_shape() {
 #[tokio::test]
 async fn document_carries_the_constraints() {
     let app = built();
-    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    let document = serde_json::to_value(app.document()).unwrap();
     let profile = &document["components"]["schemas"]["Profile"];
 
     assert_eq!(profile["additionalProperties"], false);

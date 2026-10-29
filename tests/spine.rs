@@ -159,7 +159,7 @@ async fn error_enum_is_into_response() {
 #[tokio::test]
 async fn document_matches_the_router() {
     let app = app();
-    let document = app.document().expect("openapi enabled");
+    let document = app.document();
     let json = serde_json::to_value(document).unwrap();
     assert_eq!(json["openapi"], "3.1.0");
     assert!(json["paths"]["/notes"]["get"].is_object());
@@ -208,7 +208,7 @@ fn scope_matching_is_segment_aware() {
 
 #[test]
 fn openapi_golden() {
-    let json = app().openapi_json().expect("openapi enabled");
+    let json = app().openapi_json();
     if std::env::var_os("ROUNDHOUSE_BLESS").is_some() {
         std::fs::write(
             concat!(env!("CARGO_MANIFEST_DIR"), "/tests/openapi.golden.json"),
