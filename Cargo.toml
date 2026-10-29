@@ -15,9 +15,14 @@ resolver = "2"
 
 [package]
 name = "roundhouse"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Declarations in, router and OpenAPI document out. A thin layer over axum."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/roundhouse/roundhouse"
+rust-version = "1.85"
+keywords = ["axum", "openapi", "web", "router"]
+categories = ["web-programming::http-server"]
 
 [[bin]]
 name = "roundhouse"
@@ -55,3 +60,4 @@ futures-util = "0.3"
 http-body-util = "0.1"
 thiserror = "2"
 tower = { version = "0.5", features = ["util"] }
+trybuild = "1"

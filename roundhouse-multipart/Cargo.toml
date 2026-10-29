@@ -1,8 +1,11 @@
 [package]
 name = "roundhouse-multipart"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Typed multipart extraction for roundhouse."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/roundhouse/roundhouse"
+rust-version = "1.85"
 
 [dependencies]
 axum = { version = "0.8", features = ["multipart"] }

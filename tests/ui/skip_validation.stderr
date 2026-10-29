@@ -1,0 +1,5 @@
+error: `#[schema(skip_validation)]` was removed: a constraint is either published and enforced, or not declared. Use `validate = false` on the routes! entry to opt the whole body out.
+ --> tests/ui/skip_validation.rs:6:14
+  |
+6 |     #[schema(skip_validation)]
+  |              ^^^^^^^^^^^^^^^
