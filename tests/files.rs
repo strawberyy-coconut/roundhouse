@@ -374,3 +374,26 @@ async fn max_parts_bounds_the_part_count() {
     let value = body_json(response).await;
     assert_eq!(value["errors"][0]["code"], "max_parts");
 }
+
+#[test]
+fn unbounded_file_fields_are_reported_and_strict_rejects_them() {
+    let app = app();
+    let diagnostic = app
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.message.contains("without `max_bytes`")
+                && diagnostic.message.contains("`file`")
+        })
+        .expect("the unbounded file field is called out");
+
+    let error = roundhouse::App::new(State)
+        .scope(concat!(module_path!(), "::files"))
+        .strict()
+        .try_build()
+        .err()
+        .expect("strict turns the warning into an error");
+    assert!(matches!(error, roundhouse::BuildError::Diagnostic { .. }));
+    assert!(error.to_string().contains("max_bytes"));
+    let _ = diagnostic;
+}

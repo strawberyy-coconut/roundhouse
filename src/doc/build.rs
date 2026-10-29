@@ -99,6 +99,20 @@ pub fn build_with_observations(
         if let Some(custom) = route.record.doc {
             custom(&mut docs);
         }
+        if !docs.unbounded_file_fields.is_empty() {
+            crate::build_error::report(
+                diagnostics,
+                strict,
+                Diagnostic::new(
+                    route.record.source_ref(),
+                    format!(
+                        "operation `{}` declares file field(s) `{}` without `max_bytes`; they are                          bounded only by the app-wide body limit",
+                        route.operation_id,
+                        docs.unbounded_file_fields.join("`, `")
+                    ),
+                ),
+            )?;
+        }
         if docs.unverified {
             if strict {
                 return Err(BuildError::UnverifiedBody {
