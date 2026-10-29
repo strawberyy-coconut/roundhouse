@@ -298,6 +298,16 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let marker_type = marker_type(handler);
         let operation_id = option_lit(&entry.operation_id);
     let handler_name = LitStr::new(&last_segment(handler), entry.path.span());
+    // `assert!` treats its message as a format string. Escape the template's braces so a capture
+    // is printed literally in the compile error.
+    let assertion_message = LitStr::new(
+        &format!(
+            "roundhouse: Path<T> in handler `{}` does not declare every capture in `{}`",
+            last_segment(handler),
+            entry.path.value().replace('{', "{{").replace('}', "}}"),
+        ),
+        entry.path.span(),
+    );
     let summary = option_lit(&entry.summary);
     let description = option_lit(&entry.description);
     let tags = string_slice(&entry.tags);
@@ -361,10 +371,15 @@ fn expand_entry(entry: Entry) -> TokenStream {
         #(#attrs)*
         #[allow(non_upper_case_globals)]
         const _: () = {
-            const _: () = #krate::prefix::assert_path_names(
-                #path,
-                <#marker_type as #krate::doc::HandlerMeta>::PATH_NAMES,
-            );
+            const _: () = {
+                assert!(
+                    #krate::prefix::path_names_match(
+                        #path,
+                        <#marker_type as #krate::doc::HandlerMeta>::PATH_NAMES,
+                    ),
+                    #assertion_message,
+                );
+            };
 
             fn __roundhouse_route()
                 -> ::std::boxed::Box<dyn ::core::any::Any + ::core::marker::Send + ::core::marker::Sync>

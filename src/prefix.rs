@@ -120,8 +120,18 @@ fn unescaped_chars(template: &str) -> Vec<(u8, bool)> {
 /// build validates those against the full resolved path. A capture that is in the leaf template
 /// but missing from `Path<T>` is still a compile error.
 pub const fn assert_path_names(template: &str, names: &[&str]) {
+    if !path_names_match(template, names) {
+        panic!("roundhouse: Path<T> does not declare every capture in the route's path template");
+    }
+}
+
+/// The pure predicate behind [`assert_path_names`].
+///
+/// `routes!` uses it directly so the compile-time message can name the handler and the resolved
+/// template; a const function cannot format a dynamic message.
+pub const fn path_names_match(template: &str, names: &[&str]) -> bool {
     if names.is_empty() {
-        return;
+        return true;
     }
 
     let bytes = template.as_bytes();
@@ -172,9 +182,7 @@ pub const fn assert_path_names(template: &str, names: &[&str]) {
                 declared_index += 1;
             }
             if !found {
-                panic!(
-                    "roundhouse: Path<T> does not declare a capture named in the route's path template"
-                );
+                return false;
             }
 
             index = end + 1;
@@ -182,6 +190,7 @@ pub const fn assert_path_names(template: &str, names: &[&str]) {
         }
         index += 1;
     }
+    true
 }
 
 /// Normalise captures to `{}` and wildcards to `{*}`, so two templates that `matchit` treats as
