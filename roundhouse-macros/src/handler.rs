@@ -64,155 +64,44 @@ pub fn expand(item: ItemFn) -> TokenStream {
             continue;
         }
 
-        let Some(kind) = outer_ident(&ty) else {
-            continue;
-        };
-
-        match kind.as_str() {
-            "Path" if is_wrapper_type(&ty) => {
-                if let Some(inner) = single_generic(&ty) {
-                    path_type = Some(inner.clone());
-                    statements.push(quote! {
-                        docs.params.extend(#krate::doc::path_params::<#inner>());
-                        docs.path_schema = ::core::option::Option::Some(
-                            <#inner as #krate::doc::PathNames>::scalar_schema,
-                        );
-                    });
-                }
-                if !handled {
-                    statements.push(quote! {
-                        docs.failures.extend(#krate::doc::path_failures());
-                    });
-                }
-            }
-            "Query" if is_wrapper_type(&ty) => {
-                if let Some(inner) = single_generic(&ty) {
-                    statements.push(quote! {
-                        docs.params.extend(
-                            #krate::doc::stored_query_params_for::<#inner>(components)
-                        );
-                    });
-                }
-                if !handled {
-                    statements.push(quote! {
-                        docs.failures.extend(#krate::doc::query_failures());
-                    });
-                }
-            }
-            "Json" => {
-                body_count += 1;
-                if is_wrapper_type(&ty) {
+        // Compile-time metadata that cannot be recovered from the resolved value: the state
+        // type and the `Path<T>` capture list. Both are best-effort and conservative; a path
+        // alias simply leaves `PATH_NAMES` empty (the build still checks the document).
+        if let Some(kind) = outer_ident(&ty) {
+            match kind.as_str() {
+                "Path" if is_wrapper_type(&ty) => {
                     if let Some(inner) = single_generic(&ty) {
-                        statements.push(quote! {
-                            docs.body = ::core::option::Option::Some(
-                                #krate::doc::json_body::<#inner>(components)
-                            );
-                            docs.body_type = ::core::option::Option::Some(
-                                || ::core::any::TypeId::of::<#inner>()
-                            );
-                        });
+                        path_type = Some(inner.clone());
                     }
-                    if !handled {
-                        statements.push(quote! {
-                            docs.failures.extend(#krate::doc::json_failures());
-                        });
-                    }
-                } else if let Some(inner) = single_generic(&ty) {
-                    // A foreign `axum::Json<T>` names its schema through utoipa when `T` has
-                    // one. The body is documented, but remains unverified: roundhouse does not
-                    // enforce `T`'s constraints at runtime.
-                    statements.push(quote! {
-                        if let Some(__schema) = {
-                            use #krate::doc::ForeignSchemaProbe as _;
-                            (&#krate::doc::ForeignSchema::<#inner>::new())
-                                .foreign_schema(components)
-                        } {
-                            docs.body = ::core::option::Option::Some(#krate::doc::BodyDoc {
-                                content_type: "application/json".to_string(),
-                                schema: __schema,
-                                encoding: ::std::collections::BTreeMap::new(),
-                                required: true,
-                                description: ::core::option::Option::None,
-                            });
-                        }
-                        docs.unverified = true;
-                    });
-                } else {
-                    statements.push(quote! { docs.unverified = true; });
                 }
-            }
-            "Multipart" => {
-                body_count += 1;
-                if is_wrapper_type(&ty) {
+                "State" => {
                     if let Some(inner) = single_generic(&ty) {
-                        statements.push(quote! {
-                            docs.body = ::core::option::Option::Some(
-                                #krate::doc::multipart_body::<#inner>(components)
-                            );
-                            docs.body_type = ::core::option::Option::Some(
-                                || ::core::any::TypeId::of::<#inner>()
-                            );
-                        });
+                        state_type = Some(inner);
                     }
-                    if !handled {
-                        statements.push(quote! {
-                            docs.failures.extend(#krate::doc::multipart_failures());
-                        });
-                    }
-                } else {
-                    statements.push(quote! { docs.unverified = true; });
                 }
-            }
-            "Form" => {
-                body_count += 1;
-                if is_wrapper_type(&ty) {
-                    if let Some(inner) = single_generic(&ty) {
-                        statements.push(quote! {
-                            docs.body = ::core::option::Option::Some(
-                                #krate::doc::form_body::<#inner>(components)
-                            );
-                            docs.body_type = ::core::option::Option::Some(
-                                || ::core::any::TypeId::of::<#inner>()
-                            );
-                        });
-                    }
-                    if !handled {
-                        statements.push(quote! {
-                            docs.failures.extend(#krate::doc::form_failures());
-                        });
-                    }
-                } else {
-                    statements.push(quote! { docs.unverified = true; });
+                "Json" | "Form" | "Multipart" | "Bytes" | "Body" => {
+                    body_count += 1;
                 }
-            }
-            "State" => {
-                if let Some(inner) = single_generic(&ty) {
-                    state_type = Some(inner);
-                }
-            }
-            "Bytes" | "Body" => {
-                body_count += 1;
-                statements.push(quote! {
-                    docs.body = ::core::option::Option::Some(#krate::doc::binary_body());
-                });
-            }
-            "Extension" => {
-                if is_wrapper_type(&ty) {
-                    statements.push(quote! {
-                        docs.failures.extend(#krate::doc::extension_failures());
-                    });
-                } else {
-                    // axum's own `Extension` rejects with a bare 500 that is not a `Problem`;
-                    // the document cannot honestly describe it. Mark it instead of guessing.
-                    statements.push(quote! { docs.unverified_extractor = true; });
-                }
-            }
-            other => {
-                if !is_known_extractor(other) {
-                    statements.push(quote! { docs.unverified_extractor = true; });
-                }
+                _ => {}
             }
         }
+
+        // Everything else is decided by the resolved type. This is what keeps an alias or a
+        // re-export (`use axum::Json;`, `use roundhouse::Json as Body;`) from claiming the
+        // documentation of a different extractor.
+        let add_failures = !handled;
+        statements.push(quote! {
+            {
+                use #krate::doc::ProbeExtractor as _;
+                (&#krate::doc::ExtractProbe::<#ty>::new())
+                    .probe_extractor(components, &mut docs, #add_failures);
+            }
+            {
+                use #krate::doc::ProbeForeignBody as _;
+                (&&#krate::doc::ForeignBodyProbe::<#ty>::new())
+                    .probe_foreign_body(components, &mut docs);
+            }
+        });
     }
 
     if body_count > 1 {
@@ -265,34 +154,6 @@ pub fn expand(item: ItemFn) -> TokenStream {
             }
         }
     }
-}
-
-fn is_known_extractor(name: &str) -> bool {
-    matches!(
-        name,
-        "State"
-            | "Path"
-            | "Query"
-            | "Json"
-            | "Form"
-            | "Multipart"
-            | "Auth"
-            | "Extension"
-            | "Bytes"
-            | "Body"
-            | "Request"
-            | "Parts"
-            | "HeaderMap"
-            | "Method"
-            | "Uri"
-            | "OriginalUri"
-            | "ConnectInfo"
-            | "Extensions"
-            | "Host"
-            | "WebSocketUpgrade"
-            | "Option"
-            | "Result"
-    )
 }
 
 fn auth_types(ty: &Type) -> Option<(Type, Option<Type>, bool)> {

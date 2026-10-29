@@ -124,6 +124,9 @@ pub struct HandlerDocs {
     /// The Rust type of the request body, so schema mode can compile the body's own schema even
     /// when it is composite (`Vec<T>`, `Option<T>`, maps, tuples).
     pub body_type: Option<fn() -> std::any::TypeId>,
+    /// File fields declared without `max_bytes`; they fall back to the app-wide body limit.
+    /// The build warns (and `strict` rejects) so the most permissive declaration is visible.
+    pub unbounded_file_fields: Vec<&'static str>,
 }
 
 /// Implemented by the marker type `#[handler]` emits beside each handler.
@@ -194,6 +197,338 @@ impl<T: utoipa::ToSchema> ForeignSchemaProbe for &ForeignSchema<T> {
 impl<T> ForeignSchemaProbe for &&ForeignSchema<T> {
     fn foreign_schema(self, _components: &mut Components) -> Option<RefOr<Schema>> {
         None
+    }
+}
+
+/// Type-driven probe for a handler's extractor arguments.
+///
+/// `routes!` sees only the tokens in the signature. A parameter spelled `Json<T>` may be
+/// `roundhouse::Json<T>`, `axum::Json<T>`, an alias of either, or a user type with the same name.
+/// This probe resolves the *type*, not the identifier, using the same autoref-specialisation
+/// pattern as [`ForeignSchema`]: the most specific applicable implementation wins, and the
+/// fallback marks an extractor the document cannot infer.
+pub struct ExtractProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> ExtractProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for ExtractProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeExtractor {
+    /// Contribute this extractor to the handler's documentation.
+    ///
+    /// `add_failures` is false when the extractor sits inside a `Result<_, E>`; the handler then
+    /// documents `E`'s responses instead of the extractor's own rejection.
+    fn probe_extractor(
+        self,
+        components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    );
+}
+
+// `roundhouse::Json` validates constraints and is the type the document can promise.
+impl<T: ApiSchema + 'static> ProbeExtractor for &ExtractProbe<crate::extract::Json<T>> {
+    fn probe_extractor(
+        self,
+        components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        docs.body = Some(json_body::<T>(components));
+        docs.body_type = Some(|| TypeId::of::<T>());
+        if add_failures {
+            docs.failures.extend(json_failures());
+        }
+    }
+}
+
+impl<T: ApiSchema + 'static> ProbeExtractor for &ExtractProbe<crate::extract::Form<T>> {
+    fn probe_extractor(
+        self,
+        components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        docs.body = Some(form_body::<T>(components));
+        docs.body_type = Some(|| TypeId::of::<T>());
+        if add_failures {
+            docs.failures.extend(form_failures());
+        }
+    }
+}
+
+#[cfg(feature = "multipart")]
+impl<T: crate::multipart::MultipartForm + 'static> ProbeExtractor
+    for &ExtractProbe<crate::multipart::Multipart<T>>
+{
+    fn probe_extractor(
+        self,
+        components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        docs.body = Some(multipart_body::<T>(components));
+        for field in T::fields() {
+            if field.kind.is_file() && field.max_bytes.is_none() {
+                docs.unbounded_file_fields.push(field.name);
+            }
+        }
+        docs.body_type = Some(|| TypeId::of::<T>());
+        if add_failures {
+            docs.failures.extend(multipart_failures());
+        }
+    }
+}
+
+impl<T: PathNames + 'static> ProbeExtractor for &ExtractProbe<crate::extract::Path<T>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        docs.params.extend(path_params::<T>());
+        docs.path_schema = Some(<T as PathNames>::scalar_schema);
+        if add_failures {
+            docs.failures.extend(path_failures());
+        }
+    }
+}
+
+impl<T: QueryParams> ProbeExtractor for &ExtractProbe<crate::extract::Query<T>> {
+    fn probe_extractor(
+        self,
+        components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        docs.params.extend(stored_query_params_for::<T>(components));
+        if add_failures {
+            docs.failures.extend(query_failures());
+        }
+    }
+}
+
+impl<T: Clone + Send + Sync + 'static> ProbeExtractor
+    for &ExtractProbe<crate::extract::Extension<T>>
+{
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        if add_failures {
+            docs.failures.extend(extension_failures());
+        }
+    }
+}
+
+impl ProbeExtractor for &ExtractProbe<bytes::Bytes> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        _add_failures: bool,
+    ) {
+        docs.body = Some(binary_body());
+    }
+}
+
+impl ProbeExtractor for &ExtractProbe<axum::body::Body> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        _add_failures: bool,
+    ) {
+        docs.body = Some(binary_body());
+    }
+}
+
+// axum's own JSON extractor is documented from utoipa when it can be, but it does not enforce
+// roundhouse's constraints, so the operation is marked unverified rather than promising them.
+impl<T> ProbeExtractor for &ExtractProbe<axum::Json<T>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        _add_failures: bool,
+    ) {
+        docs.unverified = true;
+    }
+}
+
+/// A second, narrower probe for a foreign JSON body that has a utoipa schema.
+///
+/// The `ToSchema` bound must be resolved at the handler's concrete argument type, not inside the
+/// generic extractor probe, so this is a separate autoref chain: `&&ForeignBodyProbe<axum::Json<T>>`
+/// applies when `T: ToSchema`, and the `&&&` implementation for everything else does nothing.
+pub struct ForeignBodyProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> ForeignBodyProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for ForeignBodyProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeForeignBody {
+    fn probe_foreign_body(self, components: &mut Components, docs: &mut HandlerDocs);
+}
+
+impl<T: utoipa::ToSchema> ProbeForeignBody for &&ForeignBodyProbe<axum::Json<T>> {
+    fn probe_foreign_body(self, components: &mut Components, docs: &mut HandlerDocs) {
+        use utoipa::ToSchema;
+        let name = T::name().into_owned();
+        let mut referenced = Vec::new();
+        <T as ToSchema>::schemas(&mut referenced);
+        for (component, schema) in referenced {
+            components.schemas.insert(component, schema);
+        }
+        components.schemas.insert(name.clone(), T::schema());
+        docs.body = Some(BodyDoc {
+            content_type: "application/json".to_string(),
+            schema: utoipa::openapi::Ref::from_schema_name(name).into(),
+            encoding: BTreeMap::new(),
+            required: true,
+            description: None,
+        });
+    }
+}
+
+impl<T> ProbeForeignBody for &&&ForeignBodyProbe<T> {
+    fn probe_foreign_body(self, _components: &mut Components, _docs: &mut HandlerDocs) {}
+}
+
+// axum's other extractors are known and contribute nothing the document cannot already see.
+impl<T> ProbeExtractor for &ExtractProbe<axum::extract::State<T>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        _docs: &mut HandlerDocs,
+        _add_failures: bool,
+    ) {
+    }
+}
+
+impl<T> ProbeExtractor for &ExtractProbe<axum::extract::ConnectInfo<T>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        _docs: &mut HandlerDocs,
+        _add_failures: bool,
+    ) {
+    }
+}
+
+macro_rules! no_op_extractor {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl ProbeExtractor for &ExtractProbe<$ty> {
+                fn probe_extractor(
+                    self,
+                    _components: &mut Components,
+                    _docs: &mut HandlerDocs,
+                    _add_failures: bool,
+                ) {
+                }
+            }
+        )*
+    };
+}
+
+no_op_extractor!(
+    axum::http::HeaderMap,
+    axum::http::Method,
+    axum::http::Uri,
+    axum::extract::OriginalUri,
+    axum::extract::MatchedPath,
+    axum::extract::Request,
+    axum::http::request::Parts,
+);
+
+impl<T> ProbeExtractor for &ExtractProbe<Option<T>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        _docs: &mut HandlerDocs,
+        _add_failures: bool,
+    ) {
+    }
+}
+
+impl<T> ProbeExtractor for &ExtractProbe<axum::extract::Path<T>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        if add_failures {
+            docs.failures.extend(path_failures());
+        }
+    }
+}
+
+impl<T> ProbeExtractor for &ExtractProbe<axum::extract::Query<T>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        if add_failures {
+            docs.failures.extend(query_failures());
+        }
+    }
+}
+
+impl<T> ProbeExtractor for &ExtractProbe<axum::extract::Extension<T>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        _add_failures: bool,
+    ) {
+        docs.unverified_extractor = true;
+    }
+}
+
+#[cfg(feature = "multipart")]
+impl ProbeExtractor for &ExtractProbe<axum::extract::Multipart> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        _add_failures: bool,
+    ) {
+        docs.unverified = true;
+    }
+}
+
+// Anything else is an extractor the macro cannot reason about. Mark it instead of guessing.
+impl<T> ProbeExtractor for &&ExtractProbe<T> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        _add_failures: bool,
+    ) {
+        docs.unverified_extractor = true;
     }
 }
 
