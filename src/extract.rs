@@ -191,14 +191,17 @@ where
     type Rejection = Problem;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let skip = parts.extensions.get::<SkipValidation>().is_some();
         let config = validation_config(&parts.extensions);
         let value = axum::extract::Path::<T>::from_request_parts(parts, state)
             .await
             .map_err(|rejection| rejection_problem(rejection.status(), rejection.body_text()))?;
-        value
-            .0
-            .validate()
-            .map_err(|errors| problem_from_validation(errors, config.status))?;
+        if !skip && config.mode != Validation::Off {
+            value
+                .0
+                .validate()
+                .map_err(|errors| problem_from_validation(errors, config.status))?;
+        }
         Ok(Self(value.0))
     }
 }
@@ -234,14 +237,17 @@ where
     type Rejection = Problem;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let skip = parts.extensions.get::<SkipValidation>().is_some();
         let config = validation_config(&parts.extensions);
         let value = axum::extract::Query::<T>::from_request_parts(parts, state)
             .await
             .map_err(|rejection| rejection_problem(rejection.status(), rejection.body_text()))?;
-        value
-            .0
-            .validate()
-            .map_err(|errors| problem_from_validation(errors, config.status))?;
+        if !skip && config.mode != Validation::Off {
+            value
+                .0
+                .validate()
+                .map_err(|errors| problem_from_validation(errors, config.status))?;
+        }
         Ok(Self(value.0))
     }
 }
