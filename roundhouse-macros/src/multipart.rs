@@ -335,12 +335,12 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
             fn from_fields(
                 fields: &mut #krate::multipart::FieldValues,
-            ) -> ::core::result::Result<Self, #krate::multipart::MultipartProblem> {
+            ) -> ::core::result::Result<Self, #krate::Problem> {
                 let mut errors = #krate::validate::ValidationErrors::new();
                 #(#bindings)*
                 if !errors.is_empty() {
                     return ::core::result::Result::Err(
-                        #krate::multipart::MultipartProblem::from_validation(errors),
+                        #krate::Problem::from_validation(errors),
                     );
                 }
                 ::core::result::Result::Ok(Self { #(#constructor_fields),* })

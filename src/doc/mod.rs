@@ -231,6 +231,7 @@ pub fn json_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
     }
 }
 
+#[cfg(feature = "multipart")]
 pub fn multipart_body<F: crate::multipart::MultipartForm>(components: &mut Components) -> BodyDoc {
     BodyDoc {
         content_type: "multipart/form-data".to_string(),
@@ -240,6 +241,7 @@ pub fn multipart_body<F: crate::multipart::MultipartForm>(components: &mut Compo
     }
 }
 
+#[cfg(feature = "multipart")]
 pub fn multipart_failures() -> Vec<ResponseDoc> {
     vec![
         ResponseDoc::problem(400, "Bad Request"),

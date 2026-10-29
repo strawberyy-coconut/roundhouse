@@ -1283,6 +1283,7 @@ dependencies = [
  "regex",
  "roundhouse-macros",
  "roundhouse-multipart",
+ "roundhouse-problem",
  "roundhouse-schema",
  "serde",
  "serde_json",
@@ -1317,11 +1318,23 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "bytes",
+ "roundhouse-problem",
  "roundhouse-schema",
  "serde",
  "serde_json",
  "tempfile",
  "utoipa",
+]
+
+[[package]]
+name = "roundhouse-problem"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "http",
+ "roundhouse-schema",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

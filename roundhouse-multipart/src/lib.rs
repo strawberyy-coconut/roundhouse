@@ -2,20 +2,29 @@
 //!
 //! `Multipart<F>` reads a `multipart/form-data` body into a derived struct. A derive emits a field
 //! table (`name -> kind`, limits, accepted media types), so the extractor routes each part as it
-//! arrives instead of collecting every part first. The rejection body is RFC 9457
-//! `application/problem+json`, the same shape every other roundhouse extractor produces.
+//! arrives instead of collecting every part first. The rejection body is the canonical
+//! [`Problem`], so one client parser handles multipart and every other roundhouse extractor.
+//!
+//! # Features
+//!
+//! `FilePart` and the extractor are always available. The `multipart-tempfile` feature adds
+//! `TempFile`: a part is streamed into an OS temporary file while the request is read, with the
+//! file already unlinked so it disappears when the handle closes. Per-field `max_bytes` and the
+//! request `max_body` bound how many bytes one request can spool, but they do not bound aggregate
+//! concurrent disk use; if the spool filesystem fills, the extractor returns a `500 Problem`
+//! (`could not write a temporary file`). Prefer `FilePart` with `max_bytes` for ordinary uploads,
+//! and reserve `TempFile` for files too large to buffer in memory.
 
 #![allow(clippy::result_large_err)]
 
 use std::collections::HashMap;
+#[cfg(feature = "multipart-tempfile")]
 use std::io::{Read, Seek, SeekFrom, Write};
 
-use axum::body::Body;
 use axum::http::{StatusCode, header};
-use axum::response::{IntoResponse, Response};
 use bytes::{Bytes, BytesMut};
+pub use roundhouse_problem::Problem;
 use roundhouse_schema::{ApiSchema, ValidationError, ValidationErrors, pointer};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::{Components, ObjectBuilder, Schema, Type};
@@ -39,23 +48,31 @@ pub enum FieldKind {
     TextList,
     File,
     FileList,
+    #[cfg(feature = "multipart-tempfile")]
     TempFile,
+    #[cfg(feature = "multipart-tempfile")]
     TempFileList,
 }
 
 impl FieldKind {
     pub fn is_single(self) -> bool {
-        matches!(
-            self,
-            FieldKind::Text | FieldKind::File | FieldKind::TempFile
-        )
+        match self {
+            FieldKind::Text | FieldKind::File => true,
+            #[cfg(feature = "multipart-tempfile")]
+            FieldKind::TempFile => true,
+            FieldKind::TextList | FieldKind::FileList => false,
+            #[cfg(feature = "multipart-tempfile")]
+            FieldKind::TempFileList => false,
+        }
     }
 
     pub fn is_file(self) -> bool {
-        matches!(
-            self,
-            FieldKind::File | FieldKind::FileList | FieldKind::TempFile | FieldKind::TempFileList
-        )
+        match self {
+            FieldKind::File | FieldKind::FileList => true,
+            #[cfg(feature = "multipart-tempfile")]
+            FieldKind::TempFile | FieldKind::TempFileList => true,
+            FieldKind::Text | FieldKind::TextList => false,
+        }
     }
 }
 
@@ -96,89 +113,6 @@ impl FieldSpec {
     }
 }
 
-/// The RFC 9457 body produced by every multipart failure.
-///
-/// The facade converts this into its `Problem` type; the serialized shape is identical, so one
-/// client parser handles missing fields, wrong content types and size violations.
-#[derive(Debug, Clone, Serialize)]
-pub struct MultipartProblem {
-    #[serde(rename = "type")]
-    pub type_uri: String,
-    pub title: String,
-    pub status: u16,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub errors: Vec<ValidationError>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub instance: Option<String>,
-}
-
-impl MultipartProblem {
-    fn new(status: StatusCode, title: impl Into<String>) -> Self {
-        Self {
-            type_uri: "about:blank".to_string(),
-            title: title.into(),
-            status: status.as_u16(),
-            detail: None,
-            errors: Vec::new(),
-            instance: None,
-        }
-    }
-
-    pub fn from_validation(errors: ValidationErrors) -> Self {
-        Self {
-            type_uri: "https://roundhouse.rs/problems/validation".to_string(),
-            title: "Validation failed".to_string(),
-            status: StatusCode::BAD_REQUEST.as_u16(),
-            detail: None,
-            errors: errors.into_vec(),
-            instance: None,
-        }
-    }
-
-    fn from_validation_with_status(errors: ValidationErrors, status: StatusCode) -> Self {
-        let mut problem = Self::from_validation(errors);
-        problem.status = status.as_u16();
-        problem
-    }
-
-    fn from_rejection(status: StatusCode, title: &str, detail: String) -> Self {
-        let mut problem = Self::new(status, title);
-        problem.detail = Some(detail);
-        problem
-    }
-
-    pub fn status(&self) -> StatusCode {
-        StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
-    }
-}
-
-impl std::fmt::Display for MultipartProblem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.detail {
-            Some(detail) => write!(f, "{}: {}", self.title, detail),
-            None => f.write_str(&self.title),
-        }
-    }
-}
-
-impl std::error::Error for MultipartProblem {}
-
-impl IntoResponse for MultipartProblem {
-    fn into_response(self) -> Response {
-        let status = self.status();
-        let bytes = serde_json::to_vec(&self).unwrap_or_else(|_| {
-            br#"{"type":"about:blank","title":"Internal Server Error","status":500}"#.to_vec()
-        });
-        Response::builder()
-            .status(status)
-            .header(header::CONTENT_TYPE, "application/problem+json")
-            .body(Body::from(bytes))
-            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
-    }
-}
-
 /// A buffered file field.
 #[derive(Clone)]
 pub struct FilePart {
@@ -208,11 +142,13 @@ impl std::fmt::Debug for FilePart {
 }
 
 /// A file streamed to an already-unlinked temporary file while the request is read.
+#[cfg(feature = "multipart-tempfile")]
 pub struct TempFile {
     file: std::fs::File,
     len: u64,
 }
 
+#[cfg(feature = "multipart-tempfile")]
 impl TempFile {
     pub fn len(&self) -> u64 {
         self.len
@@ -227,18 +163,21 @@ impl TempFile {
     }
 }
 
+#[cfg(feature = "multipart-tempfile")]
 impl Read for TempFile {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.file.read(buf)
     }
 }
 
+#[cfg(feature = "multipart-tempfile")]
 impl Seek for TempFile {
     fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
         self.file.seek(position)
     }
 }
 
+#[cfg(feature = "multipart-tempfile")]
 impl std::fmt::Debug for TempFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TempFile").field("len", &self.len).finish()
@@ -254,6 +193,7 @@ pub struct FieldValues {
 enum RawField {
     Text(Bytes),
     File(FilePart),
+    #[cfg(feature = "multipart-tempfile")]
     Temp(TempFile),
 }
 
@@ -272,6 +212,7 @@ impl FieldValues {
             .push(RawField::File(file));
     }
 
+    #[cfg(feature = "multipart-tempfile")]
     fn push_temp(&mut self, name: &'static str, file: TempFile) {
         self.values
             .entry(name)
@@ -305,6 +246,7 @@ impl FieldValues {
             .collect()
     }
 
+    #[cfg(feature = "multipart-tempfile")]
     pub fn take_temp_files(&mut self, name: &str) -> Vec<TempFile> {
         self.take(name)
             .into_iter()
@@ -332,7 +274,7 @@ pub trait MultipartForm: Sized {
         false
     }
 
-    fn from_fields(fields: &mut FieldValues) -> Result<Self, MultipartProblem>;
+    fn from_fields(fields: &mut FieldValues) -> Result<Self, Problem>;
 
     fn schema(components: &mut Components) -> RefOr<Schema>;
 }
@@ -360,7 +302,7 @@ where
     F: MultipartForm + Send,
     S: Send + Sync,
 {
-    type Rejection = MultipartProblem;
+    type Rejection = Problem;
 
     async fn from_request(
         request: axum::extract::Request,
@@ -374,7 +316,7 @@ where
             .and_then(|value| value.to_str().ok())
             .unwrap_or_default();
         if !is_multipart_with_boundary(content_type) {
-            return Err(MultipartProblem::from_rejection(
+            return Err(Problem::from_rejection(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "Unsupported Media Type",
                 "expected a `multipart/form-data` body with a boundary".to_string(),
@@ -392,7 +334,7 @@ where
         let mut multipart = axum::extract::Multipart::from_request(request, state)
             .await
             .map_err(|rejection| {
-                MultipartProblem::from_rejection(
+                Problem::from_rejection(
                     rejection.status(),
                     rejection
                         .status()
@@ -486,6 +428,7 @@ where
                         },
                     );
                 }
+                #[cfg(feature = "multipart-tempfile")]
                 FieldKind::TempFile | FieldKind::TempFileList => {
                     let file =
                         stream_to_temp(&mut field, spec.name, field_limit, &mut total, max_body)
@@ -501,7 +444,7 @@ where
             }
         }
         if !errors.is_empty() {
-            return Err(MultipartProblem::from_validation(errors));
+            return Err(Problem::from_validation(errors));
         }
 
         F::from_fields(&mut values).map(Multipart)
@@ -521,8 +464,8 @@ fn is_multipart_with_boundary(content_type: &str) -> bool {
     })
 }
 
-fn multipart_error(error: axum::extract::multipart::MultipartError) -> MultipartProblem {
-    MultipartProblem::from_rejection(
+fn multipart_error(error: axum::extract::multipart::MultipartError) -> Problem {
+    Problem::from_rejection(
         error.status(),
         error.status().canonical_reason().unwrap_or("Bad Request"),
         error.body_text(),
@@ -535,7 +478,7 @@ async fn read_bounded(
     limit: usize,
     total: &mut usize,
     max_body: usize,
-) -> Result<Bytes, MultipartProblem> {
+) -> Result<Bytes, Problem> {
     let mut bytes = BytesMut::new();
     while let Some(chunk) = field.chunk().await.map_err(multipart_error)? {
         *total += chunk.len();
@@ -560,15 +503,16 @@ async fn read_bounded(
     Ok(bytes.freeze())
 }
 
+#[cfg(feature = "multipart-tempfile")]
 async fn stream_to_temp(
     field: &mut axum::extract::multipart::Field<'_>,
     name: &str,
     limit: usize,
     total: &mut usize,
     max_body: usize,
-) -> Result<TempFile, MultipartProblem> {
+) -> Result<TempFile, Problem> {
     let mut file = tempfile::tempfile().map_err(|error| {
-        MultipartProblem::from_rejection(
+        Problem::from_rejection(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Internal Server Error",
             format!("could not create a temporary file: {error}"),
@@ -594,7 +538,7 @@ async fn stream_to_temp(
             ));
         }
         file.write_all(&chunk).map_err(|error| {
-            MultipartProblem::from_rejection(
+            Problem::from_rejection(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal Server Error",
                 format!("could not write a temporary file: {error}"),
@@ -603,7 +547,7 @@ async fn stream_to_temp(
         len += chunk.len() as u64;
     }
     file.seek(SeekFrom::Start(0)).map_err(|error| {
-        MultipartProblem::from_rejection(
+        Problem::from_rejection(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Internal Server Error",
             format!("could not rewind a temporary file: {error}"),
@@ -616,7 +560,7 @@ async fn drain(
     field: &mut axum::extract::multipart::Field<'_>,
     total: &mut usize,
     max_body: usize,
-) -> Result<(), MultipartProblem> {
+) -> Result<(), Problem> {
     while let Some(chunk) = field.chunk().await.map_err(multipart_error)? {
         *total += chunk.len();
         if *total > max_body {
@@ -631,17 +575,17 @@ async fn drain(
     Ok(())
 }
 
-fn too_large(name: &str, code: &str, message: String, limit: usize) -> MultipartProblem {
+fn too_large(name: &str, code: &str, message: String, limit: usize) -> Problem {
     validation(
         StatusCode::PAYLOAD_TOO_LARGE,
         ValidationError::new(pointer("", name), code, message).with_limit(limit),
     )
 }
 
-fn validation(status: StatusCode, error: ValidationError) -> MultipartProblem {
+fn validation(status: StatusCode, error: ValidationError) -> Problem {
     let mut errors = ValidationErrors::new();
     errors.push(error);
-    MultipartProblem::from_validation_with_status(errors, status)
+    Problem::from_validation_with_status(errors, status)
 }
 
 fn missing(name: &str, errors: &mut ValidationErrors) {
@@ -694,14 +638,11 @@ pub fn require<T>(value: Option<T>, name: &str, errors: &mut ValidationErrors) -
 }
 
 /// The final validation pass for a derived struct.
-pub fn finish<T>(
-    value: Result<T, MultipartProblem>,
-    errors: ValidationErrors,
-) -> Result<T, MultipartProblem> {
+pub fn finish<T>(value: Result<T, Problem>, errors: ValidationErrors) -> Result<T, Problem> {
     if errors.is_empty() {
         value
     } else {
-        Err(MultipartProblem::from_validation(errors))
+        Err(Problem::from_validation(errors))
     }
 }
 
@@ -778,6 +719,7 @@ pub fn text_list_schema<T: ApiSchema>(components: &mut Components) -> RefOr<Sche
 mod tests {
     use super::*;
 
+    #[cfg(feature = "multipart-tempfile")]
     #[test]
     fn temp_file_reads_from_the_current_position_and_seeks() {
         let mut file = tempfile::tempfile().unwrap();

@@ -7,11 +7,17 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/axum-roundhouse/axum-roundhouse"
 rust-version = "1.88"
 
+[features]
+default = []
+# `TempFile` fields, streamed to an already-unlinked temporary file.
+multipart-tempfile = ["dep:tempfile"]
+
 [dependencies]
 axum = { version = "0.8", features = ["multipart"] }
 bytes = "1"
+roundhouse-problem = { path = "../roundhouse-problem" }
 roundhouse-schema = { path = "../roundhouse-schema" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tempfile = "3"
+tempfile = { version = "3", optional = true }
 utoipa = { version = "6", features = ["non_strict_integers"] }

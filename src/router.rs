@@ -68,6 +68,7 @@ pub struct App<S> {
     validation_status: axum::http::StatusCode,
     validate_responses: bool,
     max_body: Option<usize>,
+    #[cfg(feature = "multipart")]
     max_parts: Option<usize>,
     strict: bool,
     validation: crate::extract::Validation,
@@ -92,6 +93,7 @@ where
             validation_status: axum::http::StatusCode::BAD_REQUEST,
             validate_responses: false,
             max_body: None,
+            #[cfg(feature = "multipart")]
             max_parts: None,
             strict: false,
             validation: crate::extract::Validation::Generated,
@@ -215,14 +217,15 @@ where
 
     /// Set the global request body limit. Body extractors answer `413` above it.
     ///
-    /// This is the default for every body extractor, including multipart, where a field's
-    /// `max_bytes` can only narrow it.
+    /// This is the default for every body extractor, including multipart when that feature is
+    /// enabled, where a field's `max_bytes` can only narrow it.
     pub fn max_body(mut self, bytes: usize) -> Self {
         self.max_body = Some(bytes);
         self
     }
 
     /// Bound the number of parts in a multipart request. Many tiny parts are a DoS axis.
+    #[cfg(feature = "multipart")]
     pub fn max_parts(mut self, parts: usize) -> Self {
         self.max_parts = Some(parts);
         self
@@ -359,12 +362,17 @@ where
             router = fallback(router);
         }
 
+        #[cfg(feature = "multipart")]
+        let max_parts = self.max_parts;
+        #[cfg(not(feature = "multipart"))]
+        let max_parts = None;
+
         router = router.layer(axum::middleware::from_fn_with_state(
             (
                 self.validation_status,
                 self.validation,
                 self.max_body,
-                self.max_parts,
+                max_parts,
                 schema_engine,
             ),
             inject_validation_config,
@@ -1011,12 +1019,15 @@ async fn inject_validation_config(
     request
         .extensions_mut()
         .insert(crate::extract::ValidationConfig { status, mode });
+    #[cfg(feature = "multipart")]
     request
         .extensions_mut()
         .insert(crate::multipart::MultipartLimits {
             max_body,
             max_parts,
         });
+    #[cfg(not(feature = "multipart"))]
+    let _ = (max_body, max_parts);
     if let Some(engine) = engine {
         request.extensions_mut().insert(engine);
     }

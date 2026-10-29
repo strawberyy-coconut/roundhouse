@@ -2,6 +2,7 @@
 members = [
     "roundhouse-cli",
     "roundhouse-macros",
+    "roundhouse-problem",
     "roundhouse-schema",
     "roundhouse-multipart",
     "examples/notes",
@@ -29,6 +30,10 @@ categories = ["web-programming::http-server"]
 [features]
 default = ["macros"]
 macros = ["dep:roundhouse-macros"]
+# Typed multipart extraction, plus axum's multipart body support.
+multipart = ["dep:roundhouse-multipart", "axum/multipart"]
+# `TempFile` parts, streamed to an already-unlinked temporary file.
+multipart-tempfile = ["multipart", "roundhouse-multipart/multipart-tempfile"]
 # Execute the emitted JSON Schema (`Validation::Schema`, `validate_responses()`).
 schema-engine = ["roundhouse-schema/schema-engine"]
 uuid = ["roundhouse-schema/uuid"]
@@ -38,14 +43,15 @@ decimal = ["roundhouse-schema/decimal"]
 jiff = ["roundhouse-schema/jiff", "dep:jiff"]
 
 [dependencies]
-axum = { version = "0.8", features = ["multipart"] }
+axum = "0.8"
 bytes = "1"
 http = "1"
 jiff = { version = "0.2", optional = true, features = ["serde"] }
 inventory = "0.3"
 regex = "1"
 roundhouse-macros = { path = "roundhouse-macros", optional = true }
-roundhouse-multipart = { path = "roundhouse-multipart" }
+roundhouse-multipart = { path = "roundhouse-multipart", optional = true }
+roundhouse-problem = { path = "roundhouse-problem" }
 roundhouse-schema = { path = "roundhouse-schema" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -60,3 +66,8 @@ http-body-util = "0.1"
 thiserror = "2"
 tower = { version = "0.5", features = ["util"] }
 trybuild = "1"
+
+[[test]]
+name = "files"
+path = "tests/files.rs"
+required-features = ["multipart", "multipart-tempfile"]

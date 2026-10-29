@@ -1,4 +1,4 @@
-//! Constraint validation and the RFC 9457 problem response.
+//! Constraint validation and the errors carried by the RFC 9457 problem response.
 
 use std::fmt;
 

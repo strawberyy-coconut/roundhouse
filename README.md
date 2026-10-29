@@ -24,6 +24,10 @@ The opinions are deliberate:
 Requires Rust 1.88 (the declared MSRV, checked in CI). The JSON Schema executor is behind the
 optional `schema-engine` feature; the default build uses the generated checks.
 
+Multipart extraction is opt-in. Enable `multipart` for `Multipart<F>`/`FilePart` and axum's
+multipart body support; enable `multipart-tempfile` as well for `TempFile`. A JSON-only app that
+leaves both off does not compile or link `roundhouse-multipart` or axum's multipart parser.
+
 ```toml
 [dependencies]
 roundhouse = "0.2"
@@ -81,9 +85,10 @@ The repository is a Cargo workspace with `roundhouse` as the root package:
 
 | Path | What it is |
 |---|---|
-| `src/` | the framework facade: registry, prefix resolution, router assembly, OpenAPI derivation, validation, `Problem` |
+| `src/` | the framework facade: registry, prefix resolution, router assembly, OpenAPI derivation, validation |
 | `roundhouse-schema/` | `ApiSchema`, path/query declarations, `ValidationErrors` — no routes and no axum |
-| `roundhouse-multipart/` | `Multipart<F>`, `FilePart`, `TempFile` and the multipart rejection |
+| `roundhouse-problem/` | the canonical RFC 9457 `Problem` body, shared by the facade and satellites |
+| `roundhouse-multipart/` | opt-in `Multipart<F>`, `FilePart`; `TempFile` behind `multipart-tempfile` |
 | `roundhouse-macros/` | `routes!`, `mount!`, `#[handler]`, `#[derive(ApiSchema / PathParams / QueryParams / Multipart / ApiResponse / ApiError)]` |
 | `roundhouse-cli/` | the `roundhouse` binary: `openapi` and `routes` commands over a linked example app |
 | `examples/notes/` | module-local route tables and inherited `mount!` |
@@ -236,14 +241,17 @@ side-effecting startup behind a flag if you dump documents in CI.
 - **Extractor docs** — `#[derive(QueryParams)]` and `#[derive(PathParams)]` publish query/path
   parameters with the same `#[schema(..)]` constraints the runtime enforces. Auth publishes the
   scheme, 401/403 responses, `WWW-Authenticate`, optional-auth alternatives, and scope metadata.
-- **Files and streams** — `#[derive(Multipart)]` with a generated field table: parts are routed by
-  name as they arrive, `FilePart` buffers under the field's `max_bytes`, `TempFile` streams straight
-  to an already-unlinked file (with `Read`/`Seek`), duplicate single-valued fields are a `400`,
-  unknown fields are ignored unless `#[multipart(deny_unknown)]`, and `accept` matches the media
-  type (parameters and case stripped). Missing required fields collect into one `Problem`; limits
-  are decided while reading and narrow the app's `max_body`, with `App::max_parts` bounding the
-  part count. Plus `Attachment<T>`, `File`, and axum's `Sse` with documented content types and
-  headers.
+- **Files and streams** — with the `multipart` feature, `#[derive(Multipart)]` with a generated
+  field table: parts are routed by name as they arrive, `FilePart` buffers under the field's
+  `max_bytes`, and duplicate single-valued fields are a `400`. Unknown fields are ignored unless
+  `#[multipart(deny_unknown)]`, and `accept` matches the media type (parameters and case stripped).
+  Missing required fields collect into one `Problem`; limits are decided while reading and narrow
+  the app's `max_body`, with `App::max_parts` bounding the part count. The `multipart-tempfile`
+  sub-feature adds `TempFile`, which streams straight to an already-unlinked file (with
+  `Read`/`Seek`); per-field and per-request limits bound one request's spool, but not aggregate
+  concurrent disk use, so a full spool filesystem becomes a `500 Problem`. Prefer `FilePart` for
+  ordinary uploads. Plus `Attachment<T>`, `File`, and axum's `Sse` with documented content types
+  and headers.
 - **Module-local tables** — a leaf module can keep its `routes!` table beside its handler and needs
   no `mount!`; only the module that owns the subtree declares the prefix. Descendants inherit its
   prefix, tags, security, and layers.
@@ -283,7 +291,8 @@ side-effecting startup behind a flag if you dump documents in CI.
   `pattern`, numeric bounds and `uniqueItems` are no longer ignored); `Built::openapi_30()` (and
   the CLI's `--format 3.0`) produces a 3.0.3-shaped document. Components with the same simple name
   are disambiguated by module path automatically; `#[schema(name = "..")]` overrides it.
-  `App::max_body` and `App::max_parts` set global request limits. `roundhouse routes -p <package>`
+  `App::max_body` sets the global request limit; with the `multipart` feature, `App::max_parts`
+  bounds multipart part counts. `roundhouse routes -p <package>`
   prints the resolved table with each declaration's source.
 
 ## Auth backends
@@ -303,8 +312,8 @@ only that it parses, and return `presents_credentials = false` only when credent
 ## Tests
 
 ```sh
-cargo test --workspace
-cargo clippy --workspace --all-targets
+cargo test --workspace --all-features
+cargo clippy --workspace --all-targets --all-features
 
 # after an intentional document change, regenerate the golden file:
 ROUNDHOUSE_BLESS=1 cargo test -p roundhouse --test spine openapi_golden

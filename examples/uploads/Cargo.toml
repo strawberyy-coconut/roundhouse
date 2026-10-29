@@ -8,7 +8,7 @@ description = "Multipart uploads, temp files, attachments, raw files, SSE, docs 
 [dependencies]
 axum = "0.8"
 futures-util = "0.3"
-roundhouse = { path = "../.." }
+roundhouse = { path = "../..", features = ["multipart", "multipart-tempfile"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1"
