@@ -12,6 +12,7 @@ const OPERATIONS: [&str; 8] = [
 /// Check the document's internal consistency. Called on every build.
 pub fn validate_document(document: &impl serde::Serialize) -> Result<(), String> {
     let value = serde_json::to_value(document).map_err(|error| error.to_string())?;
+    validate_patterns(&value)?;
 
     let schemes: Vec<&str> = value
         .pointer("/components/securitySchemes")
@@ -101,5 +102,29 @@ pub fn validate_document(document: &impl serde::Serialize) -> Result<(), String>
         }
     }
 
+    Ok(())
+}
+
+/// A `pattern` the runtime would compile on the first request is a declaration error. Probe it
+/// during the build so a bad regex is a startup diagnostic instead of a production panic.
+fn validate_patterns(value: &serde_json::Value) -> Result<(), String> {
+    match value {
+        serde_json::Value::Object(object) => {
+            if let Some(serde_json::Value::String(pattern)) = object.get("pattern") {
+                regex::Regex::new(pattern).map_err(|error| {
+                    format!("schema pattern `{pattern}` is not a valid regular expression: {error}")
+                })?;
+            }
+            for value in object.values() {
+                validate_patterns(value)?;
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                validate_patterns(value)?;
+            }
+        }
+        _ => {}
+    }
     Ok(())
 }

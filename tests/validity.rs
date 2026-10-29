@@ -52,3 +52,33 @@ fn the_validator_rejects_a_requirement_without_a_scheme() {
     let error = validate_document(&broken).expect_err("an undeclared scheme is invalid");
     assert!(error.contains("has no scheme"), "{error}");
 }
+
+mod invalid_pattern {
+    use super::*;
+
+    mount!("/invalid-pattern");
+
+    routes! { post("/", create, operation_id = "invalid_pattern_create") }
+
+    #[derive(serde::Serialize, serde::Deserialize, ApiSchema)]
+    pub struct Payload {
+        #[schema(pattern = "(")]
+        pub value: String,
+    }
+
+    #[handler]
+    pub async fn create(Json(_body): Json<Payload>) -> axum::http::StatusCode {
+        axum::http::StatusCode::NO_CONTENT
+    }
+}
+
+#[test]
+fn an_invalid_schema_pattern_is_a_build_error_not_a_runtime_panic() {
+    let error = App::new(State)
+        .scope(concat!(module_path!(), "::invalid_pattern"))
+        .try_build()
+        .err()
+        .expect("an invalid pattern must fail the build");
+    assert!(matches!(error, roundhouse::BuildError::InvalidDocument { .. }));
+    assert!(error.to_string().contains("not a valid regular expression"));
+}
