@@ -386,41 +386,37 @@ where
     /// Build and serve on `addr`.
     ///
     /// `--openapi` and `--openapi-30` print the document and exit, which is what the
-    /// `roundhouse openapi` command uses to dump a linked app's document.
+    /// `roundhouse openapi` command uses to dump a linked app's document. `--routes` prints the
+    /// resolved table, and `--output <path>` writes either to a file instead of stdout (so a
+    /// startup log on stdout cannot corrupt the JSON).
     pub async fn serve(self, addr: impl Into<String>) -> std::io::Result<()> {
         let args: Vec<String> = std::env::args().collect();
         let want_routes = args.iter().any(|arg| arg == "--routes");
         let want_30 = args.iter().any(|arg| arg == "--openapi-30");
         let want_openapi = want_30 || args.iter().any(|arg| arg == "--openapi");
+        let output = output_path(&args);
+
+        let emit = |contents: String| -> std::io::Result<()> {
+            match &output {
+                Some(path) => std::fs::write(path, contents),
+                None => {
+                    println!("{contents}");
+                    Ok(())
+                }
+            }
+        };
 
         if want_routes {
-            let built = self.build();
-            for route in built.routes() {
-                println!(
-                    "{:<7} {:<40} {}",
-                    route.method,
-                    route.path,
-                    route.record.source()
-                );
-            }
-            return Ok(());
+            return emit(self.route_listing());
         }
 
         if want_openapi {
-            let built = self.build();
             let json = if want_30 {
-                built.openapi_30_json()
+                self.document_30_json()?
             } else {
-                built.openapi_json()
+                self.document_json()?
             };
-            let Some(json) = json else {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "this app did not call App::openapi(..)",
-                ));
-            };
-            println!("{json}");
-            return Ok(());
+            return emit(json);
         }
 
         let addr: String = addr.into();
@@ -428,6 +424,40 @@ where
         let built = self.build();
         tracing::info!("listening on http://{}", listener.local_addr()?);
         axum::serve(listener, built.router).await
+    }
+
+    /// Build the app and return the resolved route table as text.
+    ///
+    /// This is the explicit, non-serving path the CLI and CI should use; it does not bind a port
+    /// or read `std::env::args()`.
+    pub fn route_listing(self) -> String {
+        let built = self.build();
+        let mut out = String::new();
+        for route in built.routes() {
+            out.push_str(&format!(
+                "{:<7} {:<40} {}\n",
+                route.method,
+                route.path,
+                route.record.source()
+            ));
+        }
+        out
+    }
+
+    /// Build the app and return the OpenAPI 3.1 document as pretty JSON.
+    pub fn document_json(self) -> std::io::Result<String> {
+        let built = self.build();
+        built
+            .openapi_json()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, NO_OPENAPI))
+    }
+
+    /// Build the app and return the 3.0-shaped document as pretty JSON.
+    pub fn document_30_json(self) -> std::io::Result<String> {
+        let built = self.build();
+        built
+            .openapi_30_json()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, NO_OPENAPI))
     }
 
     fn resolve(&self, diagnostics: &mut Vec<crate::build_error::Diagnostic>) -> Result<Vec<ResolvedRoute>, BuildError> {
@@ -749,8 +779,23 @@ where
     }
 }
 
-fn docs_html(spec_path: &str) -> String {
-    format!(
+const NO_OPENAPI: &str = "this app did not call App::openapi(..)";
+
+/// `--output <path>` or `--output=<path>` from the process arguments.
+fn output_path(args: &[String]) -> Option<String> {
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if let Some(path) = arg.strip_prefix("--output=") {
+            return Some(path.to_string());
+        }
+        if arg == "--output" {
+            return args.next().cloned();
+        }
+    }
+    None
+}
+
+fn docs_html(spec_path: &str) -> String {    format!(
         r##"<!doctype html>
 <html>
 <head>

@@ -21,6 +21,7 @@ fn main() {
 
     let mut package = None;
     let mut format = "3.1".to_string();
+    let mut output = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-p" | "--package" => {
@@ -30,6 +31,9 @@ fn main() {
                 if let Some(value) = args.next() {
                     format = value;
                 }
+            }
+            "-o" | "--output" => {
+                output = args.next();
             }
             "-h" | "--help" => {
                 usage();
@@ -64,6 +68,7 @@ fn main() {
 
     let status = Command::new("cargo")
         .args(["run", "-q", "-p", &package, "--", flag])
+        .args(output.iter().flat_map(|path| ["--output", path.as_str()]))
         .status()
         .expect("cargo is available");
     if !status.success() {
@@ -73,9 +78,10 @@ fn main() {
 
 fn usage() {
     eprintln!(
-        "usage: roundhouse <openapi|routes> -p <package> [--format 3.1|3.0]\n\
+        "usage: roundhouse <openapi|routes> -p <package> [--format 3.1|3.0] [-o <path>]\n\
          \n\
          openapi  prints the document App::serve would have served.\n\
-         routes   prints the resolved route table with each declaration's source."
+         routes   prints the resolved route table with each declaration's source.\n\
+         -o       writes to a file instead of stdout (logs on stdout cannot corrupt it)."
     );
 }
