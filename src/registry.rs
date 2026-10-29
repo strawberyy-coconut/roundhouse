@@ -1,4 +1,8 @@
 //! Link-time registry: the records `routes!` and `mount!` submit.
+//!
+//! The records are constructed by macro expansions in user crates, so the constructors are
+//! public (but hidden from docs). Their fields are private: the only supported way to make a
+//! record is the constructor, and adding a field is not a breaking change.
 
 use std::any::{Any, TypeId};
 use std::fmt;
@@ -91,32 +95,84 @@ pub enum LayerMode {
 
 /// One row from a `routes!` table.
 pub struct RouteRecord {
-    pub module_path: &'static str,
-    pub file: &'static str,
-    pub line: u32,
-    pub method: Method,
-    pub path: &'static str,
-    pub operation_id: &'static str,
-    pub summary: Option<&'static str>,
-    pub description: Option<&'static str>,
-    pub tags: &'static [&'static str],
-    pub security: &'static [&'static str],
-    pub hidden: bool,
-    pub absolute: bool,
-    pub validate: bool,
-    pub deprecated: bool,
-    pub public: bool,
-    /// `override` on a `routes!` entry: a declared response may replace an inferred one.
-    pub response_override: bool,
-    pub responses: fn(&mut Components) -> Vec<crate::doc::ResponseDoc>,
-    pub state: fn() -> Option<TypeId>,
-    pub state_name: fn() -> &'static str,
-    pub handler: fn() -> Box<dyn Any + Send + Sync>,
-    pub layer: Option<RouteLayer>,
-    pub docs: fn(&mut Components) -> HandlerDocs,
+    pub(crate) module_path: &'static str,
+    pub(crate) file: &'static str,
+    pub(crate) line: u32,
+    pub(crate) method: Method,
+    pub(crate) path: &'static str,
+    pub(crate) operation_id: &'static str,
+    pub(crate) summary: Option<&'static str>,
+    pub(crate) description: Option<&'static str>,
+    pub(crate) tags: &'static [&'static str],
+    pub(crate) security: &'static [&'static str],
+    pub(crate) hidden: bool,
+    pub(crate) absolute: bool,
+    pub(crate) validate: bool,
+    pub(crate) deprecated: bool,
+    pub(crate) public: bool,
+    pub(crate) response_override: bool,
+    pub(crate) responses: fn(&mut Components) -> Vec<crate::doc::ResponseDoc>,
+    pub(crate) state: fn() -> Option<TypeId>,
+    pub(crate) state_name: fn() -> &'static str,
+    pub(crate) handler: fn() -> Box<dyn Any + Send + Sync>,
+    pub(crate) layer: Option<RouteLayer>,
+    pub(crate) docs: fn(&mut Components) -> HandlerDocs,
 }
 
 impl RouteRecord {
+    /// Construct a record. Called by `routes!`; not part of the stable API.
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub const fn __new(
+        module_path: &'static str,
+        file: &'static str,
+        line: u32,
+        method: Method,
+        path: &'static str,
+        operation_id: &'static str,
+        summary: Option<&'static str>,
+        description: Option<&'static str>,
+        tags: &'static [&'static str],
+        security: &'static [&'static str],
+        hidden: bool,
+        absolute: bool,
+        validate: bool,
+        deprecated: bool,
+        public: bool,
+        response_override: bool,
+        responses: fn(&mut Components) -> Vec<crate::doc::ResponseDoc>,
+        state: fn() -> Option<TypeId>,
+        state_name: fn() -> &'static str,
+        handler: fn() -> Box<dyn Any + Send + Sync>,
+        layer: Option<RouteLayer>,
+        docs: fn(&mut Components) -> HandlerDocs,
+    ) -> Self {
+        Self {
+            module_path,
+            file,
+            line,
+            method,
+            path,
+            operation_id,
+            summary,
+            description,
+            tags,
+            security,
+            hidden,
+            absolute,
+            validate,
+            deprecated,
+            public,
+            response_override,
+            responses,
+            state,
+            state_name,
+            handler,
+            layer,
+            docs,
+        }
+    }
+
     pub fn location(&self) -> String {
         format!("{}:{}", self.file, self.line)
     }
@@ -132,19 +188,45 @@ impl RouteRecord {
 
 /// One `mount!` from a module.
 pub struct MountRecord {
-    pub module_path: &'static str,
-    pub file: &'static str,
-    pub line: u32,
-    pub prefix: &'static str,
-    pub tags: &'static [&'static str],
-    pub security: &'static [&'static str],
-    pub hidden: bool,
-    pub layer: Option<MountLayer>,
-    pub layer_mode: LayerMode,
-    pub doc: Option<fn() -> crate::doc::layer::LayerDoc>,
+    pub(crate) module_path: &'static str,
+    pub(crate) file: &'static str,
+    pub(crate) line: u32,
+    pub(crate) prefix: &'static str,
+    pub(crate) tags: &'static [&'static str],
+    pub(crate) security: &'static [&'static str],
+    pub(crate) hidden: bool,
+    pub(crate) layer: Option<MountLayer>,
+    pub(crate) doc: Option<fn() -> crate::doc::layer::LayerDoc>,
 }
 
 impl MountRecord {
+    /// Construct a record. Called by `mount!`; not part of the stable API.
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub const fn __new(
+        module_path: &'static str,
+        file: &'static str,
+        line: u32,
+        prefix: &'static str,
+        tags: &'static [&'static str],
+        security: &'static [&'static str],
+        hidden: bool,
+        layer: Option<MountLayer>,
+        doc: Option<fn() -> crate::doc::layer::LayerDoc>,
+    ) -> Self {
+        Self {
+            module_path,
+            file,
+            line,
+            prefix,
+            tags,
+            security,
+            hidden,
+            layer,
+            doc,
+        }
+    }
+
     pub fn location(&self) -> String {
         format!("{}:{}", self.file, self.line)
     }
@@ -155,8 +237,18 @@ impl MountRecord {
 /// Handlers join to it by `std::any::type_name`, so a hand-written `IntoResponse` type is simply
 /// absent from the document rather than a compile error.
 pub struct ResponseRecord {
-    pub type_key: fn() -> &'static str,
-    pub docs: fn(&mut Components) -> Vec<crate::doc::ResponseDoc>,
+    pub(crate) type_key: fn() -> &'static str,
+    pub(crate) docs: fn(&mut Components) -> Vec<crate::doc::ResponseDoc>,
+}
+
+impl ResponseRecord {
+    #[doc(hidden)]
+    pub const fn __new(
+        type_key: fn() -> &'static str,
+        docs: fn(&mut Components) -> Vec<crate::doc::ResponseDoc>,
+    ) -> Self {
+        Self { type_key, docs }
+    }
 }
 
 inventory::collect!(RouteRecord);
@@ -165,19 +257,46 @@ inventory::collect!(ResponseRecord);
 
 /// Query parameters documented by `#[derive(QueryParams)]`.
 pub struct QueryDocRecord {
-    pub type_key: fn() -> &'static str,
-    pub params: fn(&mut Components) -> Vec<crate::doc::Param>,
+    pub(crate) type_key: fn() -> &'static str,
+    pub(crate) params: fn(&mut Components) -> Vec<crate::doc::Param>,
+}
+
+impl QueryDocRecord {
+    #[doc(hidden)]
+    pub const fn __new(
+        type_key: fn() -> &'static str,
+        params: fn(&mut Components) -> Vec<crate::doc::Param>,
+    ) -> Self {
+        Self { type_key, params }
+    }
 }
 
 inventory::collect!(QueryDocRecord);
 
 /// Type names used to disambiguate components that share a simple name.
 pub struct ComponentTypeRecord {
-    pub simple: &'static str,
-    pub module: &'static str,
-    pub type_id: fn() -> TypeId,
+    pub(crate) simple: &'static str,
+    pub(crate) module: &'static str,
+    pub(crate) type_id: fn() -> TypeId,
     /// `#[schema(name = "..")]`, which overrides the derived component name.
-    pub name: Option<&'static str>,
+    pub(crate) name: Option<&'static str>,
+}
+
+impl ComponentTypeRecord {
+    #[doc(hidden)]
+    pub const fn __new(
+        simple: &'static str,
+        module: &'static str,
+        type_id: fn() -> TypeId,
+        name: Option<&'static str>,
+    ) -> Self {
+        Self {
+            simple,
+            module,
+            type_id,
+            name,
+        }
+    }
 }
 
 inventory::collect!(ComponentTypeRecord);

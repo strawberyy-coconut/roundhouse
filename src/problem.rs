@@ -138,10 +138,10 @@ impl crate::doc::ApiResponse for Problem {
 // Join the same link-time registry the derives use, so `stored_responses_for::<Problem>` finds
 // this implementation.
 inventory::submit! {
-    crate::registry::ResponseRecord {
-        type_key: || std::any::type_name::<Problem>(),
-        docs: |components| <Problem as crate::doc::ApiResponse>::responses(components),
-    }
+    crate::registry::ResponseRecord::__new(
+        || std::any::type_name::<Problem>(),
+        |components| <Problem as crate::doc::ApiResponse>::responses(components),
+    )
 }
 
 impl From<crate::multipart::MultipartProblem> for Problem {

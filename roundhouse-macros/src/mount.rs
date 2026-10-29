@@ -132,10 +132,6 @@ pub fn expand(input: MountInput) -> TokenStream {
     let security = string_slice(&input.security);
     let hidden = input.hidden;
     let line = proc_macro2::Span::call_site().start().line as u32;
-    let layer_mode = match input.layer_mode {
-        LayerMode::Full => quote!(::roundhouse::registry::LayerMode::Full),
-        LayerMode::Route => quote!(::roundhouse::registry::LayerMode::Route),
-    };
 
     let doc_value = match &input.doc {
         Some(expr) => {
@@ -188,18 +184,17 @@ pub fn expand(input: MountInput) -> TokenStream {
             #doc_value
 
             ::roundhouse::inventory::submit! {
-                ::roundhouse::registry::MountRecord {
-                    module_path: module_path!(),
-                    file: file!(),
-                    line: #line,
-                    prefix: #prefix_lit,
-                    tags: #tags,
-                    security: #security,
-                    hidden: #hidden,
-                    layer: #layer_value,
-                    layer_mode: #layer_mode,
-                    doc: __ROUNDHOUSE_DOC,
-                }
+                ::roundhouse::registry::MountRecord::__new(
+                    module_path!(),
+                    file!(),
+                    #line,
+                    #prefix_lit,
+                    #tags,
+                    #security,
+                    #hidden,
+                    #layer_value,
+                    __ROUNDHOUSE_DOC,
+                )
             }
         };
     }

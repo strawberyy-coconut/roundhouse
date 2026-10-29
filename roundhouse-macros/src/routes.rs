@@ -357,32 +357,32 @@ fn expand_entry(entry: Entry) -> TokenStream {
             }
 
             ::roundhouse::inventory::submit! {
-                ::roundhouse::registry::RouteRecord {
-                    module_path: module_path!(),
-                    file: file!(),
-                    line: #line,
-                    method: #method,
-                    path: #path,
-                    operation_id: #operation_id,
-                    summary: #summary,
-                    description: #description,
-                    tags: #tags,
-                    security: #security,
-                    hidden: #hidden,
-                    absolute: #absolute,
-                    validate: #validate,
-                    deprecated: #deprecated,
-                    public: #public,
-                    response_override: #response_override,
-                    responses: __roundhouse_responses,
-                    state: || ::roundhouse::doc::handler_state::<#marker_type>(),
-                    state_name: || ::core::any::type_name::<
+                ::roundhouse::registry::RouteRecord::__new(
+                    module_path!(),
+                    file!(),
+                    #line,
+                    #method,
+                    #path,
+                    #operation_id,
+                    #summary,
+                    #description,
+                    #tags,
+                    #security,
+                    #hidden,
+                    #absolute,
+                    #validate,
+                    #deprecated,
+                    #public,
+                    #response_override,
+                    __roundhouse_responses,
+                    || ::roundhouse::doc::handler_state::<#marker_type>(),
+                    || ::core::any::type_name::<
                         <#marker_type as ::roundhouse::doc::HandlerMeta>::State,
                     >(),
-                    handler: __roundhouse_route,
-                    layer: #layer_value,
-                    docs: |components| <#marker_type as ::roundhouse::doc::HandlerMeta>::docs(&#marker_value, components),
-                }
+                    __roundhouse_route,
+                    #layer_value,
+                    |components| <#marker_type as ::roundhouse::doc::HandlerMeta>::docs(&#marker_value, components),
+                )
             }
         };
     }

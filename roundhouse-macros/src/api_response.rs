@@ -423,10 +423,10 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         }
 
         ::roundhouse::inventory::submit! {
-            ::roundhouse::registry::ResponseRecord {
-                type_key: || ::core::any::type_name::<#ident>(),
-                docs: #docs_fn,
-            }
+            ::roundhouse::registry::ResponseRecord::__new(
+                || ::core::any::type_name::<#ident>(),
+                #docs_fn,
+            )
         }
     })
 }

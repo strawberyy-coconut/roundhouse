@@ -335,12 +335,12 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         };
         quote! {
             ::roundhouse::inventory::submit! {
-                ::roundhouse::registry::ComponentTypeRecord {
-                    simple: #simple_lit,
-                    module: module_path!(),
-                    type_id: || ::core::any::TypeId::of::<#ident #ty_generics>(),
-                    name: #name,
-                }
+                ::roundhouse::registry::ComponentTypeRecord::__new(
+                    #simple_lit,
+                    module_path!(),
+                    || ::core::any::TypeId::of::<#ident #ty_generics>(),
+                    #name,
+                )
             }
         }
     };

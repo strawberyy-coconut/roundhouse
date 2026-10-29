@@ -99,10 +99,10 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         }
 
         ::roundhouse::inventory::submit! {
-            ::roundhouse::registry::QueryDocRecord {
-                type_key: || ::core::any::type_name::<#ident>(),
-                params: #fn_name,
-            }
+            ::roundhouse::registry::QueryDocRecord::__new(
+                || ::core::any::type_name::<#ident>(),
+                #fn_name,
+            )
         }
     })
 }
