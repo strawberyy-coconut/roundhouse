@@ -1,6 +1,6 @@
 //! # roundhouse
 //!
-//! An opinionated metaframework for axum: declarations become a `Router` and an OpenAPI document.
+//! An OpenAPI-first framework for axum: declarations become a `Router` and an OpenAPI document.
 //!
 //! ```ignore
 //! mount!("/blog", tags = ["blog"]);
@@ -36,7 +36,7 @@ pub use auth::{
 pub use axum::response::sse::{Event, KeepAlive, Sse};
 pub use build_error::{BuildError, Source};
 pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams};
-pub use extract::{Form, Json, Path, Query, Validation};
+pub use extract::{Extension, Form, Json, Path, Query, Validation};
 pub use multipart::{FilePart, Multipart, MultipartForm, MultipartProblem, TempFile};
 pub use problem::Problem;
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
@@ -72,7 +72,7 @@ pub mod prelude {
     pub use crate::attachment::{Attachment, File};
     pub use crate::auth::{Auth, AuthScheme, AuthScopes, Authenticate, NoScopes};
     pub use crate::doc::PathNames;
-    pub use crate::extract::{Form, Json, Path, Query};
+    pub use crate::extract::{Extension, Form, Json, Path, Query};
     pub use crate::problem::Problem;
     pub use crate::validate::{ValidationError, ValidationErrors};
     pub use crate::{ApiError, ApiResponse, ApiSchema, app};
@@ -81,7 +81,7 @@ pub mod prelude {
     pub use crate::{PathParams, QueryParams, handler, mount, routes};
     pub use axum::response::sse::{Event, KeepAlive, Sse};
 
-    pub use axum::extract::{Extension, FromRequest, FromRequestParts, State};
+    pub use axum::extract::{FromRequest, FromRequestParts, State};
     pub use axum::http::{HeaderMap, StatusCode};
     pub use axum::response::{IntoResponse, Response};
 }

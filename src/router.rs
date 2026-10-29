@@ -170,14 +170,22 @@ where
     }
 
     /// Serve a Swagger UI page at `/docs` over the generated document.
+    ///
+    /// This implies the document route: a UI without a document is a broken page.
     pub fn docs(mut self) -> Self {
         self.docs_route = Some("/docs");
+        if self.openapi_route.is_none() {
+            self.openapi_route = Some("/openapi.json");
+        }
         self
     }
 
-    /// Serve the docs UI at a custom path.
+    /// Serve the docs UI at a custom path. Implies the document route.
     pub fn docs_route(mut self, path: &'static str) -> Self {
         self.docs_route = Some(path);
+        if self.openapi_route.is_none() {
+            self.openapi_route = Some("/openapi.json");
+        }
         self
     }
 
@@ -242,7 +250,8 @@ where
     pub fn try_build(self) -> Result<Built, BuildError> {
         let mut diagnostics = Vec::new();
         let resolved = self.resolve(&mut diagnostics)?;
-        let serve_openapi = self.info.is_some();
+        let serve_openapi =
+            self.info.is_some() || self.openapi_route.is_some() || self.docs_route.is_some();
         let info = self
             .info
             .as_ref()
@@ -800,17 +809,23 @@ fn output_path(args: &[String]) -> Option<String> {
     None
 }
 
-fn docs_html(spec_path: &str) -> String {    format!(
+fn docs_html(spec_path: &str) -> String {
+    format!(
         r##"<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>API documentation</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <link rel="stylesheet"
+        href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css"
+        integrity="sha384-wxLW6kwyHktdDGr6Pv1zgm/VGJh99lfUbzSn6HNHBENZlCN7W602k9VkGdxuFvPn"
+        crossorigin="anonymous">
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"
+          integrity="sha384-wmyclcVGX/WhUkdkATwhaK1X1JtiNrr2EoYJ+diV3vj4v6OC5yCeSu+yW13SYJep"
+          crossorigin="anonymous"></script>
   <script>
     SwaggerUIBundle({{ url: "{spec_path}", dom_id: "#swagger-ui" }});
   </script>

@@ -15,8 +15,8 @@ pub fn expand(item: ItemFn) -> TokenStream {
         .to_compile_error();
     }
     let name = item.sig.ident.clone();
-    let marker_type = format_ident!("{}_ROUNDHOUSE_HANDLER_TYPE", name);
-    let marker_value = format_ident!("{}_ROUNDHOUSE_HANDLER", name);
+    let marker_type = format_ident!("{}_ROUNDHOUSE_MISSING_HANDLER_TYPE", name);
+    let marker_value = format_ident!("{}_ROUNDHOUSE_MISSING_HANDLER", name);
     let vis = item.vis.clone();
 
     let mut state_type: Option<Type> = None;
@@ -176,7 +176,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     docs.body = ::core::option::Option::Some(#krate::doc::binary_body());
                 });
             }
-            "Extension" if !handled => {
+            "Extension" if !handled && is_wrapper_type(&ty) => {
                 statements.push(quote! {
                     docs.failures.extend(#krate::doc::extension_failures());
                 });

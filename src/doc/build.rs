@@ -375,6 +375,12 @@ fn operation(
     if route.record.public {
         extensions = extensions.add("x-roundhouse-public", true);
     }
+    if !route.record.validate {
+        extensions = extensions.add("x-roundhouse-validation", false);
+    }
+    if !include_rejections {
+        extensions = extensions.add("x-roundhouse-rejections", "none");
+    }
     let extensions = extensions.build();
     if !extensions.is_empty() {
         builder = builder.extensions(Some(extensions));

@@ -160,6 +160,54 @@ fn problem_from_json(rejection: axum::extract::rejection::JsonRejection) -> Prob
     rejection_problem(rejection.status(), rejection.body_text())
 }
 
+/// An `Extension<T>` extractor with a `Problem` rejection.
+///
+/// axum's rejection is a bare `500` that is not a `Problem`; this wrapper keeps the "one parser"
+/// promise and lets the document describe the failure honestly.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Extension<T>(pub T);
+
+impl<T> Extension<T> {
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<T> Deref for Extension<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for Extension<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
+impl<T, S> FromRequestParts<S> for Extension<T>
+where
+    T: Clone + Send + Sync + 'static,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<T>()
+            .cloned()
+            .map(Extension)
+            .ok_or_else(|| {
+                Problem::internal(format!(
+                    "missing request extension `{}`",
+                    std::any::type_name::<T>()
+                ))
+            })
+    }
+}
+
 /// Path extractor with `Problem`-shaped rejections and constraint validation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Path<T>(pub T);

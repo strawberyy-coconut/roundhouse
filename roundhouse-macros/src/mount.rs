@@ -82,10 +82,14 @@ impl Parse for MountInput {
                     input.parse::<Token![=]>()?;
                     doc = Some(input.parse()?);
                 }
-                // Accepted and deliberately ignored: stateless routes are inferred now.
+                // Stateless routes are inferred now; a `state` key here would be silently
+                // ignored, which is exactly the kind of drift the project rejects.
                 "state" => {
-                    input.parse::<Token![=]>()?;
-                    let _: Expr = input.parse()?;
+                    return Err(syn::Error::new(
+                        key.span(),
+                        "mount! no longer takes `state`: routes infer their state from \
+                         `State<T>`/`Auth<A>` arguments",
+                    ));
                 }
                 other => {
                     return Err(syn::Error::new(

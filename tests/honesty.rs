@@ -157,6 +157,19 @@ mod blind_error {
     }
 }
 
+mod extension {
+    use super::*;
+
+    mount!("/extension");
+
+    routes! { get("/x", x, operation_id = "extension_x") }
+
+    #[handler]
+    pub async fn x(_value: Extension<std::sync::Arc<usize>>) -> String {
+        "x".to_string()
+    }
+}
+
 mod foreign {
     use super::*;
 
@@ -417,6 +430,31 @@ fn an_error_type_without_documentation_is_loud() {
         .err()
         .expect("strict turns the warning into an error");
     assert!(matches!(error, BuildError::Diagnostic { .. }));
+}
+
+#[tokio::test]
+async fn docs_implies_the_document_route() {
+    let app = scoped(concat!(module_path!(), "::declared"))
+        .docs()
+        .try_build()
+        .expect("docs() supplies a document even without openapi()");
+    assert!(app.document().is_some(), "docs() must imply openapi()");
+    assert_eq!(app.oneshot_get("/openapi.json").await.status(), StatusCode::OK);
+    assert_eq!(app.oneshot_get("/docs").await.status(), StatusCode::OK);
+}
+
+#[test]
+fn a_missing_extension_documents_the_problem_it_produces() {
+    let app = scoped(concat!(module_path!(), "::extension"))
+        .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .try_build()
+        .expect("extension route builds");
+    let document = serde_json::to_value(app.document().unwrap()).unwrap();
+    assert_eq!(
+        document["paths"]["/extension/x"]["get"]["responses"]["500"]["content"]
+            ["application/problem+json"]["schema"]["required"],
+        serde_json::json!(["type", "title", "status"])
+    );
 }
 
 #[test]
