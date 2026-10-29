@@ -22,6 +22,26 @@ use crate::registry::{self, Method, MountLayer, MountRecord, RouteRecord};
 
 type RouterLayer = Box<dyn Fn(Router<()>) -> Router<()> + Send + Sync>;
 
+/// Whether extractor rejection responses are added to the document.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DocumentRejections {
+    /// Add every extractor failure (`400`/`413`/`415`, auth `401`/`403`). The default.
+    #[default]
+    Auto,
+    /// Publish only the responses the handler and its declarations supply.
+    None,
+}
+
+impl From<bool> for DocumentRejections {
+    fn from(enabled: bool) -> Self {
+        if enabled {
+            DocumentRejections::Auto
+        } else {
+            DocumentRejections::None
+        }
+    }
+}
+
 type ValidationState = (
     axum::http::StatusCode,
     crate::extract::Validation,
@@ -44,7 +64,7 @@ pub struct App<S> {
     info: Option<Box<dyn Fn() -> Info + Send + Sync>>,
     openapi_route: Option<&'static str>,
     docs_route: Option<&'static str>,
-    document_rejections: bool,
+    document_rejections: DocumentRejections,
     validation_status: axum::http::StatusCode,
     validate_responses: bool,
     max_body: Option<usize>,
@@ -68,7 +88,7 @@ where
             info: None,
             openapi_route: None,
             docs_route: None,
-            document_rejections: true,
+            document_rejections: DocumentRejections::Auto,
             validation_status: axum::http::StatusCode::BAD_REQUEST,
             validate_responses: false,
             max_body: None,
@@ -168,8 +188,8 @@ where
     }
 
     /// Add or suppress extractor rejection responses (`Auto` by default).
-    pub fn document_rejections(mut self, enabled: bool) -> Self {
-        self.document_rejections = enabled;
+    pub fn document_rejections(mut self, mode: impl Into<DocumentRejections>) -> Self {
+        self.document_rejections = mode.into();
         self
     }
 
@@ -223,8 +243,12 @@ where
             .as_ref()
             .map(|info| info())
             .unwrap_or_else(|| Info::new("API", "0.1.0"));
-        let built_document =
-            doc::build::build_with_options(info, &resolved, self.document_rejections, self.strict)?;
+        let built_document = doc::build::build_with_options(
+            info,
+            &resolved,
+            self.document_rejections == DocumentRejections::Auto,
+            self.strict,
+        )?;
         let schema_engine = if self.validation == crate::extract::Validation::Schema {
             let components = built_document.components.clone().unwrap_or_default();
             let types = inventory::iter::<registry::ComponentTypeRecord>

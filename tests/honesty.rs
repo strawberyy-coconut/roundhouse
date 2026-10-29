@@ -66,6 +66,26 @@ mod typed {
     }
 }
 
+#[derive(Serialize, ApiSchema)]
+pub struct OtherPayload {
+    pub other: i64,
+}
+
+mod override_response {
+    use super::*;
+
+    mount!("/override-response");
+
+    routes! {
+        get("/x", x, operation_id = "override_x", responses(200 = Payload)),
+    }
+
+    #[handler]
+    pub async fn x() -> Json<OtherPayload> {
+        Json(OtherPayload { other: 1 })
+    }
+}
+
 mod foreign {
     use super::*;
 
@@ -216,6 +236,20 @@ fn a_typed_response_declaration_uses_the_named_schema() {
     assert_eq!(
         document["paths"]["/typed/x"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
             ["$ref"],
+        "#/components/schemas/Payload"
+    );
+}
+
+#[test]
+fn a_declared_response_overrides_the_inferred_one() {
+    let app = scoped(concat!(module_path!(), "::override_response"))
+        .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .try_build()
+        .expect("override builds");
+    let document = document(app);
+    assert_eq!(
+        document["paths"]["/override-response/x"]["get"]["responses"]["200"]["content"]["application/json"]
+            ["schema"]["$ref"],
         "#/components/schemas/Payload"
     );
 }

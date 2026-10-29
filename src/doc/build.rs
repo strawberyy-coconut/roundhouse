@@ -131,8 +131,9 @@ fn operation(
     for response in docs.responses.into_iter().chain(failures) {
         merge_response(&mut responses, response, route);
     }
+    // A route-level `responses(..)` declaration overrides the inferred set for that status.
     for response in (route.record.responses)(components) {
-        merge_response(&mut responses, response, route);
+        responses.insert(response.status, response);
     }
 
     if !responses

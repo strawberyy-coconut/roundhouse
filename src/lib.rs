@@ -38,7 +38,7 @@ pub use extract::{Form, Json, Path, Query, Validation};
 pub use multipart::{FilePart, Multipart, MultipartForm, MultipartProblem, TempFile};
 pub use problem::Problem;
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
-pub use router::{App, Built, ResolvedRoute};
+pub use router::{App, Built, DocumentRejections, ResolvedRoute};
 
 pub use async_trait::async_trait;
 pub use axum;
