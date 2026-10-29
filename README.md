@@ -17,8 +17,8 @@ The opinions are deliberate:
   undocumented error types and unsupported state are build diagnostics — errors under
   `App::strict()`, and `App::try_build()` never panics. A path capture that no `Path<T>` covers is
   documented as a string and reported the same way, so the document never silently guesses.
-- **The document is a build artifact.** `Built::openapi_json()` and the `roundhouse` binary expose
-  the same document the server serves, so CI can diff it.
+- **The document is a build artifact.** `Built::openapi_json()` exposes the same document the
+  server serves, so CI can diff it.
 
 ## Quickstart
 
@@ -92,7 +92,6 @@ The repository is a Cargo workspace with `roundhouse` as the root package:
 | `roundhouse-problem/` | the canonical RFC 9457 `Problem` body, shared by the facade and satellites |
 | `roundhouse-multipart/` | opt-in `Multipart<F>`, `FilePart`; `TempFile` behind `multipart-tempfile` |
 | `roundhouse-macros/` | `routes!`, `mount!`, `#[handler]`, `#[derive(ApiSchema / PathParams / QueryParams / Multipart / ApiResponse / ApiError)]` |
-| `roundhouse-cli/` | the `roundhouse` binary: `openapi` and `routes` commands over a linked example app |
 | `examples/notes/` | module-local route tables and inherited `mount!` |
 | `examples/blog/` | nested mounts, grouped tables, `hidden`/`absolute`, auth, response enums |
 | `examples/layers/` | global/module/entry layers, fallback, `App::merge`, embedding |
@@ -184,35 +183,18 @@ curl -H 'Authorization: Bearer admin' -H 'X-API-Key: secret' localhost:3006/admi
 The notes, blog, and validation examples serve `/openapi.json`; uploads serves `/spec.json` plus a
 docs UI at `/reference`; showcase serves `/openapi.json` and `/docs`.
 
-### Dump a document from CI or a Makefile
+### Read the document from a build
 
-The `roundhouse` binary builds and runs an app package with its `--openapi` flag; `routes` prints
-the resolved table instead (each line carries the declaration's module and source location):
-
-```sh
-cargo run -q -p roundhouse-cli -- openapi -p notes-example
-cargo run -q -p roundhouse-cli -- openapi -p validation-example --format 3.0
-cargo run -q -p roundhouse-cli -- routes -p notes-example
-cargo run -q -p roundhouse-cli -- openapi -p notes-example -o target/openapi.json
-```
-
-Install it with `cargo install --path roundhouse-cli` and invoke `roundhouse` directly.
-
-`-o/--output` writes to a file instead of stdout. The examples send tracing to stderr, so a
-document on stdout stays parseable. Document resolution does not need application state: the
-examples check `roundhouse::document_requested()` in `main` and call a state-free
-`example::document().emit_from_env()` before constructing `AppState`, so CI does not need a
-database, token store or environment validation. The builder is also available directly:
+The framework produces the document; emitting it is the application's job. After `App::build()`,
+`Built::openapi_json()` and `Built::openapi_30_json()` return pretty JSON, `Built::document()`
+returns the `OpenApi` value, and `Built::routes()` exposes the resolved table with each
+declaration's source location:
 
 ```rust
-let json = roundhouse::Document::new()
-    .scope(module_path!())
-    .openapi(|| roundhouse::openapi::Info::new("API", "1.0.0"))
-    .document_json()?;
+let built = app(state).build();
+let json = built.openapi_json().expect("openapi enabled");
+std::fs::write("target/openapi.json", json)?;
 ```
-
-`App::document_json()` and `App::route_listing()` remain the convenience methods after state
-exists.
 
 ## What works (v0.2)
 
@@ -320,12 +302,12 @@ exists.
   The UI assets are loaded from unpkg, so `docs()` needs browser network access; an air-gapped
   deployment should serve its own copy at the document route instead. `App::validate_responses()`
   checks JSON responses with the same schema engine (so `minLength`,
-  `pattern`, numeric bounds and `uniqueItems` are no longer ignored); `Built::openapi_30()` (and
-  the CLI's `--format 3.0`) produces a 3.0.3-shaped document. Components with the same simple name
+  `pattern`, numeric bounds and `uniqueItems` are no longer ignored); `Built::openapi_30()`
+  produces a 3.0.3-shaped document. Components with the same simple name
   are disambiguated by module path automatically; `#[schema(name = "..")]` overrides it.
   `App::max_body` sets the global request limit; with the `multipart` feature, `App::max_parts`
-  bounds multipart part counts. `roundhouse routes -p <package>`
-  prints the resolved table with each declaration's source.
+  bounds multipart part counts. `Built::routes()` exposes the resolved table with each
+  declaration's source.
 
 ## Auth backends
 

@@ -15,10 +15,3 @@ pub fn app(state: AppState) -> roundhouse::App<AppState> {
         .layer(TraceLayer::new_for_http())
         .openapi(|| Info::new("Notes API", env!("CARGO_PKG_VERSION")))
 }
-
-/// The same declarations as [`app`], resolved without constructing `AppState`.
-pub fn document() -> roundhouse::Document {
-    roundhouse::Document::new()
-        .scope(module_path!())
-        .openapi(|| Info::new("Notes API", env!("CARGO_PKG_VERSION")))
-}

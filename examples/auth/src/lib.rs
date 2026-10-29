@@ -55,10 +55,3 @@ pub fn app(state: AppState) -> roundhouse::App<AppState> {
         .openapi(|| Info::new("Auth API", env!("CARGO_PKG_VERSION")))
         .docs()
 }
-
-/// The same declarations as [`app`], resolved without constructing `AppState`.
-pub fn document() -> roundhouse::Document {
-    roundhouse::Document::new()
-        .scope(module_path!())
-        .openapi(|| Info::new("Auth API", env!("CARGO_PKG_VERSION")))
-}

@@ -1,28 +1,18 @@
 //! Derive parity: what serde accepts is what the document says.
 //!
 //! These tests exercise the shared serde-shape parser from the query and path derives, plus the
-//! extractor contracts the document promises (`style: form, explode: true` for arrays, a
-//! state-free document path, and the unverified-extractor marker).
+//! extractor contracts the document promises (`style: form, explode: true` for arrays, and the
+//! unverified-extractor marker).
 
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use roundhouse::prelude::*;
-use roundhouse::{App, BuildError, Document};
+use roundhouse::{App, BuildError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default)]
 pub struct State;
-
-/// Constructing this state panics; a document must not need it.
-#[derive(Clone, Default)]
-pub struct PanicState;
-
-impl PanicState {
-    pub fn new() -> Self {
-        panic!("state must not be constructed for a document")
-    }
-}
 
 fn app(module: &'static str) -> roundhouse::Built {
     App::new(State)
@@ -479,34 +469,4 @@ fn a_foreign_extension_is_marked_rather_than_documented_as_a_problem() {
     let operation = &document["paths"]["/foreign-extension"]["get"];
     assert_eq!(operation["x-roundhouse-unverified-extractor"], true);
     assert!(operation["responses"]["500"].is_null());
-}
-
-mod stateful {
-    use super::*;
-
-    mount!("/stateful");
-
-    routes! { get("/", show, operation_id = "stateful_show") }
-
-    #[handler]
-    pub async fn show(axum::extract::State(_): axum::extract::State<PanicState>) -> &'static str {
-        "stateful"
-    }
-}
-
-#[test]
-#[should_panic(expected = "state must not be constructed")]
-fn constructing_the_production_state_would_panic() {
-    let _ = PanicState::new();
-}
-
-#[test]
-fn a_document_can_be_built_without_constructing_state() {
-    let document = Document::new()
-        .scope(concat!(module_path!(), "::stateful"))
-        .openapi(|| roundhouse::openapi::Info::new("Parity", "0.1.0"))
-        .try_document()
-        .expect("the document resolves without state");
-    let value = serde_json::to_value(document).unwrap();
-    assert!(value["paths"]["/stateful"].is_object());
 }

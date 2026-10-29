@@ -647,8 +647,20 @@ fn overlapping_shapes_are_a_route_conflict_not_a_panic() {
 }
 
 #[test]
-fn the_route_listing_uses_full_paths() {
-    let listing = scoped(concat!(module_path!(), "::dynamic_parent")).route_listing();
+fn resolved_routes_use_full_paths() {
+    let app = scoped(concat!(module_path!(), "::dynamic_parent")).build();
+    let listing = app
+        .routes()
+        .iter()
+        .map(|route| {
+            format!(
+                "{:<7} {:<40} {}\n",
+                route.method,
+                route.path,
+                route.record.source()
+            )
+        })
+        .collect::<String>();
     assert!(listing.contains("/{project_id}/issues"));
     assert!(listing.contains("/{project_id}/issues/{issue_id}"));
     assert!(listing.contains("mount_captures.rs"));

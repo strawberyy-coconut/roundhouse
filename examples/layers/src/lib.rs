@@ -5,7 +5,6 @@ use axum::Router;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::routing::get;
-use roundhouse::openapi::Info;
 
 #[derive(Clone, Default)]
 pub struct AppState;
@@ -29,11 +28,4 @@ pub fn embedded(state: AppState) -> Router {
         .nest("/embedded", discovered)
         .route("/outer", get(|| async { "outer" }))
         .with_state(state)
-}
-
-/// The same declarations as [`app`], resolved without constructing `AppState`.
-pub fn document() -> roundhouse::Document {
-    roundhouse::Document::new()
-        .scope(module_path!())
-        .openapi(|| Info::new("Layers API", env!("CARGO_PKG_VERSION")))
 }
