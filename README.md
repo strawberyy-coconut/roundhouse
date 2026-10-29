@@ -185,6 +185,22 @@ curl -H 'Authorization: Bearer admin' -H 'X-API-Key: secret' localhost:3006/admi
 The notes, blog, and validation examples serve `/openapi.json`; uploads serves `/spec.json` plus a
 docs UI at `/reference`; showcase serves `/openapi.json` and `/docs`.
 
+### Route checks run when the app is built
+
+Discovery is link-time, so `cargo check` cannot see a duplicate route, a state mismatch or a bad
+mount: those are resolved by `App::build()`. Call `App::try_build()` from a test or a small check
+binary to run the same gate in CI without starting the server:
+
+```rust
+#[test]
+fn routes_build() {
+    app(state()).try_build().expect("route declarations are consistent");
+}
+```
+
+`App::build()` panics with the report `try_build()` returns; neither can catch a declaration error
+before the binary links.
+
 ### Read the document from a build
 
 The framework produces the document; emitting it is the application's job. The document is built

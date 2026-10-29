@@ -325,6 +325,10 @@ where
     }
 
     /// Resolve and assemble everything. Panics with the same report `try_build` returns.
+    ///
+    /// Duplicate routes, state mismatches and mount errors are discovered here, not by
+    /// `cargo check`: the route tables are link-time records. Use [`App::try_build`] in a test or
+    /// check binary when CI must fail without starting the server.
     pub fn build(self) -> Built {
         let built = self.try_build().unwrap_or_else(|error| panic!("{error}"));
         for diagnostic in built.diagnostics() {
@@ -334,6 +338,9 @@ where
     }
 
     /// Resolve and assemble everything, returning a diagnostic instead of panicking.
+    ///
+    /// This is the check hook for CI: it runs the same duplicate-route, state, capture, security
+    /// and document gates as [`App::build`] but never unwinds.
     pub fn try_build(self) -> Result<Built, BuildError> {
         let mut diagnostics = Vec::new();
         let resolved = self.resolve(&mut diagnostics)?;
