@@ -237,14 +237,16 @@ async fn attachments_and_raw_files_set_download_headers() {
 async fn multipart_and_attachment_are_documented() {
     let app = app();
     let document = serde_json::to_value(app.document().unwrap()).unwrap();
-    let body = &document["paths"]["/files/upload"]["post"]["requestBody"]["content"]["multipart/form-data"]
-        ["schema"];
+    let media = &document["paths"]["/files/upload"]["post"]["requestBody"]["content"]["multipart/form-data"];
+    let body = &media["schema"];
     assert_eq!(body["properties"]["file"]["format"], "binary");
     assert_eq!(body["properties"]["tags"]["type"], "array");
     assert_eq!(
         body["properties"]["caption"]["type"],
         serde_json::json!(["string", "null"])
     );
+    assert_eq!(media["encoding"]["thumbnail"]["contentType"], "text/plain");
+    assert!(media["encoding"].get("file").is_none());
     let responses = &document["paths"]["/files/upload"]["post"]["responses"];
     assert!(responses["400"].is_object());
     assert!(responses["413"].is_object());

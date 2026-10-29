@@ -263,26 +263,16 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         bindings.push(binding);
 
         let mut extensions = TokenStream::new();
-        if spec.kind.is_file() {
-            if let Some(expr) = &spec.max_bytes {
-                extensions.extend(quote! {
-                    let schema = #krate::doc::schema::with_extension(
-                        schema,
-                        "x-max-bytes",
-                        #krate::serde_json::json!((#expr) as usize),
-                    );
-                });
-            }
-            if !spec.accept.is_empty() {
-                let accept_literals = &spec.accept;
-                extensions.extend(quote! {
-                    let schema = #krate::doc::schema::with_extension(
-                        schema,
-                        "x-accept",
-                        #krate::serde_json::json!([#(#accept_literals),*]),
-                    );
-                });
-            }
+        if spec.kind.is_file()
+            && let Some(expr) = &spec.max_bytes
+        {
+            extensions.extend(quote! {
+                let schema = #krate::doc::schema::with_extension(
+                    schema,
+                    "x-max-bytes",
+                    #krate::serde_json::json!((#expr) as usize),
+                );
+            });
         }
         let base_schema = match spec.kind {
             Kind::File | Kind::TempFile => quote!(#krate::multipart::file_schema()),

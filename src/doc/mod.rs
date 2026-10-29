@@ -13,6 +13,7 @@ pub mod layer;
 pub use roundhouse_schema::schema;
 
 use std::any::TypeId;
+use std::collections::BTreeMap;
 
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::{Components, Schema};
@@ -25,6 +26,8 @@ pub use utoipa;
 pub struct BodyDoc {
     pub content_type: String,
     pub schema: RefOr<Schema>,
+    /// Per-property encoding, e.g. the accepted content types of multipart file parts.
+    pub encoding: BTreeMap<String, utoipa::openapi::encoding::Encoding>,
     pub required: bool,
     pub description: Option<String>,
 }
@@ -278,6 +281,7 @@ pub fn json_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
     BodyDoc {
         content_type: "application/json".to_string(),
         schema: T::schema(),
+        encoding: BTreeMap::new(),
         required: true,
         description: None,
     }
@@ -285,9 +289,23 @@ pub fn json_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
 
 #[cfg(feature = "multipart")]
 pub fn multipart_body<F: crate::multipart::MultipartForm>(components: &mut Components) -> BodyDoc {
+    let encoding = F::fields()
+        .iter()
+        .filter(|field| field.kind.is_file() && !field.accept.is_empty())
+        .map(|field| {
+            let content_type = field.accept.join(", ");
+            (
+                field.name.to_string(),
+                utoipa::openapi::encoding::EncodingBuilder::new()
+                    .content_type(Some(content_type))
+                    .build(),
+            )
+        })
+        .collect();
     BodyDoc {
         content_type: "multipart/form-data".to_string(),
         schema: F::schema(components),
+        encoding,
         required: true,
         description: None,
     }
@@ -307,6 +325,7 @@ pub fn form_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
     BodyDoc {
         content_type: "application/x-www-form-urlencoded".to_string(),
         schema: T::schema(),
+        encoding: BTreeMap::new(),
         required: true,
         description: None,
     }
@@ -319,6 +338,7 @@ pub fn binary_body() -> BodyDoc {
         schema: schema::string_with_format(utoipa::openapi::schema::SchemaFormat::KnownFormat(
             utoipa::openapi::schema::KnownFormat::Binary,
         )),
+        encoding: BTreeMap::new(),
         required: true,
         description: None,
     }

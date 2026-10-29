@@ -156,8 +156,9 @@ async fn custom_openapi_and_docs_routes_are_served() {
     assert_eq!(request["properties"]["file"]["format"], "binary");
     assert_eq!(request["properties"]["preview"]["x-max-bytes"], 65536);
     assert_eq!(
-        request["properties"]["preview"]["x-accept"],
-        serde_json::json!(["text/plain", "text/markdown"])
+        document["paths"]["/uploads"]["post"]["requestBody"]["content"]["multipart/form-data"]["encoding"]
+            ["preview"]["contentType"],
+        "text/plain, text/markdown"
     );
     assert!(document["paths"]["/uploads"]["post"]["responses"]["413"].is_object());
 

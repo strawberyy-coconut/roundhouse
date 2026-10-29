@@ -130,6 +130,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                             docs.body = ::core::option::Option::Some(#krate::doc::BodyDoc {
                                 content_type: "application/json".to_string(),
                                 schema: __schema,
+                                encoding: ::std::collections::BTreeMap::new(),
                                 required: true,
                                 description: ::core::option::Option::None,
                             });

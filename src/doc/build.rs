@@ -471,13 +471,15 @@ fn build_param(param: Param) -> utoipa::openapi::path::Parameter {
 }
 
 fn build_body(body: BodyDoc) -> RequestBody {
+    let mut content = Content::new(Some(body.schema));
+    content.encoding = body.encoding;
     let mut builder = RequestBodyBuilder::new()
         .required(Some(if body.required {
             Required::True
         } else {
             Required::False
         }))
-        .content(body.content_type, Content::new(Some(body.schema)));
+        .content(body.content_type, content);
     if let Some(description) = body.description {
         builder = builder.description(Some(description));
     }
