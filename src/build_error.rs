@@ -92,6 +92,23 @@ pub enum BuildError {
     },
     /// A path template cannot be served.
     InvalidTemplate { reason: String, source: Source },
+    /// A handler's `State<T>`/`Auth<A>` pins a different state type than the app.
+    StateMismatch {
+        operation_id: String,
+        expected: &'static str,
+        actual: &'static str,
+        source: Source,
+    },
+    /// A `scope(..)` that matches no route or mount.
+    EmptyScope { scope: &'static str },
+    /// No routes resolved at all (usually `app!` called outside the library root).
+    EmptyApp,
+    /// A registered handler could not be turned into a method router.
+    HandlerBuild {
+        operation_id: String,
+        message: String,
+        source: Source,
+    },
     /// The emitted document could not be compiled into a validator.
     SchemaCompilation { message: String },
     /// `App::strict()` promoted a warning into an error.
@@ -182,6 +199,34 @@ impl fmt::Display for BuildError {
             BuildError::InvalidTemplate { reason, source } => {
                 write!(f, "error: invalid route template\n  {reason}\n  {source}")
             }
+            BuildError::StateMismatch {
+                operation_id,
+                expected,
+                actual,
+                source,
+            } => write!(
+                f,
+                "error: route `{operation_id}` needs `{expected}`; app was built with `{actual}`\n  {source}"
+            ),
+            BuildError::EmptyScope { scope } => write!(
+                f,
+                "error: no route is registered under scope `{scope}`\n\
+                 hint: check the module path, or call `app!` in the crate root that declares routes"
+            ),
+            BuildError::EmptyApp => write!(
+                f,
+                "error: the app resolved no routes\n\
+                 hint: `app!` scopes to the calling module; call it in the crate root that declares \
+                 routes, or add `App::scope(..)`"
+            ),
+            BuildError::HandlerBuild {
+                operation_id,
+                message,
+                source,
+            } => write!(
+                f,
+                "error: handler for `{operation_id}` could not be built: {message}\n  {source}"
+            ),
             BuildError::SchemaCompilation { message } => {
                 write!(
                     f,

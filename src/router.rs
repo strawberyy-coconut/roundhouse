@@ -275,7 +275,7 @@ where
             None
         };
 
-        let mut router = self.assemble(&resolved);
+        let mut router = self.assemble(&resolved)?;
 
         for merged in self.merges {
             router = router.merge(merged);
@@ -461,9 +461,32 @@ where
         }
 
         let mut resolved = Vec::new();
+
+        for scope in &self.scopes {
+            let matches = inventory::iter::<registry::RouteRecord>
+                .into_iter()
+                .any(|route| prefix::is_ancestor(scope, route.module_path))
+                || inventory::iter::<registry::MountRecord>
+                    .into_iter()
+                    .any(|mount| prefix::is_ancestor(scope, mount.module_path));
+            if !matches {
+                return Err(BuildError::EmptyScope { scope });
+            }
+        }
+
         let mut seen: HashMap<(Method, String), &'static RouteRecord> = HashMap::new();
 
         for record in records {
+            if let Some(expected) = (record.state)()
+                && expected != TypeId::of::<S>()
+            {
+                return Err(BuildError::StateMismatch {
+                    operation_id: record.operation_id.to_string(),
+                    expected: (record.state_name)(),
+                    actual: std::any::type_name::<S>(),
+                    source: record.source_ref(),
+                });
+            }
             if let Err(reason) = prefix::validate_template(record.path) {
                 return Err(BuildError::InvalidTemplate {
                     reason,
@@ -578,6 +601,10 @@ where
             }
         }
 
+        if resolved.is_empty() && self.merges.is_empty() {
+            return Err(BuildError::EmptyApp);
+        }
+
         Ok(resolved)
     }
 
@@ -589,7 +616,7 @@ where
                 .any(|scope| prefix::in_scope(scope, module))
     }
 
-    fn assemble(&self, resolved: &[ResolvedRoute]) -> Router<()> {
+    fn assemble(&self, resolved: &[ResolvedRoute]) -> Result<Router<()>, BuildError> {
         let roots = self.roots(resolved);
 
         let mut mounts_by_module: BTreeMap<&'static str, &'static MountRecord> = BTreeMap::new();
@@ -610,7 +637,7 @@ where
         let mut absolute: Vec<(&'static RouteRecord, MethodRouter<()>)> = Vec::new();
 
         for route in resolved {
-            let method_router = build_method_router::<S>(route.record, &self.state);
+            let method_router = build_method_router::<S>(route.record, &self.state)?;
             if route.record.absolute {
                 absolute.push((route.record, method_router));
             } else {
@@ -688,7 +715,7 @@ where
             router = router.route(&prefix::join("", record.path), method_router);
         }
 
-        router.fallback(|| async { Problem::not_found("no route matched this request") })
+        Ok(router.fallback(|| async { Problem::not_found("no route matched this request") }))
     }
 
     fn roots(&self, resolved: &[ResolvedRoute]) -> Vec<&'static str> {
@@ -791,41 +818,35 @@ fn apply_mount_layer(router: Router<()>, layer: MountLayer) -> Router<()> {
     layer(router)
 }
 
-fn build_method_router<S>(record: &'static RouteRecord, state: &S) -> MethodRouter<()>
+fn build_method_router<S>(
+    record: &'static RouteRecord,
+    state: &S,
+) -> Result<MethodRouter<()>, BuildError>
 where
     S: Clone + Send + Sync + 'static,
 {
     let boxed = (record.handler)();
 
-    let mut method_router = if let Some(expected) = (record.state)() {
-        if expected != TypeId::of::<S>() {
-            panic!(
-                "route `{}` needs `{}`; app was built with `{}`\n  {}",
-                record.operation_id,
-                (record.state_name)(),
-                std::any::type_name::<S>(),
-                record.source()
-            );
-        }
-        let method_router = boxed
-            .downcast::<MethodRouter<S>>()
-            .unwrap_or_else(|_| {
-                panic!(
-                    "route `{}` was registered for state `{}` but its handler was built for another state\n  {}",
-                    record.operation_id,
-                    (record.state_name)(),
-                    record.source()
-                )
-            });
+    let mut method_router = if (record.state)().is_some() {
+        let method_router = boxed.downcast::<MethodRouter<S>>().map_err(|_| {
+            BuildError::HandlerBuild {
+                operation_id: record.operation_id.to_string(),
+                message: format!(
+                    "registered for state `{}` but the handler was built for another state",
+                    (record.state_name)()
+                ),
+                source: record.source_ref(),
+            }
+        })?;
         method_router.with_state::<()>(state.clone())
     } else {
-        let method_router = boxed.downcast::<MethodRouter<()>>().unwrap_or_else(|_| {
-            panic!(
-                "route `{}` is stateless but its handler was built for a non-unit state\n  {}",
-                record.operation_id,
-                record.source()
-            )
-        });
+        let method_router = boxed
+            .downcast::<MethodRouter<()>>()
+            .map_err(|_| BuildError::HandlerBuild {
+                operation_id: record.operation_id.to_string(),
+                message: "registered as stateless but the handler was built for a state".to_string(),
+                source: record.source_ref(),
+            })?;
         method_router.with_state::<()>(())
     };
 
@@ -835,7 +856,7 @@ where
     if let Some(layer) = record.layer {
         method_router = layer(method_router);
     }
-    method_router
+    Ok(method_router)
 }
 
 async fn skip_validation(
