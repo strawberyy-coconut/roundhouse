@@ -186,7 +186,7 @@ fn a_hand_written_capture_still_has_to_exist() {
 }
 
 #[test]
-fn a_foreign_utoipa_type_is_documented_but_still_unverified() {
+fn a_foreign_utoipa_type_is_documented_inline() {
     let built = App::new(State)
         .include(&foreign::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
@@ -195,22 +195,21 @@ fn a_foreign_utoipa_type_is_documented_but_still_unverified() {
     let document = document(&built);
     assert_eq!(
         document["paths"]["/foreign-schema/response"]["get"]["responses"]["200"]["content"]["application/json"]
-            ["schema"]["$ref"],
-        "#/components/schemas/Foreign"
+            ["schema"]["properties"]["id"]["type"],
+        "integer"
     );
     assert_eq!(
         document["paths"]["/foreign-schema/request"]["post"]["requestBody"]["content"]["application/json"]
-            ["schema"]["$ref"],
-        "#/components/schemas/Foreign"
+            ["schema"]["properties"]["id"]["type"],
+        "integer"
     );
-    assert!(document["components"]["schemas"]["Foreign"].is_object());
     assert_eq!(
         document["paths"]["/foreign-schema/request"]["post"]["x-roundhouse-unverified-body"],
-        true
+        serde_json::Value::Null
     );
     assert_eq!(
         document["paths"]["/foreign-schema/response"]["get"]["x-roundhouse-unverified-response"],
-        true
+        serde_json::Value::Null
     );
 }
 

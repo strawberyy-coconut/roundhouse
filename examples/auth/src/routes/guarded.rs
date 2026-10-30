@@ -11,7 +11,7 @@ routes! {
     get("/whoami", whoami, summary = "Bearer required by the module"),
 }
 
-#[derive(Serialize, ToSchema, ApiSchema)]
+#[derive(Serialize, ToSchema)]
 pub struct Guarded {
     pub message: String,
 }

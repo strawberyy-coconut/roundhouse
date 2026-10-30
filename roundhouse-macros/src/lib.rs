@@ -327,21 +327,24 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     handler::expand(item).into()
 }
 
-/// Derive the runtime half of a schema: registration and constraint validation.
+/// Derive the optional roundhouse extensions to a schema.
 ///
-/// Wire shape and component naming come from `utoipa::ToSchema`, so this derive must be paired
-/// with it:
+/// Wire shape and component naming come from `utoipa::ToSchema`; this derive must be paired with
+/// it:
 ///
 /// ```ignore
 /// #[derive(serde::Serialize, serde::Deserialize, roundhouse::ToSchema, roundhouse::ApiSchema)]
 /// pub struct Signup { .. }
 /// ```
 ///
-/// `ApiSchema` implements `roundhouse::doc::ApiSchema`: it registers the utoipa component and
-/// validates the value against the constraints it publishes. Using utoipa for the shape means
-/// serde's `rename_all`, `skip`, `flatten`, tagging and recursion rules are implemented in one
-/// place, not two. Component names follow utoipa as well; use `#[schema(as = module::Name)]` when
-/// two types share a simple name.
+/// **Deriving `ApiSchema` is optional.** A type that derives only `ToSchema` can still be a JSON
+/// request or response body: the document inlines its `ToSchema` schema and registers the
+/// components it references. Derive `ApiSchema` when you want the type published as a named
+/// component (`$ref`), when it uses a roundhouse-only keyword (`unique_items`, a `url` format
+/// patch), or when it needs a `validate_with` hook. Using utoipa for the shape means serde's
+/// `rename_all`, `skip`, `flatten`, tagging and recursion rules are implemented in one place, not
+/// two. Component names follow utoipa as well; use `#[schema(as = module::Name)]` when two types
+/// share a simple name.
 ///
 /// # Constraints
 ///
@@ -362,9 +365,10 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// Constraints are published **and** enforced: the emitted schema is compiled and executed by the
 /// `schema-engine` feature, so there is one declarative source rather than a second generated
-/// check. `validate_with` is the exception — it is Rust code, not expressible in JSON Schema, and
-/// runs after the engine. `#[schema(skip_validation)]` was removed on purpose: opt out for a
-/// whole route with `validate = false` in `routes!` instead.
+/// check. `#[schema(..)]` constraints work with `ToSchema` alone. `unique_items`, the `url` format
+/// patch and `validate_with` require this derive. `validate_with` is Rust code, not expressible
+/// in JSON Schema, and runs after the engine. `#[schema(skip_validation)]` was removed on purpose:
+/// opt out for a whole route with `validate = false` in `routes!` instead.
 ///
 /// # Example
 ///

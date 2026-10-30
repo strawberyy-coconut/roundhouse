@@ -1,21 +1,23 @@
 //! The documentation half: schema derivation, parameter tables and response declarations.
 //!
 //! Most applications use this module through the derives re-exported at the crate root:
-//! `#[derive(ToSchema, ApiSchema)]`, `#[derive(QueryParams)]`, `#[derive(PathParams)]`,
-//! `#[derive(ApiResponse)]` and `#[derive(ApiError)]`, plus `#[derive(Multipart)]` with the
-//! `multipart` feature.
+//! `#[derive(ToSchema)]` for schemas, optionally `#[derive(ApiSchema)]` for named components,
+//! roundhouse-only keywords and `validate_with` hooks, plus `#[derive(QueryParams)]`,
+//! `#[derive(PathParams)]`, `#[derive(ApiResponse)]` and `#[derive(ApiError)]` (and
+//! `#[derive(Multipart)]` with the `multipart` feature).
 //!
 //! The traits here are the manual escape hatch for types the derives cannot see:
 //!
-//! - [`ApiSchema`] — a type's JSON Schema together with its runtime checks.
+//! - [`ApiSchema`] — a named component plus roundhouse-only patches and runtime hooks; optional
+//!   for ordinary `ToSchema` bodies, which are documented inline.
 //! - [`ApiResponse`] — the documented responses a return type produces; `ApiError` is re-exported
 //!   from the macros.
 //! - [`ResponseDoc`] and [`layer`] — hand-written responses and documented layer guarantees.
 //! - [`validate_document`] — the structural check every build runs over the finished document.
 //!
-//! Schemas are derived by `utoipa::ToSchema`; `#[derive(ToSchema, ApiSchema)]` adds the runtime checks.
-//! Component names therefore follow utoipa: unique names stay simple, and a collision is
-//! disambiguated with `#[schema(as = module::Type)]`.
+//! Schemas are derived by `utoipa::ToSchema`. `#[derive(ApiSchema)]` is the optional extension for
+//! named components, roundhouse-only keywords and `validate_with`. Component names follow utoipa:
+//! unique names stay simple, and a collision is disambiguated with `#[schema(as = module::Type)]`.
 
 pub mod build;
 pub mod downgrade;
@@ -240,6 +242,249 @@ pub fn handler_state<M: HandlerMeta>() -> Option<TypeId> {
     }
 }
 
+/// A concrete-type probe for schema shape and component registration.
+///
+/// The specific impl uses [`ApiSchema`] (and therefore its roundhouse patches/components); the
+/// fallback uses plain `utoipa::ToSchema` and registers only referenced components. Call this at
+/// the concrete type: a generic wrapper would lose the bound and always choose the fallback.
+pub struct SchemaFor<T: ?Sized>(std::marker::PhantomData<T>);
+
+impl<T: ?Sized> SchemaFor<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T: ?Sized> Default for SchemaFor<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeSchemaFor {
+    fn probe_schema(self) -> RefOr<Schema>;
+    fn probe_register(self, components: &mut Components);
+}
+
+impl<T: ApiSchema + ?Sized> ProbeSchemaFor for &SchemaFor<T> {
+    fn probe_schema(self) -> RefOr<Schema> {
+        T::schema()
+    }
+
+    fn probe_register(self, components: &mut Components) {
+        T::register(components);
+    }
+}
+
+impl<T: utoipa::ToSchema + ?Sized> ProbeSchemaFor for &&SchemaFor<T> {
+    fn probe_schema(self) -> RefOr<Schema> {
+        <T as utoipa::PartialSchema>::schema()
+    }
+
+    fn probe_register(self, components: &mut Components) {
+        register_self::<T>(components);
+    }
+}
+
+/// A concrete-type probe for recursive `validate_with` traversal.
+///
+/// The specific impl calls the field type's [`ApiSchema::validate_at`]; the fallback is a no-op
+/// for a plain `ToSchema` field. Call this at the concrete field type.
+pub struct ValidateFor<T: ?Sized>(std::marker::PhantomData<T>);
+
+impl<T: ?Sized> ValidateFor<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T: ?Sized> Default for ValidateFor<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeValidateFor<T: ?Sized> {
+    fn probe_validate_for(
+        self,
+        value: &T,
+        pointer: &str,
+        errors: &mut crate::validate::ValidationErrors,
+    );
+}
+
+impl<T: ApiSchema + ?Sized> ProbeValidateFor<T> for &ValidateFor<T> {
+    fn probe_validate_for(
+        self,
+        value: &T,
+        pointer: &str,
+        errors: &mut crate::validate::ValidationErrors,
+    ) {
+        value.validate_at(pointer, errors);
+    }
+}
+
+impl<T: utoipa::ToSchema + ?Sized> ProbeValidateFor<T> for &&ValidateFor<T> {
+    fn probe_validate_for(
+        self,
+        _value: &T,
+        _pointer: &str,
+        _errors: &mut crate::validate::ValidationErrors,
+    ) {
+    }
+}
+
+/// A concrete-type probe for a JSON response body.
+pub struct JsonResponseProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> JsonResponseProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for JsonResponseProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeJsonResponse {
+    fn probe_json_response(self, components: &mut Components, status: u16) -> Vec<ResponseDoc>;
+}
+
+impl<T: ApiSchema> ProbeJsonResponse for &JsonResponseProbe<T> {
+    fn probe_json_response(self, components: &mut Components, status: u16) -> Vec<ResponseDoc> {
+        json_response::<T>(components, status)
+    }
+}
+
+impl<T> ProbeJsonResponse for &&JsonResponseProbe<T> {
+    fn probe_json_response(self, _components: &mut Components, _status: u16) -> Vec<ResponseDoc> {
+        Vec::new()
+    }
+}
+
+/// A second response probe for types that derive only `ToSchema`.
+pub struct ToSchemaJsonResponseProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> ToSchemaJsonResponseProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for ToSchemaJsonResponseProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeToSchemaJsonResponse {
+    fn probe_to_schema_json_response(
+        self,
+        components: &mut Components,
+        status: u16,
+    ) -> Vec<ResponseDoc>;
+}
+
+impl<T: utoipa::ToSchema> ProbeToSchemaJsonResponse for &ToSchemaJsonResponseProbe<T> {
+    fn probe_to_schema_json_response(
+        self,
+        components: &mut Components,
+        status: u16,
+    ) -> Vec<ResponseDoc> {
+        json_response_to_schema::<T>(components, status)
+    }
+}
+
+impl<T> ProbeToSchemaJsonResponse for &&ToSchemaJsonResponseProbe<T> {
+    fn probe_to_schema_json_response(
+        self,
+        _components: &mut Components,
+        _status: u16,
+    ) -> Vec<ResponseDoc> {
+        Vec::new()
+    }
+}
+
+/// A concrete-type probe for a `responses(status = Type)` declaration.
+pub struct JsonResponseDocProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> JsonResponseDocProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for JsonResponseDocProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeJsonResponseDoc {
+    fn probe_json_response_doc(self, components: &mut Components, status: u16) -> ResponseDoc;
+}
+
+impl<T: ApiSchema> ProbeJsonResponseDoc for &JsonResponseDocProbe<T> {
+    fn probe_json_response_doc(self, components: &mut Components, status: u16) -> ResponseDoc {
+        json_response_doc::<T>(components, status)
+    }
+}
+
+impl<T: utoipa::ToSchema> ProbeJsonResponseDoc for &&JsonResponseDocProbe<T> {
+    fn probe_json_response_doc(self, components: &mut Components, status: u16) -> ResponseDoc {
+        json_response_doc_to_schema::<T>(components, status)
+    }
+}
+
+/// A concrete-type probe for a non-JSON response body.
+pub struct TextResponseProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> TextResponseProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for TextResponseProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeTextResponse {
+    fn probe_text_response(
+        self,
+        components: &mut Components,
+        status: u16,
+        content_type: &str,
+    ) -> ResponseDoc;
+}
+
+impl<T: ApiSchema> ProbeTextResponse for &TextResponseProbe<T> {
+    fn probe_text_response(
+        self,
+        components: &mut Components,
+        status: u16,
+        content_type: &str,
+    ) -> ResponseDoc {
+        text_response::<T>(components, status, content_type)
+    }
+}
+
+impl<T: utoipa::ToSchema> ProbeTextResponse for &&TextResponseProbe<T> {
+    fn probe_text_response(
+        self,
+        components: &mut Components,
+        status: u16,
+        content_type: &str,
+    ) -> ResponseDoc {
+        text_response_to_schema::<T>(components, status, content_type)
+    }
+}
+
 /// Probe used by the handler macro to document a foreign `axum::Json<T>` from utoipa.
 ///
 /// The method call is deliberately made at the handler's concrete type, not through a generic
@@ -429,6 +674,53 @@ impl<T: ApiSchema + 'static> ProbeJsonBody
 
 impl<T> ProbeJsonBody for &&&JsonBodyProbe<T> {
     fn probe_json_body(self, _components: &mut Components, _docs: &mut HandlerDocs) {}
+}
+
+/// A second body probe for types that derive only `ToSchema`.
+///
+/// Kept separate from `JsonBodyProbe` so the two autoref chains do not overlap: the `ApiSchema`
+/// probe is exact at `&&`, this one is exact at `&&` for its own probe type, and each has its own
+/// `&&&` no-op fallback. The handler calls both; only one sets `docs.body`.
+pub struct ToSchemaBodyProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> ToSchemaBodyProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for ToSchemaBodyProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeToSchemaBody {
+    fn probe_to_schema_body(self, components: &mut Components, docs: &mut HandlerDocs);
+}
+
+impl<T: utoipa::ToSchema + 'static> ProbeToSchemaBody for &&ToSchemaBodyProbe<axum::Json<T>> {
+    fn probe_to_schema_body(self, components: &mut Components, docs: &mut HandlerDocs) {
+        if docs.body.is_none() {
+            docs.body = Some(json_body_to_schema::<T>(components));
+            docs.body_type = Some(|| TypeId::of::<T>());
+        }
+    }
+}
+
+impl<T: utoipa::ToSchema + 'static> ProbeToSchemaBody
+    for &&ToSchemaBodyProbe<crate::extract::Strict<axum::Json<T>>>
+{
+    fn probe_to_schema_body(self, components: &mut Components, docs: &mut HandlerDocs) {
+        if docs.body.is_none() {
+            docs.body = Some(json_body_to_schema::<T>(components));
+            docs.body_type = Some(|| TypeId::of::<T>());
+        }
+    }
+}
+
+impl<T> ProbeToSchemaBody for &&&ToSchemaBodyProbe<T> {
+    fn probe_to_schema_body(self, _components: &mut Components, _docs: &mut HandlerDocs) {}
 }
 
 /// A probe for the path/query types an operation uses.
@@ -822,6 +1114,65 @@ pub fn json_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
     }
 }
 
+/// Register the components referenced by a plain `ToSchema` type.
+pub fn register_to_schema<T: utoipa::ToSchema + ?Sized>(components: &mut Components) {
+    let mut referenced = Vec::new();
+    <T as utoipa::ToSchema>::schemas(&mut referenced);
+    for (name, schema) in referenced {
+        components.schemas.entry(name).or_insert(schema);
+    }
+}
+
+/// Register just this type as a component, without walking its `schemas()`.
+///
+/// `ToSchema::schemas()` recurses for self-referential types; registration driven by an enclosing
+/// `ApiSchema` derive calls this per field instead, so a recursive field cannot overflow.
+pub fn register_self<T: utoipa::ToSchema + ?Sized>(components: &mut Components) {
+    let name = <T as utoipa::ToSchema>::name().into_owned();
+    // Composite types have no stable component identity (`Vec`, `Option`, ...). Their item
+    // schemas are inlined or registered by the concrete item type; never invent a component.
+    if matches!(
+        name.as_str(),
+        "Vec"
+            | "Option"
+            | "Box"
+            | "Arc"
+            | "Rc"
+            | "Cow"
+            | "HashMap"
+            | "BTreeMap"
+            | "HashSet"
+            | "BTreeSet"
+            | "LinkedList"
+            | "IndexMap"
+            | "IndexSet"
+            | "String"
+            | "str"
+            | "Value"
+    ) {
+        return;
+    }
+    if components.schemas.contains_key(&name) {
+        return;
+    }
+    components.schemas.insert(name.clone(), schema::any_value());
+    components
+        .schemas
+        .insert(name, <T as utoipa::PartialSchema>::schema());
+}
+
+/// A JSON body documented from `ToSchema` alone, without roundhouse hooks.
+pub fn json_body_to_schema<T: utoipa::ToSchema>(components: &mut Components) -> BodyDoc {
+    register_to_schema::<T>(components);
+    BodyDoc {
+        content_type: "application/json".to_string(),
+        schema: <T as utoipa::PartialSchema>::schema(),
+        encoding: BTreeMap::new(),
+        required: true,
+        description: None,
+    }
+}
+
 #[cfg(feature = "multipart")]
 pub fn multipart_body<F: crate::multipart::MultipartForm>(components: &mut Components) -> BodyDoc {
     let encoding = F::fields()
@@ -882,6 +1233,18 @@ pub fn binary_body() -> BodyDoc {
 pub fn json_response<T: ApiSchema>(components: &mut Components, status: u16) -> Vec<ResponseDoc> {
     T::register(components);
     vec![ResponseDoc::json(status, T::schema())]
+}
+
+/// A JSON response documented from `ToSchema` alone, without roundhouse hooks.
+pub fn json_response_to_schema<T: utoipa::ToSchema>(
+    components: &mut Components,
+    status: u16,
+) -> Vec<ResponseDoc> {
+    register_to_schema::<T>(components);
+    vec![ResponseDoc::json(
+        status,
+        <T as utoipa::PartialSchema>::schema(),
+    )]
 }
 
 pub fn json_failures() -> Vec<ResponseDoc> {
@@ -977,6 +1340,15 @@ pub fn json_response_doc<T: ApiSchema>(components: &mut Components, status: u16)
     ResponseDoc::json(status, T::schema())
 }
 
+/// A `responses(status = Type)` declaration for a plain `ToSchema` type.
+pub fn json_response_doc_to_schema<T: utoipa::ToSchema>(
+    components: &mut Components,
+    status: u16,
+) -> ResponseDoc {
+    register_to_schema::<T>(components);
+    ResponseDoc::json(status, <T as utoipa::PartialSchema>::schema())
+}
+
 /// Look up responses declared by `#[derive(ApiResponse)]` / `#[derive(ApiError)]`.
 ///
 /// A hand-written `IntoResponse` type that does not implement [`ApiResponse`] contributes no
@@ -1031,6 +1403,22 @@ pub fn text_response<T: ApiSchema>(
         description: canonical_reason(status).to_string(),
         content_type: Some(content_type.to_string()),
         schema: Some(T::schema()),
+        headers: Vec::new(),
+    }
+}
+
+/// A non-JSON response body documented from `ToSchema` alone.
+pub fn text_response_to_schema<T: utoipa::ToSchema>(
+    components: &mut Components,
+    status: u16,
+    content_type: &str,
+) -> ResponseDoc {
+    register_to_schema::<T>(components);
+    ResponseDoc {
+        status,
+        description: canonical_reason(status).to_string(),
+        content_type: Some(content_type.to_string()),
+        schema: Some(<T as utoipa::PartialSchema>::schema()),
         headers: Vec::new(),
     }
 }

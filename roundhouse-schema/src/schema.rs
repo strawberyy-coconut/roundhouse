@@ -13,13 +13,15 @@ use crate::validate::ValidationErrors;
 
 /// The crate's own schema trait.
 ///
-/// `schema()` returns the inline schema for primitive types and a `$ref` for named types;
-/// `register()` fills the component table (it is a no-op for primitives). Both are called from
-/// the same declaration, so the document cannot drift from the wire format.
+/// `schema()` returns the inline schema for primitive/composite types and a `$ref` for types that
+/// derive `ApiSchema`; `register()` fills the component table. Both are called from the same
+/// declaration, so the document cannot drift from the wire format.
 ///
-/// `#[derive(ApiSchema)]` pairs with `utoipa::ToSchema`: utoipa owns the wire shape and component
-/// name, while this trait adds the registration hook and the hand-written `validate_with` pass.
-/// Declarative constraints are enforced by executing `ToSchema`'s schema, not by generated checks.
+/// Deriving this trait is **optional**. `utoipa::ToSchema` alone is enough for JSON request and
+/// response bodies: the framework documents an inline `ToSchema` schema and registers the
+/// components it references. Derive `ApiSchema` when the type needs a named component (`$ref`), a
+/// roundhouse-only keyword (`unique_items`, a `url` format patch) or a `validate_with` hook.
+/// Declarative constraints are enforced by executing the emitted schema, not by generated checks.
 pub trait ApiSchema {
     fn schema() -> RefOr<Schema>;
 

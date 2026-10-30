@@ -6,6 +6,23 @@ use crate::serde_shape::{
     SerdeContainer, container as serde_container, field as serde_field, field_name,
 };
 
+fn register_expr(ty: &Type) -> TokenStream {
+    let krate = crate::util::krate();
+    quote!({
+        use #krate::doc::ProbeSchemaFor as _;
+        (&#krate::doc::SchemaFor::<#ty>::new()).probe_register(components)
+    })
+}
+
+fn validate_expr(ty: &Type, value: TokenStream, pointer: TokenStream) -> TokenStream {
+    let krate = crate::util::krate();
+    quote!({
+        use #krate::doc::ProbeValidateFor as _;
+        (&#krate::doc::ValidateFor::<#ty>::new())
+            .probe_validate_for(#value, &#pointer, errors)
+    })
+}
+
 #[derive(Default, Clone)]
 pub(crate) struct Constraints {
     min_length: Option<Expr>,
@@ -120,7 +137,6 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let mut generics = input.generics.clone();
     for param in &mut generics.params {
         if let syn::GenericParam::Type(param) = param {
-            param.bounds.push(syn::parse_quote!(#krate::doc::ApiSchema));
             param
                 .bounds
                 .push(syn::parse_quote!(#krate::utoipa::ToSchema));
@@ -183,7 +199,6 @@ fn struct_parts(
     fields: &Fields,
     container: &SerdeContainer,
 ) -> Result<(Vec<TokenStream>, Vec<TokenStream>, TokenStream)> {
-    let krate = crate::util::krate();
     let named = named_fields(fields)?;
     let mut register_calls = Vec::new();
     let mut patches = Vec::new();
@@ -193,9 +208,7 @@ fn struct_parts(
         let ty = &field.ty;
         let field_serde = serde_field(&field.attrs)?;
         let field_schema = schema_attrs(&field.attrs)?;
-        register_calls.push(quote! {
-            <#ty as #krate::doc::ApiSchema>::register(components);
-        });
+        register_calls.push(register_expr(ty));
         if field_serde.hidden() {
             continue;
         }
@@ -232,7 +245,6 @@ fn enum_parts(
     data: &syn::DataEnum,
     container: &SerdeContainer,
 ) -> Result<(Vec<TokenStream>, Vec<TokenStream>, TokenStream)> {
-    let krate = crate::util::krate();
     let mut register_calls = Vec::new();
     let mut patches = Vec::new();
     let mut validation_arms = Vec::new();
@@ -240,9 +252,7 @@ fn enum_parts(
     for (variant_index, variant) in data.variants.iter().enumerate() {
         for field in variant.fields.iter() {
             let ty = &field.ty;
-            register_calls.push(quote! {
-                <#ty as #krate::doc::ApiSchema>::register(components);
-            });
+            register_calls.push(register_expr(ty));
             if field.ident.is_some() {
                 let field_serde = serde_field(&field.attrs)?;
                 if field_serde.hidden() {
@@ -416,13 +426,7 @@ fn variant_validation(
                         )
                     }
                 };
-                validations.push(quote! {
-                    <#ty as #krate::doc::ApiSchema>::validate_at(
-                        #binding,
-                        #pointer,
-                        errors,
-                    );
-                });
+                validations.push(validate_expr(ty, quote!(#binding), pointer));
             }
             quote!(Self::#variant_ident(#(#bindings),*))
         }
@@ -546,7 +550,13 @@ fn base_schema_expr(ty: &Type) -> TokenStream {
         None if is_vec_u8(ty) => quote! {
             #krate::doc::schema::bytes_schema()
         },
-        None => quote!(<#ty as #krate::doc::ApiSchema>::schema()),
+        None => {
+            let krate = crate::util::krate();
+            quote!({
+                use #krate::doc::ProbeSchemaFor as _;
+                (&#krate::doc::SchemaFor::<#ty>::new()).probe_schema()
+            })
+        }
     }
 }
 
@@ -587,29 +597,24 @@ pub(crate) fn field_validation(
     };
 
     if optional {
+        let inner = crate::util::is_option(ty).unwrap_or_else(|| ty.clone());
+        let validate = validate_expr(&inner, quote!(value), quote!(#pointer_ident));
         quote! {
             let #pointer_ident = #pointer_init;
             if let Some(value) = &#field_access {
                 #custom
-                #krate::doc::ApiSchema::validate_at(
-                    value,
-                    &#pointer_ident,
-                    errors,
-                );
+                #validate
             }
         }
     } else {
+        let validate = validate_expr(ty, quote!(&#field_access), quote!(#pointer_ident));
         quote! {
             let #pointer_ident = #pointer_init;
             {
                 let value = &#field_access;
                 #custom
             }
-            #krate::doc::ApiSchema::validate_at(
-                &#field_access,
-                &#pointer_ident,
-                errors,
-            );
+            #validate
         }
     }
 }

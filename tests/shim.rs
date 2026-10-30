@@ -636,18 +636,19 @@ fn strict_rejects_an_opted_out_foreign_body() {
 }
 
 #[test]
-fn strict_rejects_a_foreign_response() {
-    let error = App::new(AuthState::default())
+fn strict_accepts_a_json_response_documented_from_to_schema() {
+    let built = App::new(AuthState::default())
         .include(&strict_response::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
         .strict()
         .try_build()
-        .err()
-        .expect("a foreign response is still unverified");
-    assert!(matches!(
-        error,
-        roundhouse::BuildError::UnverifiedResponse { .. }
-    ));
+        .expect("a ToSchema JSON response is documented");
+    let document = serde_json::to_value(built.document()).unwrap();
+    assert_eq!(
+        document["paths"]["/strict-response"]["get"]["responses"]["200"]["content"]["application/json"]
+            ["schema"]["$ref"],
+        "#/components/schemas/NewNote"
+    );
 }
 
 #[test]

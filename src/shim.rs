@@ -294,7 +294,7 @@ pub trait ProbeBody {
     fn probe_body(self) -> bool;
 }
 
-impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<axum::Json<T>> {
+impl<T: utoipa::ToSchema> ProbeBody for &BodyProbe<axum::Json<T>> {
     fn probe_body(self) -> bool {
         true
     }
@@ -306,7 +306,7 @@ impl<T: crate::doc::ApiSchema + serde::Serialize> ProbeBody for &BodyProbe<axum:
     }
 }
 
-impl<T: crate::doc::ApiSchema + serde::Serialize> ProbeBody
+impl<T: utoipa::ToSchema + serde::Serialize> ProbeBody
     for &BodyProbe<crate::extract::Strict<axum::Json<T>>>
 {
     fn probe_body(self) -> bool {

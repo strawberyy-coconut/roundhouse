@@ -21,7 +21,7 @@
 //! ```no_run
 //! use roundhouse::prelude::*;
 //!
-//! #[derive(serde::Serialize, ToSchema, ApiSchema)]
+//! #[derive(serde::Serialize, ToSchema)]
 //! pub struct Hello {
 //!     pub message: String,
 //! }

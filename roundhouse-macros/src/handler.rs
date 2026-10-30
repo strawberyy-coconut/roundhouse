@@ -126,6 +126,9 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 use #krate::doc::ProbeJsonBody as _;
                 (&&#krate::doc::JsonBodyProbe::<#ty>::new())
                     .probe_json_body(components, &mut docs);
+                use #krate::doc::ProbeToSchemaBody as _;
+                (&&#krate::doc::ToSchemaBodyProbe::<#ty>::new())
+                    .probe_to_schema_body(components, &mut docs);
             }
             {
                 use #krate::doc::ProbeForeignBody as _;
@@ -530,37 +533,27 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
     let status_lit = proc_macro2::Literal::u16_unsuffixed(status);
     let kind = outer_ident(ty);
     match kind.as_deref() {
-        Some("Json") if !is_wrapper_type(ty) => {
-            let inner = single_generic(ty).ok_or_else(|| {
-                syn::Error::new_spanned(ty, "expected `Json<T>` as the response body")
-            })?;
-            Ok(vec![quote! {
-                if let Some(__schema) = {
-                    use #krate::doc::ForeignSchemaProbe as _;
-                    (&#krate::doc::ForeignSchema::<#inner>::new())
-                        .foreign_schema(components)
-                } {
-                    docs.responses.push(#krate::doc::ResponseDoc::json(
-                        #status_lit,
-                        __schema,
-                    ));
-                } else {
-                    docs.responses.push(#krate::doc::ResponseDoc::new(
-                        #status_lit,
-                        "OK",
-                    ));
-                }
-                docs.unverified_response = true;
-            }])
-        }
         Some("Json") => {
             let inner = single_generic(ty).ok_or_else(|| {
                 syn::Error::new_spanned(ty, "expected `Json<T>` as the response body")
             })?;
             Ok(vec![quote! {
-                docs.responses.extend(
-                    #krate::doc::json_response::<#inner>(components, #status_lit)
-                );
+                {
+                    use #krate::doc::ProbeJsonResponse as _;
+                    let mut __responses = (&#krate::doc::JsonResponseProbe::<#inner>::new())
+                        .probe_json_response(components, #status_lit);
+                    if __responses.is_empty() {
+                        use #krate::doc::ProbeToSchemaJsonResponse as _;
+                        __responses = (&#krate::doc::ToSchemaJsonResponseProbe::<#inner>::new())
+                            .probe_to_schema_json_response(components, #status_lit);
+                    }
+                    if __responses.is_empty() {
+                        docs.unverified_response = true;
+                        docs.responses.push(#krate::doc::ResponseDoc::new(#status_lit, "OK"));
+                    } else {
+                        docs.responses.extend(__responses);
+                    }
+                }
             }])
         }
         Some("Attachment") if is_wrapper_type(ty) => {
@@ -585,11 +578,11 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
                 syn::Error::new_spanned(ty, "expected `Html<T>` as the response body")
             })?;
             Ok(vec![quote! {
-                docs.responses.push(#krate::doc::text_response::<#inner>(
-                    components,
-                    #status_lit,
-                    "text/html",
-                ));
+                docs.responses.push({
+                    use #krate::doc::ProbeTextResponse as _;
+                    (&#krate::doc::TextResponseProbe::<#inner>::new())
+                        .probe_text_response(components, #status_lit, "text/html")
+                });
             }])
         }
         Some("StatusCode") => Ok(vec![quote! {
@@ -608,9 +601,22 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
             } else {
                 let inner = single_generic(ty).unwrap();
                 Ok(vec![quote! {
-                    docs.responses.extend(
-                        #krate::doc::json_response::<#inner>(components, #status_lit)
-                    );
+                    {
+                        use #krate::doc::ProbeJsonResponse as _;
+                        let mut __responses = (&#krate::doc::JsonResponseProbe::<#inner>::new())
+                            .probe_json_response(components, #status_lit);
+                        if __responses.is_empty() {
+                            use #krate::doc::ProbeToSchemaJsonResponse as _;
+                            __responses = (&#krate::doc::ToSchemaJsonResponseProbe::<#inner>::new())
+                                .probe_to_schema_json_response(components, #status_lit);
+                        }
+                        if __responses.is_empty() {
+                            docs.unverified_response = true;
+                            docs.responses.push(#krate::doc::ResponseDoc::new(#status_lit, "OK"));
+                        } else {
+                            docs.responses.extend(__responses);
+                        }
+                    }
                 }])
             }
         }

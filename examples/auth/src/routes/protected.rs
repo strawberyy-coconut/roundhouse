@@ -14,7 +14,7 @@ routes! {
     get("/projects/{project_id}", project, summary = "Resource policy after the scope gate"),
 }
 
-#[derive(Serialize, ToSchema, ApiSchema)]
+#[derive(Serialize, ToSchema)]
 pub struct Message {
     pub message: String,
 }

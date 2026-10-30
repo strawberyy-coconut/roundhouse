@@ -225,6 +225,37 @@ mod catch_all_leaf {
     }
 }
 
+mod repeated_prefix {
+    use super::*;
+
+    routes! {
+        prefix = "/api",
+        "/api" {
+            get "/x" => x, operation_id = "repeated_prefix_x",
+        }
+    }
+
+    #[handler]
+    pub async fn x() -> &'static str {
+        "x"
+    }
+}
+
+mod absolute_under_policy {
+    use super::*;
+
+    routes! {
+        prefix = "/ignored",
+        tags = ["ignored"],
+        get("/abs", abs, absolute, operation_id = "absolute_under_policy_abs"),
+    }
+
+    #[handler]
+    pub async fn abs() -> &'static str {
+        "abs"
+    }
+}
+
 mod layered_capture {
     use super::*;
 
@@ -411,6 +442,47 @@ fn path_parameters(app: &roundhouse::Built, path: &str, method: &str) -> Vec<ser
         .as_array()
         .cloned()
         .unwrap_or_default()
+}
+
+#[test]
+fn a_nested_prefix_that_repeats_its_parent_is_reported() {
+    let app = scoped(&repeated_prefix::MODULE)
+        .try_build()
+        .expect("the duplicate prefix still builds");
+    let diagnostic = app
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("repeats the enclosing prefix"))
+        .expect("the repeated prefix is called out");
+    assert!(diagnostic.message.contains("/api/api"));
+
+    let error = scoped(&repeated_prefix::MODULE)
+        .strict()
+        .try_build()
+        .err()
+        .expect("strict promotes the diagnostic");
+    assert!(matches!(error, BuildError::Diagnostic { .. }));
+}
+
+#[test]
+fn an_absolute_route_reports_the_module_policy_it_ignores() {
+    let app = scoped(&absolute_under_policy::MODULE)
+        .try_build()
+        .expect("an absolute route still builds");
+    let diagnostic = app
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("ignores its enclosing module"))
+        .expect("the ignored policy is called out");
+    assert!(diagnostic.message.contains("prefix"));
+    assert!(diagnostic.message.contains("tags"));
+
+    let error = scoped(&absolute_under_policy::MODULE)
+        .strict()
+        .try_build()
+        .err()
+        .expect("strict promotes the diagnostic");
+    assert!(matches!(error, BuildError::Diagnostic { .. }));
 }
 
 #[tokio::test]

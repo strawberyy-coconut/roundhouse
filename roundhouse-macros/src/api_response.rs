@@ -87,6 +87,22 @@ struct FieldInfo {
     from: bool,
 }
 
+fn schema_expr(ty: &Type) -> TokenStream {
+    let krate = crate::util::krate();
+    quote!({
+        use #krate::doc::ProbeSchemaFor as _;
+        (&#krate::doc::SchemaFor::<#ty>::new()).probe_schema()
+    })
+}
+
+fn register_expr(ty: &Type) -> TokenStream {
+    let krate = crate::util::krate();
+    quote!({
+        use #krate::doc::ProbeSchemaFor as _;
+        (&#krate::doc::SchemaFor::<#ty>::new()).probe_register(components)
+    })
+}
+
 pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
     let krate = crate::util::krate();
     if !input.generics.params.is_empty() {
@@ -303,13 +319,12 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             let (name, append) = header.header.clone().unwrap();
             let ty = &header.ty;
             let required = !header.optional;
-            registrations.push(quote! {
-                <#ty as #krate::doc::ApiSchema>::register(components);
-            });
+            let schema = schema_expr(ty);
+            registrations.push(register_expr(ty));
             header_docs.push(quote! {
                 #krate::doc::HeaderDoc {
                     name: #name.to_string(),
-                    schema: <#ty as #krate::doc::ApiSchema>::schema(),
+                    schema: #schema,
                     required: #required,
                     append: #append,
                 }
@@ -322,17 +337,14 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             if kind.as_deref() == Some("Json") {
                 let inner = crate::util::single_generic(ty)
                     .ok_or_else(|| syn::Error::new_spanned(ty, "expected Json<T>"))?;
-                registrations.push(quote! {
-                    <#inner as #krate::doc::ApiSchema>::register(components);
-                });
+                let inner_schema = schema_expr(&inner);
+                registrations.push(register_expr(&inner));
                 docs.push(quote! {
                     responses.push(#krate::doc::ResponseDoc {
                         status: #status,
                         description: #description.to_string(),
                         content_type: ::core::option::Option::Some("application/json".to_string()),
-                        schema: ::core::option::Option::Some(
-                            <#inner as #krate::doc::ApiSchema>::schema()
-                        ),
+                        schema: ::core::option::Option::Some(#inner_schema),
                         headers: ::std::vec![#(#header_docs),*],
                     });
                 });
@@ -341,17 +353,14 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
                     responses.push(#krate::doc::ResponseDoc::problem(#status, #problem_title));
                 });
             } else {
-                registrations.push(quote! {
-                    <#ty as #krate::doc::ApiSchema>::register(components);
-                });
+                let ty_schema = schema_expr(ty);
+                registrations.push(register_expr(ty));
                 docs.push(quote! {
                     responses.push(#krate::doc::ResponseDoc {
                         status: #status,
                         description: #description.to_string(),
                         content_type: ::core::option::Option::Some("application/json".to_string()),
-                        schema: ::core::option::Option::Some(
-                            <#ty as #krate::doc::ApiSchema>::schema()
-                        ),
+                        schema: ::core::option::Option::Some(#ty_schema),
                         headers: ::std::vec![#(#header_docs),*],
                     });
                 });

@@ -1,7 +1,7 @@
 use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Address {
     #[schema(min_length = 2, max_length = 80)]
@@ -10,7 +10,7 @@ pub struct Address {
     pub postal_code: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, ApiSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     Reader,

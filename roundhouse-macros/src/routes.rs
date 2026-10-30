@@ -952,7 +952,11 @@ fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
         let status = proc_macro2::Literal::u16_suffixed(*status);
         match body {
             Some(ty) => quote! {
-                __responses.push(#krate::doc::json_response_doc::<#ty>(components, #status));
+                __responses.push({
+                    use #krate::doc::ProbeJsonResponseDoc as _;
+                    (&#krate::doc::JsonResponseDocProbe::<#ty>::new())
+                        .probe_json_response_doc(components, #status)
+                });
             },
             None => quote! {
                 __responses.push(#krate::doc::ResponseDoc::new(

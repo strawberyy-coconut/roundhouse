@@ -414,7 +414,7 @@ mod shapes {
         pub email: String,
     }
 
-    #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
+    #[derive(Debug, Serialize, Deserialize, ToSchema)]
     pub struct Nested {
         #[schema(min_length = 2)]
         pub name: String,

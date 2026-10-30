@@ -22,7 +22,7 @@ pub struct UploadForm {
     pub title: Option<String>,
 }
 
-#[derive(Serialize, ToSchema, ApiSchema)]
+#[derive(Serialize, ToSchema)]
 pub struct UploadInfo {
     pub file_name: Option<String>,
     pub file_len: usize,

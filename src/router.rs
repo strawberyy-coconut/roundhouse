@@ -862,6 +862,7 @@ struct Inherited {
     tags: Vec<&'static str>,
     guards: Vec<AuthGuard>,
     hidden: bool,
+    has_layer: bool,
     layer_docs: Vec<crate::doc::layer::LayerDoc>,
 }
 
@@ -878,6 +879,29 @@ fn walk_module(
             reason,
             source: module.source_ref(),
         });
+    }
+
+    let parent_prefix = inherited.prefix.trim_end_matches('/');
+    let child_prefix = module.prefix.trim_end_matches('/');
+    if !parent_prefix.is_empty()
+        && parent_prefix != "/"
+        && !child_prefix.is_empty()
+        && (child_prefix == parent_prefix || child_prefix.starts_with(&format!("{parent_prefix}/")))
+    {
+        crate::build_error::report(
+            diagnostics,
+            strict,
+            crate::build_error::Diagnostic::new(
+                module.source_ref(),
+                format!(
+                    "module prefix `{}` repeats the enclosing prefix `{}`; the resolved \
+                     prefix is `{}`",
+                    module.prefix,
+                    inherited.prefix,
+                    prefix::join(&inherited.prefix, module.prefix)
+                ),
+            ),
+        )?;
     }
 
     if let Some(expected) = state.expected_state {
@@ -898,11 +922,13 @@ fn walk_module(
         tags: inherited.tags,
         guards: inherited.guards,
         hidden: inherited.hidden,
+        has_layer: inherited.has_layer,
         layer_docs: inherited.layer_docs,
     };
     context.tags.extend(module.tags.iter().copied());
     context.guards.extend(module.security.iter().copied());
     context.hidden |= module.hidden;
+    context.has_layer |= module.layer.is_some();
     if let Some(doc) = module.doc {
         context.layer_docs.push(doc());
     }
@@ -936,8 +962,8 @@ fn emit_route(
     record: &'static RouteRecord,
     module: &'static Module,
     context: &Inherited,
-    _strict: bool,
-    _diagnostics: &mut Vec<crate::build_error::Diagnostic>,
+    strict: bool,
+    diagnostics: &mut Vec<crate::build_error::Diagnostic>,
     state: &mut ResolveState<'_>,
 ) -> Result<bool, BuildError> {
     if let Some(expected) = state.expected_state
@@ -970,6 +996,43 @@ fn emit_route(
                     source: record.source_ref(),
                 });
             }
+        }
+    }
+
+    if record.absolute {
+        let mut ignored = Vec::new();
+        if !context.prefix.is_empty() && context.prefix != "/" {
+            ignored.push("prefix");
+        }
+        if !context.tags.is_empty() {
+            ignored.push("tags");
+        }
+        if !context.guards.is_empty() {
+            ignored.push("security");
+        }
+        if context.hidden {
+            ignored.push("hidden");
+        }
+        if context.has_layer {
+            ignored.push("layers");
+        }
+        if !context.layer_docs.is_empty() {
+            ignored.push("layer documentation");
+        }
+        if !ignored.is_empty() {
+            crate::build_error::report(
+                diagnostics,
+                strict,
+                crate::build_error::Diagnostic::new(
+                    record.source_ref(),
+                    format!(
+                        "absolute route `{}` ignores its enclosing module's {}; declare the \
+                         policy on the entry instead",
+                        record.operation_id.unwrap_or(record.handler_name),
+                        ignored.join(", ")
+                    ),
+                ),
+            )?;
         }
     }
 
