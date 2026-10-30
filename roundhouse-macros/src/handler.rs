@@ -375,6 +375,7 @@ fn is_parts_arg(ty: &Type) -> bool {
             "State"
                 | "Path"
                 | "Query"
+                | "RepeatedQuery"
                 | "Extension"
                 | "Auth"
                 | "HeaderMap"

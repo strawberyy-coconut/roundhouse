@@ -462,7 +462,9 @@ pub fn derive_api_schema(input: TokenStream) -> TokenStream {
 /// - `#[serde(rename = "..")]` and `#[serde(rename_all = "..")]` control the wire names.
 /// - `#[serde(skip)]` and `#[serde(skip_deserializing)]` remove a field from the documentation.
 /// - `#[serde(flatten)]` delegates to the inner type's `QueryParams` implementation.
-/// - `Vec<T>` and `Option<Vec<T>>` are documented as exploded form-style arrays.
+/// - `Vec<T>` and `Option<Vec<T>>` are documented as exploded form-style arrays. Read them with
+///   `RepeatedQuery<T>`; axum's `Query<T>` uses `serde_urlencoded` and cannot represent repeated
+///   keys.
 /// - `#[schema(..)]` constraints are published and validated with JSON Pointers.
 #[proc_macro_derive(QueryParams, attributes(serde, schema, roundhouse))]
 pub fn derive_query_params(input: TokenStream) -> TokenStream {

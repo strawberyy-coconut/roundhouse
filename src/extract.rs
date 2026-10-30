@@ -1,6 +1,6 @@
 //! Axum extractors with an optional `Problem` rejection.
 //!
-//! `Json`, `Form`, `Path` and `Extension` are re-exported from axum; `Query` is the one custom
+//! `Json`, `Form`, `Path` and `Extension` are re-exported from axum; `RepeatedQuery` is the one custom
 //! parser (`serde_html_form`, so repeated keys work). Wrap any extractor in [`Strict<T>`] to
 //! convert its rejection into the canonical [`Problem`] while keeping the inner type axum's.
 //! Validation is the route policy's job, not the extractor's: JSON bodies are checked from the raw
@@ -11,7 +11,7 @@
 //! #[handler]
 //! async fn create(
 //!     State(app): State<AppState>,
-//!     Query(page): Query<Page>,
+//!     RepeatedQuery(page): RepeatedQuery<Page>,
 //!     Json(input): Json<CreatePost>,
 //! ) -> Result<Json<Post>, ApiError> { .. }
 //! ```
@@ -22,7 +22,7 @@
 //! so a violation carries a JSON Pointer into the request body.
 //!
 //! Validation is also a route policy. Every `routes!` entry is validated by default; the route's
-//! generated shim runs the same checks for `axum`'s extractors (`axum::Json`, `Path`, `Query`,
+//! generated shim runs the same checks for `axum`'s extractors (`axum::Json`, `Path`, `RepeatedQuery`,
 //! `Form`), so a handler can stay on axum's types and still be enforced. `validate = false` opts
 //! out. The framework's own extractors above validate during extraction and are not checked
 //! twice.
@@ -46,7 +46,7 @@ use crate::problem::Problem;
 use crate::validate::ValidationErrors;
 pub use axum::Form;
 pub use axum::Json;
-pub use axum::extract::{Extension, Path};
+pub use axum::extract::{Extension, Path, Query};
 
 /// Request extension inserted by a route entry with `validate = false`.
 #[derive(Debug, Clone, Copy)]
@@ -170,6 +170,26 @@ rejection_via_status!(
     axum::extract::rejection::ExtensionRejection,
 );
 
+#[cfg(feature = "multipart")]
+impl Rejection for axum::extract::multipart::MultipartRejection {
+    fn into_problem(self) -> Problem {
+        // `MultipartRejection` exposes its rejection through `IntoResponse`, not a structured
+        // status/body API, so the status is preserved and the detail is generic.
+        let response = self.into_response();
+        let status = response.status();
+        let status = if status == StatusCode::UNPROCESSABLE_ENTITY {
+            StatusCode::BAD_REQUEST
+        } else {
+            status
+        };
+        Problem::from_rejection(
+            status,
+            status.canonical_reason().unwrap_or("Bad Request"),
+            "multipart request was rejected".to_string(),
+        )
+    }
+}
+
 impl<T, S> FromRequest<S> for Strict<T>
 where
     T: FromRequest<S>,
@@ -249,30 +269,30 @@ fn rejection_problem(status: StatusCode, detail: String) -> Problem {
     )
 }
 
-/// Query extractor with `Problem`-shaped rejections and constraint validation.
+/// RepeatedQuery extractor with `Problem`-shaped rejections and constraint validation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Query<T>(pub T);
+pub struct RepeatedQuery<T>(pub T);
 
-impl<T> Query<T> {
+impl<T> RepeatedQuery<T> {
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
-impl<T> Deref for Query<T> {
+impl<T> Deref for RepeatedQuery<T> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.0
     }
 }
 
-impl<T> DerefMut for Query<T> {
+impl<T> DerefMut for RepeatedQuery<T> {
     fn deref_mut(&mut self) -> &mut T {
         &mut self.0
     }
 }
 
-impl<T, S> FromRequestParts<S> for Query<T>
+impl<T, S> FromRequestParts<S> for RepeatedQuery<T>
 where
     T: DeserializeOwned + crate::doc::QueryParams + crate::doc::PartsValue + Send + 'static,
     S: Send + Sync,
@@ -286,7 +306,7 @@ where
             .extensions
             .get::<Arc<roundhouse_schema::engine::SchemaEngine>>()
             .cloned();
-        // `axum::extract::Query` uses `serde_urlencoded`, which cannot represent repeated keys.
+        // `axum::extract::RepeatedQuery` uses `serde_urlencoded`, which cannot represent repeated keys.
         // The document describes arrays as `style: form, explode: true`, so the extractor must
         // accept `?tag=a&tag=b` rather than the last value or an error.
         let query = parts.uri.query().unwrap_or_default();

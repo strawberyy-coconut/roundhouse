@@ -245,7 +245,7 @@ where
 }
 
 // `roundhouse::Query` still parses and validates during extraction; the shim leaves it alone.
-impl<T> ValidateArg for crate::extract::Query<T> {
+impl<T> ValidateArg for crate::extract::RepeatedQuery<T> {
     fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
         Ok(())
     }

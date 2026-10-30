@@ -342,7 +342,7 @@ impl<T: crate::multipart::MultipartForm + 'static> ProbeExtractor
     }
 }
 
-impl<T: QueryParams> ProbeExtractor for &ExtractProbe<crate::extract::Query<T>> {
+impl<T: QueryParams> ProbeExtractor for &ExtractProbe<crate::extract::RepeatedQuery<T>> {
     fn probe_extractor(
         self,
         components: &mut Components,
@@ -460,7 +460,7 @@ impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<axum::extract::Path<T
     }
 }
 
-impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<crate::extract::Query<T>> {
+impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<crate::extract::RepeatedQuery<T>> {
     fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
         docs.parts.push(PartsDoc::new::<T>());
     }
@@ -489,7 +489,7 @@ impl<T: PartsSchema + 'static> ProbeParts
 }
 
 impl<T: PartsSchema + 'static> ProbeParts
-    for &&PartsProbe<crate::extract::Strict<crate::extract::Query<T>>>
+    for &&PartsProbe<crate::extract::Strict<crate::extract::RepeatedQuery<T>>>
 {
     fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
         docs.parts.push(PartsDoc::new::<T>());

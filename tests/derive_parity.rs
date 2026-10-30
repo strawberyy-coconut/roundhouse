@@ -116,7 +116,7 @@ mod query_arrays {
     }
 
     #[handler]
-    pub async fn filter(Query(query): Query<Filter>) -> String {
+    pub async fn filter(RepeatedQuery(query): RepeatedQuery<Filter>) -> String {
         format!(
             "{}|{}|{}",
             query.tags.join(","),
