@@ -205,7 +205,7 @@ pub trait HandlerMeta: Send + Sync + 'static {
 
     /// Scheme names the handler requires with `Auth<A>` (`Option<Auth<A>>` does not count).
     ///
-    /// A mount-level guard for the same scheme is skipped: the extractor already performs the
+    /// A module-level guard for the same scheme is skipped: the extractor already performs the
     /// check during extraction, so the request must not be authenticated twice.
     const REQUIRED_AUTH: &'static [&'static str] = &[];
 
@@ -977,14 +977,47 @@ pub fn json_response_doc<T: ApiSchema>(components: &mut Components, status: u16)
     ResponseDoc::json(status, T::schema())
 }
 
-/// Look up responses registered by `#[derive(ApiResponse)]` / `#[derive(ApiError)]`.
-pub fn stored_responses_for<T: ?Sized>(components: &mut Components) -> Vec<ResponseDoc> {
-    let key = std::any::type_name::<T>();
-    inventory::iter::<crate::registry::ResponseRecord>
-        .into_iter()
-        .find(|record| (record.type_key)() == key)
-        .map(|record| (record.docs)(components))
-        .unwrap_or_default()
+/// Look up responses declared by `#[derive(ApiResponse)]` / `#[derive(ApiError)]`.
+///
+/// A hand-written `IntoResponse` type that does not implement [`ApiResponse`] contributes no
+/// responses; the build then reports it as undocumented instead of failing to compile.
+pub fn stored_responses_for<T: ApiResponse>(components: &mut Components) -> Vec<ResponseDoc> {
+    <T as ApiResponse>::responses(components)
+}
+
+/// Type-driven probe for a response type's documented responses.
+///
+/// The handler macro knows `E` in `Result<T, E>` (or the concrete return type), but it cannot
+/// require `ApiResponse`: a hand-written `IntoResponse` type is legal and simply has no registered
+/// documentation. The autoref fallback keeps that path compiling.
+pub struct ResponseProbe<T: ?Sized>(std::marker::PhantomData<T>);
+
+impl<T: ?Sized> ResponseProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T: ?Sized> Default for ResponseProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeResponses {
+    fn probe_responses(self, components: &mut Components) -> Vec<ResponseDoc>;
+}
+
+impl<T: ApiResponse + ?Sized> ProbeResponses for &ResponseProbe<T> {
+    fn probe_responses(self, components: &mut Components) -> Vec<ResponseDoc> {
+        T::responses(components)
+    }
+}
+
+impl<T: ?Sized> ProbeResponses for &&ResponseProbe<T> {
+    fn probe_responses(self, _components: &mut Components) -> Vec<ResponseDoc> {
+        Vec::new()
+    }
 }
 
 pub fn text_response<T: ApiSchema>(

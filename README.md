@@ -2,7 +2,7 @@
 
 An OpenAPI-first framework for [axum](https://github.com/tokio-rs/axum). Declare routes, parameters,
 schemas, auth and errors once; roundhouse builds the `axum::Router` and the OpenAPI 3.1 document
-from the same declarations. No separate wiring step, no hand-maintained spec.
+from the same declarations. The route tree is the wiring: no link-time registry, no hand-maintained spec.
 
 ```rust
 use roundhouse::prelude::*;
@@ -12,8 +12,11 @@ pub struct Hello {
     pub message: String,
 }
 
-mount!("/v1", tags = ["hello"]);
-routes! { get("/hello/{name}", hello) }
+routes! {
+    prefix = "/v1",
+    tags = ["hello"],
+    get("/hello/{name}", hello),
+}
 
 #[handler]
 pub async fn hello(Path(name): Path<String>) -> Json<Hello> {
@@ -37,15 +40,15 @@ parameter that `Path<String>` cannot name by itself.
 
 | Feature | What you get |
 |---|---|
-| **Declarative routing** | `routes!` tables live beside their handlers; `mount!` declares a subtree's prefix, tags, layers and enforced `security` once. `App::build()` joins everything. |
+| **Declarative routing** | `routes!` tables live beside their handlers and also declare the module's prefix, tags, layers and enforced `security`. Child modules compose with `...module`; `App::build()` walks that explicit tree. |
 | **Single source of truth** | Paths, parameters, bodies, responses and security requirements are derived from the router's own declarations, so the document matches what is enforced. `security = [Bearer]` installs the `Auth<Bearer>` guard, not just the OpenAPI requirement. |
-| **Early diagnostics** | Duplicate routes and operation ids, missing success responses and auth/state mismatches are compile errors where the declaration is local. Checks that need the resolved tree — collisions across tables, mount prefixes, the final document — are `BuildError`s, and `App::try_build()` never panics. |
+| **Early diagnostics** | Duplicate routes and operation ids, missing success responses and auth/state mismatches are compile errors where the declaration is local. Checks that need the composed tree — collisions across modules, prefix joins, the final document — are `BuildError`s, and `App::try_build()` never panics. |
 | **Document as artifact** | The OpenAPI document is always built; `App::openapi(..)` only decides whether it is served. `Built::openapi_json()` lets CI diff it. |
 | **Typed extractors** | `#[handler]` reads `State`, `Path`, `Query`, `Json`, `Form`, `Multipart`, `Auth`, `Option<Auth>` and `Extension` from the signature. `Json`, `Form`, `Path`, `Query` and `Extension` are axum's; `RepeatedQuery` is the opt-in repeated-key parser. Wrap in `Strict<…>` for a `Problem` rejection. |
 | **Schema generation** | `utoipa::ToSchema` owns the wire shape (`rename_all`, `skip`, `flatten`, `tag`, `untagged`, recursion, …); `#[derive(ApiSchema)]` adds the runtime checks. `uuid`, `chrono`, `time`, `jiff` and `decimal` are supported. |
 | **Validation** | `min_length`, `pattern`, numeric bounds, `min_items`, `unique_items`, `format` and `validate_with` are emitted into the schema *and* enforced, returning RFC 9457 problem details with JSON Pointers. Entries validate by default, including handlers that use `axum`'s own extractors; `validate = false` opts out. |
 | **Errors** | `Problem` is the default error body; `#[derive(ApiError)]` / `#[derive(ApiResponse)]` generate `IntoResponse` plus the documented responses. |
-| **Auth** | `Auth<A>` extracts an identity, `Auth<A, Scopes>` requires an `Authorize` implementation, and `security = [A]` on an entry or mount installs the check for that route or subtree. A handler that already takes `Auth<A>` is not authenticated twice. Schemes, 401/403 and `WWW-Authenticate` are documented automatically. |
+| **Auth** | `Auth<A>` extracts an identity, `Auth<A, Scopes>` requires an `Authorize` implementation, and `security = [A]` on an entry or module installs the check for that route or subtree. A handler that already takes `Auth<A>` is not authenticated twice. Schemes, 401/403 and `WWW-Authenticate` are documented automatically. |
 | **Files & streams** | Opt-in `multipart` for `Multipart<F>`, `FilePart` and `TempFile`; plus `Attachment<T>`, `File` and SSE. |
 | **Schema engine (default)** | Requests and responses are validated by executing the emitted JSON Schema (2020-12). Constraints have one source and one enforcer; `validate_with` remains the explicit custom hook. |
 | **Tooling** | `App::docs()` serves Swagger UI, `Built::openapi_30()` produces a 3.0.3 document, and merged routers are flagged so an incomplete spec can't slip through. |
@@ -98,8 +101,8 @@ The workspace ships runnable examples. From the repo root:
 
 | Command | Port | Shows |
 |---|---|---|
-| `cargo notes` | 3000 | module-local tables, inherited mounts, schemas, errors |
-| `cargo blog` | 3001 | nested mounts, grouped tables, query params, auth |
+| `cargo notes` | 3000 | module-local tables, explicit composition, schemas, errors |
+| `cargo blog` | 3001 | nested modules, grouped tables, query params, auth |
 | `cargo layers` | 3002 | global/module/entry layers, fallback, merge |
 | `cargo validation` | 3003 | constraints, JSON Pointers, generated schemas |
 | `cargo uploads` | 3004 | multipart, `TempFile`, attachments, SSE, docs UI |
@@ -120,7 +123,7 @@ is the smallest; start there.
 **Checks run as early as they can.** A single `routes!` table is checked during macro expansion:
 duplicate method+template pairs, duplicate operation ids, an entry with no success response, and
 an entry-level scheme that authenticates against a different state than the handler are compile
-errors. Checks that need the resolved tree — collisions between tables, mount prefixes, state
+errors. Checks that need the composed tree — collisions between modules, prefix joins, state
 against the app, the final document — run at `App::build()`. Keep that gate in CI without starting
 a server:
 
@@ -162,16 +165,20 @@ extractor in `Strict<…>` when you need the framework's `Problem` rejection for
 layer does not cover.
 
 The enforcer is the emitted JSON Schema, compiled once by `App::build()`; the `schema-engine`
-feature (and `Validation::Schema`) is on by default. A handler mounted directly on a plain axum
+feature (and `Validation::Schema`) is on by default. A handler installed directly on a plain axum
 router, outside `App`, has no engine and therefore no constraint checks — build through `App` (or
 `App::router()`) to get them, or call `.validation(Validation::Off)` to make the absence explicit.
 
 **Auth is enforced where it is declared.** `security` takes scheme types, not names; the same
 declaration installs the check and publishes the requirement. An entry with one scheme is enforced
-by the handler shim (before the body is read); a mount installs a guard for its whole subtree:
+by the handler shim (before the body is read); a module installs a guard for its whole subtree:
 
 ```rust
-mount!("/admin", security = [Bearer]);
+routes! {
+    prefix = "/admin",
+    security = [Bearer],
+    ...admin,
+}
 ```
 
 Scopes stay on the handler (`Auth<Bearer, ReadPosts>`). A handler that already takes

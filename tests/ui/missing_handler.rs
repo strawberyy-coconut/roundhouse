@@ -1,7 +1,8 @@
 use roundhouse::prelude::*;
 
-mount!("/ui");
-routes! { get("/x", show) }
+routes! {
+    prefix = "/ui",
+ get("/x", show) }
 
 pub async fn show() -> &'static str {
     "x"

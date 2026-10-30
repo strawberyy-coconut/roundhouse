@@ -58,9 +58,9 @@ pub enum AppError {
 mod notes {
     use super::*;
 
-    mount!("/notes", tags = ["notes"]);
-
     routes! {
+        prefix = "/notes",
+        tags = ["notes"],
         get("/", list, summary = "List notes"),
         post("/", create, summary = "Create a note"),
         get("/{id}", show, summary = "Read a note"),
@@ -91,8 +91,10 @@ mod notes {
 mod health {
     use roundhouse::prelude::*;
 
-    mount!(tags = ["ops"]);
-    routes! { get("/healthz", healthz, tags = ["ops"]) }
+    routes! {
+        tags = ["ops"],
+        get("/healthz", healthz, tags = ["ops"]),
+    }
 
     #[handler]
     pub async fn healthz() -> &'static str {
@@ -100,9 +102,14 @@ mod health {
     }
 }
 
+routes! {
+    ...notes,
+    ...health,
+}
+
 fn app() -> roundhouse::Built {
     App::new(TestState::default())
-        .scope(module_path!())
+        .fragment(__roundhouse_fragment())
         .openapi(|| Info::new("Test API", "0.1.0"))
         .build()
 }
@@ -198,12 +205,6 @@ async fn unmatched_is_json_404() {
             .unwrap(),
         "application/problem+json"
     );
-}
-
-#[test]
-fn scope_matching_is_segment_aware() {
-    assert!(roundhouse::prefix::in_scope("app", "app::users"));
-    assert!(!roundhouse::prefix::in_scope("app", "application::users"));
 }
 
 #[test]

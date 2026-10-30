@@ -83,7 +83,7 @@ pub trait ShimPolicy: 'static {
     message = "the route's security scheme does not authenticate against the handler's state",
     label = "the scheme's `AuthScheme::State` must equal the handler's `State<T>`",
     note = "use a scheme whose `State` is the handler's state, add `State<Scheme::State>` to the \
-            handler, or move `security` to a `mount!`"
+            handler, or declare `security` on the module that owns the route"
 )]
 pub trait ShimPolicyFor<S: Clone + Send + Sync + 'static>: ShimPolicy<State = S> {}
 

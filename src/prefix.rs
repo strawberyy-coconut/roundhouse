@@ -1,6 +1,6 @@
-//! Path joining, module ancestry, and duplicate detection.
+//! Path joining, template validation, and duplicate detection.
 
-/// Join a mount prefix and a leaf path.
+/// Join a module prefix and a leaf path.
 ///
 /// Trailing `/` on the left and leading `/` on the right are trimmed, repeated `/` collapse, and
 /// `{id}` / `{*rest}` segments are opaque. `"/blog" + "/"` is `/blog`, not `/blog/`.
@@ -16,34 +16,6 @@ pub fn join(left: &str, right: &str) -> String {
     } else {
         format!("/{}", pieces.join("/"))
     }
-}
-
-/// Join an ordered list of prefixes and a leaf.
-pub fn join_all<'a>(prefixes: impl IntoIterator<Item = &'a str>, leaf: &str) -> String {
-    let mut path = String::new();
-    for prefix in prefixes {
-        path = join(&path, prefix);
-    }
-    join(&path, leaf)
-}
-
-/// True when `module` is `ancestor` or a descendant of it, matching on `::` boundaries.
-pub fn is_ancestor(ancestor: &str, module: &str) -> bool {
-    module == ancestor
-        || module
-            .strip_prefix(ancestor)
-            .is_some_and(|rest| rest.starts_with("::"))
-}
-
-/// Scope matching. `app` owns `app` and `app::users`, but not `admin::users` or
-/// `application::users`.
-pub fn in_scope(scope: &str, module: &str) -> bool {
-    is_ancestor(scope, module)
-}
-
-/// The number of `::`-separated segments in a module path.
-pub fn depth(module: &str) -> usize {
-    module.split("::").count()
 }
 
 /// Decode `{name}` and `{*name}` captures from a path template, in order.
@@ -115,7 +87,7 @@ fn unescaped_chars(template: &str) -> Vec<(u8, bool)> {
 /// Called from `routes!` as a `const` item. An empty `NAMES` (a scalar path param, or no `Path`
 /// extractor at all) skips the check: the framework cannot recover a name from the type.
 ///
-/// The check is a subset check, not an equality check. A mount prefix can contribute captures the
+/// The check is a subset check, not an equality check. A module prefix can contribute captures the
 /// route table cannot see at compile time, so `Path<T>` is allowed to declare extra names; the
 /// build validates those against the full resolved path. A capture that is in the leaf template
 /// but missing from `Path<T>` is still a compile error.
@@ -251,18 +223,18 @@ pub fn validate_template(template: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate a `mount!` prefix. Captures are allowed; catch-alls are not.
+/// Validate a module prefix. Captures are allowed; catch-alls are not.
 ///
-/// A catch-all is only valid at the end of a full route. In a mount prefix it would have to
+/// A catch-all is only valid at the end of a full route. In a module prefix it would have to
 /// swallow the whole subtree, and any child path would make the full template invalid.
-pub fn validate_mount_prefix(prefix: &str) -> Result<(), String> {
+pub fn validate_prefix(prefix: &str) -> Result<(), String> {
     if prefix.is_empty() {
         return Ok(());
     }
     validate_template(prefix)?;
     if has_catch_all(prefix) {
         return Err(format!(
-            "mount prefix `{prefix}` ends in a catch-all; declare `{{*rest}}` in a leaf route instead"
+            "module prefix `{prefix}` ends in a catch-all; declare `{{*rest}}` in a leaf route instead"
         ));
     }
     Ok(())
@@ -284,14 +256,6 @@ mod tests {
     }
 
     #[test]
-    fn ancestry_matches_on_segments() {
-        assert!(is_ancestor("app", "app"));
-        assert!(is_ancestor("app", "app::users"));
-        assert!(!is_ancestor("app", "admin::users"));
-        assert!(!is_ancestor("app", "application::users"));
-    }
-
-    #[test]
     fn captures_are_ordered() {
         assert_eq!(captures("/blog/{id}/files/{*rest}"), ["id", "rest"]);
         assert_eq!(captures("/healthz"), Vec::<String>::new());
@@ -304,12 +268,12 @@ mod tests {
     }
 
     #[test]
-    fn const_check_allows_mount_captures_and_reordering() {
-        // A mount capture is invisible to the macro, so extra names are allowed.
+    fn const_check_allows_module_captures_and_reordering() {
+        // A module-prefix capture is invisible to the macro, so extra names are allowed.
         const _: () = assert_path_names("/{issue_id}", &["project_id", "issue_id"]);
         // Serde matches by name, so field order must not matter.
         const _: () = assert_path_names("/{issue_id}", &["issue_id", "project_id"]);
-        // A leaf `/` has no captures of its own; the mount supplies them.
+        // A leaf `/` has no captures of its own; the module prefix supplies them.
         const _: () = assert_path_names("/", &["project_id"]);
         const _: () = assert_path_names("/{id}", &[]);
         // Escaped literal braces are not captures.
@@ -358,12 +322,12 @@ mod tests {
     }
 
     #[test]
-    fn mount_prefixes_allow_captures_but_not_catch_alls() {
-        assert!(validate_mount_prefix("").is_ok());
-        assert!(validate_mount_prefix("/{project_id}/issues").is_ok());
-        assert!(validate_mount_prefix("/{*rest}").is_err());
-        assert!(validate_mount_prefix("/:id").is_err());
-        assert!(validate_mount_prefix("/{bar}-foo").is_err());
+    fn module_prefixes_allow_captures_but_not_catch_alls() {
+        assert!(validate_prefix("").is_ok());
+        assert!(validate_prefix("/{project_id}/issues").is_ok());
+        assert!(validate_prefix("/{*rest}").is_err());
+        assert!(validate_prefix("/:id").is_err());
+        assert!(validate_prefix("/{bar}-foo").is_err());
     }
 
     #[test]

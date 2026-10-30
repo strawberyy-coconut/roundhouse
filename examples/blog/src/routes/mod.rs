@@ -4,5 +4,10 @@ pub mod blog;
 pub mod health;
 pub mod legacy;
 
-// A group mount: crate-wide tags, no URL segment.
-mount!(tags = ["api"]);
+// The root module composes every subtree. It owns no URL segment, only crate-wide tags.
+routes! {
+    tags = ["api"],
+    ...blog,
+    ...health,
+    ...legacy,
+}

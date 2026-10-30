@@ -2,6 +2,6 @@ use roundhouse::prelude::*;
 
 struct NotAScheme;
 
-mount!(security = [NotAScheme]);
+routes! { security = [NotAScheme] }
 
 fn main() {}

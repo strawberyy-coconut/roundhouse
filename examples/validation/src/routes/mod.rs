@@ -2,4 +2,7 @@ use roundhouse::prelude::*;
 
 pub mod profiles;
 
-mount!(tags = ["examples"]);
+routes! {
+    tags = ["examples"],
+    ...profiles,
+}

@@ -1,8 +1,8 @@
 use roundhouse::prelude::*;
 
-mount!("/x");
-
 routes! {
+    prefix = "/x",
+
     get("/a", first),
     get("/a", second),
 }

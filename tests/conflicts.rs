@@ -5,8 +5,7 @@ pub struct State;
 
 mod one {
     use super::*;
-    mount!("/dup");
-    routes! { get("/x", x) }
+    routes! { prefix = "/dup", get("/x", x) }
     #[handler]
     pub async fn x() -> &'static str {
         "one"
@@ -15,8 +14,7 @@ mod one {
 
 mod two {
     use super::*;
-    mount!("/dup");
-    routes! { get("/x", x) }
+    routes! { prefix = "/dup", get("/x", x) }
     #[handler]
     pub async fn x() -> &'static str {
         "two"
@@ -26,5 +24,8 @@ mod two {
 #[test]
 #[should_panic(expected = "duplicate route")]
 fn duplicate_routes_panic_with_both_locations() {
-    roundhouse::App::new(State).scope(module_path!()).build();
+    roundhouse::App::new(State)
+        .include(&one::MODULE)
+        .include(&two::MODULE)
+        .build();
 }

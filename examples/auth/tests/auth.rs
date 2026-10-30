@@ -252,7 +252,7 @@ async fn every_documented_security_requirement_is_enforced() {
 }
 
 #[tokio::test]
-async fn mount_security_guards_a_whole_subtree() {
+async fn module_security_guards_a_whole_subtree() {
     let app = built();
 
     let response = request(&app, "/guarded/whoami", &[]).await;

@@ -26,9 +26,10 @@ async fn marker(request: axum::extract::Request, next: Next) -> Response {
 mod grouped {
     use super::*;
 
-    mount!("/grouped", tags = ["grouped"]);
-
     routes! {
+        prefix = "/grouped",
+        tags = ["grouped"],
+
         "/" => {
             get(index, summary = "Index"),
             post(create),
@@ -60,9 +61,9 @@ mod grouped {
 mod legacy {
     use super::*;
 
-    mount!("/ignored");
-
     routes! {
+        prefix = "/ignored",
+
         get("/legacy", legacy, absolute, tags = ["legacy"]),
     }
 
@@ -75,9 +76,9 @@ mod legacy {
 mod gated {
     use super::*;
 
-    mount!("/gated");
-
     routes! {
+        prefix = "/gated",
+
         get("/on", on),
         #[cfg(any())]
         get("/off", off),
@@ -98,9 +99,10 @@ mod gated {
 mod layered {
     use super::*;
 
-    mount!("/layered", layer = middleware::from_fn(marker));
-
     routes! {
+        prefix = "/layered",
+        layer = middleware::from_fn(marker),
+
         get("/ok", ok, operation_id = "layered_ok"),
         get("/entry", entry, layer = middleware::from_fn(marker)),
     }
@@ -118,13 +120,11 @@ mod layered {
 mod route_layered {
     use super::*;
 
-    mount!(
-        "/route-layered",
-        layer = middleware::from_fn(marker),
-        layer_mode = route,
-    );
-
-    routes! { get("/ok", ok, operation_id = "route_layered_ok") }
+    routes! {
+           prefix = "/route-layered",
+           layer = middleware::from_fn(marker),
+           layer_mode = route,
+    get("/ok", ok, operation_id = "route_layered_ok") }
 
     #[handler]
     pub async fn ok() -> &'static str {
@@ -162,9 +162,10 @@ mod secured {
         }
     }
 
-    mount!("/secured", security = [Bearer]);
-
-    routes! { get("/me", me) }
+    routes! {
+           prefix = "/secured",
+           security = [Bearer],
+    get("/me", me) }
 
     #[handler]
     pub async fn me(_auth: Auth<Bearer>) -> &'static str {
@@ -175,9 +176,9 @@ mod secured {
 mod plain {
     use super::*;
 
-    mount!("/plain");
-
     routes! {
+        prefix = "/plain",
+
         get("/", get_plain),
         post("/", post_plain),
     }
@@ -203,7 +204,12 @@ mod plain {
 mod split_notes {
     use super::*;
 
-    mount!("/split-notes", tags = ["split"]);
+    routes! {
+        prefix = "/split-notes",
+        tags = ["split"],
+        ...list,
+        ...show,
+    }
 
     pub mod list {
         use roundhouse::prelude::*;
@@ -271,12 +277,10 @@ mod collision_b {
 mod documented_layer {
     use roundhouse::prelude::*;
 
-    mount!(
-        "/documented",
-        doc = ::roundhouse::doc::layer::rate_limit(429),
-    );
-
-    routes! { get("/ok", ok, operation_id = "documented_ok") }
+    routes! {
+           prefix = "/documented",
+           doc = ::roundhouse::doc::layer::rate_limit(429),
+    get("/ok", ok, operation_id = "documented_ok") }
 
     #[handler]
     pub async fn ok() -> &'static str {
@@ -300,9 +304,9 @@ mod erased {
 mod shapes {
     use super::*;
 
-    mount!("/shapes");
-
     routes! {
+        prefix = "/shapes",
+
         get("/color", color),
         get("/event", event),
         post("/constrained-event", constrained_event),
@@ -525,9 +529,25 @@ mod shapes {
     }
 }
 
+routes! {
+    ...grouped,
+    ...legacy,
+    ...gated,
+    ...layered,
+    ...route_layered,
+    ...secured,
+    ...plain,
+    ...split_notes,
+    ...collision_a,
+    ...collision_b,
+    ...documented_layer,
+    ...erased,
+    ...shapes,
+}
+
 fn app() -> roundhouse::Built {
     App::new(State)
-        .scope(module_path!())
+        .fragment(__roundhouse_fragment())
         .openapi(|| Info::new("Surface", "0.1.0"))
         .build()
 }
@@ -635,7 +655,7 @@ async fn route_layer_does_not_wrap_404s() {
 }
 
 #[tokio::test]
-async fn security_from_mount_reaches_the_document() {
+async fn security_from_module_reaches_the_document() {
     let app = app();
     let document = serde_json::to_value(app.document()).unwrap();
     let security = &document["paths"]["/secured/me"]["get"]["security"][0]["bearer"];
@@ -697,7 +717,7 @@ async fn api_response_enum_sets_status_body_and_headers() {
 #[tokio::test]
 async fn document_rejections_can_be_suppressed() {
     let app = App::new(State)
-        .scope(module_path!())
+        .fragment(__roundhouse_fragment())
         .document_rejections(false)
         .openapi(|| Info::new("Surface", "0.1.0"))
         .build();
@@ -711,7 +731,7 @@ async fn document_rejections_can_be_suppressed() {
 async fn app_merge_and_custom_fallback() {
     let merged = axum::Router::new().route("/merged", axum::routing::get(|| async { "merged" }));
     let app = App::new(State)
-        .scope(module_path!())
+        .fragment(__roundhouse_fragment())
         .merge(merged)
         .fallback(|| async { (StatusCode::IM_A_TEAPOT, "custom") })
         .build();
@@ -724,8 +744,8 @@ async fn app_merge_and_custom_fallback() {
 #[tokio::test]
 async fn scope_and_include_select_roots() {
     let app = App::new(State)
-        .scope(concat!(module_path!(), "::grouped"))
-        .include(concat!(module_path!(), "::legacy"))
+        .include(&grouped::MODULE)
+        .include(&legacy::MODULE)
         .build();
     assert_eq!(get(&app, "/grouped").await.status(), StatusCode::OK);
     assert_eq!(get(&app, "/legacy").await.status(), StatusCode::OK);
@@ -833,7 +853,7 @@ async fn validate_false_opts_the_route_out_of_constraint_checks() {
 }
 
 #[tokio::test]
-async fn route_tables_in_leaf_modules_inherit_the_parent_mount() {
+async fn route_tables_in_leaf_modules_inherit_the_parent_prefix() {
     let app = app();
     assert_eq!(get(&app, "/split-notes").await.status(), StatusCode::OK);
     assert_eq!(get(&app, "/split-notes/7").await.status(), StatusCode::OK);
@@ -852,7 +872,7 @@ async fn route_tables_in_leaf_modules_inherit_the_parent_mount() {
 #[tokio::test]
 async fn validation_status_is_configurable() {
     let app = App::new(State)
-        .scope(module_path!())
+        .fragment(__roundhouse_fragment())
         .validation_status(StatusCode::UNPROCESSABLE_ENTITY)
         .openapi(|| Info::new("Surface", "0.1.0"))
         .build();
@@ -966,7 +986,7 @@ async fn declared_layer_docs_merge_into_the_operation() {
 #[tokio::test]
 async fn swagger_ui_is_served_when_requested() {
     let app = App::new(State)
-        .scope(module_path!())
+        .fragment(__roundhouse_fragment())
         .openapi(|| Info::new("Surface", "0.1.0"))
         .docs()
         .build();
@@ -997,7 +1017,7 @@ async fn documents_can_be_downgraded_to_openapi_30() {
 
 #[tokio::test]
 async fn erased_style_handlers_use_unit_state_and_extensions() {
-    let app = App::new(State).scope(module_path!()).build();
+    let app = App::new(State).fragment(__roundhouse_fragment()).build();
     let router = app
         .router()
         .layer(axum::Extension(std::sync::Arc::new(7usize)));
@@ -1030,7 +1050,7 @@ async fn complex_recursive_enums_terminate() {
 #[tokio::test]
 async fn response_validation_catches_a_document_that_lies() {
     let app = App::new(State)
-        .scope(module_path!())
+        .fragment(__roundhouse_fragment())
         .openapi(|| Info::new("Surface", "0.1.0"))
         .validate_responses()
         .build();
@@ -1056,7 +1076,10 @@ async fn response_validation_catches_a_document_that_lies() {
 
 #[tokio::test]
 async fn max_body_is_a_global_limit() {
-    let app = App::new(State).scope(module_path!()).max_body(8).build();
+    let app = App::new(State)
+        .fragment(__roundhouse_fragment())
+        .max_body(8)
+        .build();
     let response = app
         .oneshot_json(
             http::Method::POST,

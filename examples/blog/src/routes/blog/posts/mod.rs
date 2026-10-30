@@ -3,4 +3,9 @@ use roundhouse::prelude::*;
 pub mod item;
 pub mod list;
 
-mount!("/posts", tags = ["posts"]);
+routes! {
+    prefix = "/posts",
+    tags = ["posts"],
+    ...item,
+    ...list,
+}

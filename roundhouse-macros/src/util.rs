@@ -95,7 +95,7 @@ pub fn parse_security_types(input: ParseStream<'_>) -> syn::Result<Vec<Type>> {
     Ok(values)
 }
 
-/// Expand scheme types into the const slice a `RouteRecord`/`MountRecord` stores.
+/// Expand scheme types into the const slice a `Module`/`RouteRecord` stores.
 pub fn auth_slice(types: &[Type]) -> TokenStream {
     if types.is_empty() {
         quote!(&[])

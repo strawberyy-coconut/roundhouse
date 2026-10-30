@@ -139,18 +139,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         }
     };
 
-    let component_record = quote! {
-        #krate::inventory::submit! {
-            #krate::registry::ComponentTypeRecord::__new(
-                || ::core::any::TypeId::of::<#ident #ty_generics>(),
-                || <#ident #ty_generics as #krate::utoipa::ToSchema>::name().into_owned(),
-            )
-        }
-    };
-
     Ok(quote! {
-        #component_record
-
         impl #impl_generics #krate::doc::ApiSchema for #ident #ty_generics #where_clause {
             fn schema() -> #krate::utoipa::openapi::RefOr<
                 #krate::utoipa::openapi::schema::Schema,

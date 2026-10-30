@@ -35,7 +35,7 @@ const NEW_POST: &str =
     r#"{"authorId":1,"title":"Hello world","body":"First post","tags":["rust","axum"]}"#;
 
 #[tokio::test]
-async fn nested_mounts_serve_the_full_blog_crud() {
+async fn nested_modules_serve_the_full_blog_crud() {
     let app = built();
 
     assert_eq!(

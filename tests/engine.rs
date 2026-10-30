@@ -53,13 +53,13 @@ pub struct NoteOut {
     pub ok: bool,
 }
 
-fn module() -> &'static str {
-    concat!(module_path!(), "::schema_mode")
+fn module() -> &'static roundhouse::Module {
+    &schema_mode::MODULE
 }
 
 fn app(validation: Validation) -> Built {
     App::new(State)
-        .scope(module())
+        .include(module())
         .validation(validation)
         .openapi(|| roundhouse::openapi::Info::new("Engine", "0.1.0"))
         .build()
@@ -68,9 +68,8 @@ fn app(validation: Validation) -> Built {
 mod lying {
     use super::*;
 
-    mount!("/lying");
-
     routes! {
+        prefix = "/lying",
         get("/x", x, operation_id = "lying_x"),
     }
 
@@ -91,9 +90,8 @@ mod lying {
 mod schema_mode {
     use super::*;
 
-    mount!("/schema");
-
     routes! {
+        prefix = "/schema",
         post("/notes", create, operation_id = "schema_create_note"),
         post("/notes/bulk", create_bulk, operation_id = "schema_create_bulk"),
     }
@@ -206,7 +204,7 @@ async fn off_disables_constraint_checks() {
 #[tokio::test]
 async fn response_validation_uses_the_engine_keywords() {
     let app = App::new(State)
-        .scope(concat!(module_path!(), "::lying"))
+        .include(&lying::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Engine", "0.1.0"))
         .validate_responses()
         .build();

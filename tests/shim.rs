@@ -73,18 +73,18 @@ impl Authenticate for Counter {
     }
 }
 
-fn scoped(module: &'static str) -> Built {
+fn scoped(module: &'static roundhouse::Module) -> Built {
     App::new(AuthState::default())
-        .scope(module)
+        .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
         .build()
 }
 
-fn scoped_with_counter(module: &'static str) -> (Built, Arc<AtomicUsize>) {
+fn scoped_with_counter(module: &'static roundhouse::Module) -> (Built, Arc<AtomicUsize>) {
     let state = AuthState::default();
     let calls = state.calls.clone();
     let built = App::new(state)
-        .scope(module)
+        .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
         .build();
     (built, calls)
@@ -109,9 +109,9 @@ async fn problem_json(response: axum::response::Response) -> serde_json::Value {
 mod json_body {
     use super::*;
 
-    mount!("/json");
-
-    routes! { post("/", create, operation_id = "shim_json_create") }
+    routes! {
+           prefix = "/json",
+    post("/", create, operation_id = "shim_json_create") }
 
     #[handler]
     pub async fn create(axum::Json(body): axum::Json<NewNote>) -> axum::Json<NewNote> {
@@ -122,9 +122,9 @@ mod json_body {
 mod json_opt_out {
     use super::*;
 
-    mount!("/json-opt-out");
-
     routes! {
+        prefix = "/json-opt-out",
+
         post("/", create, operation_id = "shim_json_opt_out_create", validate = false)
     }
 
@@ -137,9 +137,9 @@ mod json_opt_out {
 mod owned_json {
     use super::*;
 
-    mount!("/owned-json");
-
-    routes! { post("/", create, operation_id = "shim_owned_json_create") }
+    routes! {
+           prefix = "/owned-json",
+    post("/", create, operation_id = "shim_owned_json_create") }
 
     #[handler]
     pub async fn create(Json(body): Json<NewNote>) -> Json<NewNote> {
@@ -150,9 +150,9 @@ mod owned_json {
 mod path_param {
     use super::*;
 
-    mount!("/path");
-
-    routes! { get("/{id}", show, operation_id = "shim_path_show") }
+    routes! {
+           prefix = "/path",
+    get("/{id}", show, operation_id = "shim_path_show") }
 
     #[handler]
     pub async fn show(axum::extract::Path(path): axum::extract::Path<ItemPath>) -> String {
@@ -163,9 +163,9 @@ mod path_param {
 mod query_param {
     use super::*;
 
-    mount!("/query");
-
-    routes! { get("/", list, operation_id = "shim_query_list") }
+    routes! {
+           prefix = "/query",
+    get("/", list, operation_id = "shim_query_list") }
 
     #[handler]
     pub async fn list(axum::extract::Query(filter): axum::extract::Query<Filter>) -> String {
@@ -176,9 +176,9 @@ mod query_param {
 mod auth_with_handler {
     use super::*;
 
-    mount!("/auth");
-
-    routes! { get("/", whoami, operation_id = "shim_auth_whoami", security = [Counter]) }
+    routes! {
+           prefix = "/auth",
+    get("/", whoami, operation_id = "shim_auth_whoami", security = [Counter]) }
 
     #[handler]
     pub async fn whoami(_auth: Auth<Counter>) -> &'static str {
@@ -189,9 +189,9 @@ mod auth_with_handler {
 mod auth_without_handler {
     use super::*;
 
-    mount!("/auth-open");
-
-    routes! { get("/", open, operation_id = "shim_auth_open", security = [Counter]) }
+    routes! {
+           prefix = "/auth-open",
+    get("/", open, operation_id = "shim_auth_open", security = [Counter]) }
 
     #[handler]
     pub async fn open() -> &'static str {
@@ -202,9 +202,9 @@ mod auth_without_handler {
 mod auth_with_state {
     use super::*;
 
-    mount!("/auth-state");
-
-    routes! { get("/", calls, operation_id = "shim_auth_calls", security = [Counter]) }
+    routes! {
+           prefix = "/auth-state",
+    get("/", calls, operation_id = "shim_auth_calls", security = [Counter]) }
 
     #[handler]
     pub async fn calls(State(state): State<AuthState>, _auth: Auth<Counter>) -> String {
@@ -215,9 +215,9 @@ mod auth_with_state {
 mod auth_and_body {
     use super::*;
 
-    mount!("/auth-body");
-
-    routes! { post("/", create, operation_id = "shim_auth_create", security = [Counter]) }
+    routes! {
+           prefix = "/auth-body",
+    post("/", create, operation_id = "shim_auth_create", security = [Counter]) }
 
     #[handler]
     pub async fn create(_auth: Auth<Counter>, axum::Json(body): axum::Json<NewNote>) -> String {
@@ -228,9 +228,9 @@ mod auth_and_body {
 mod strict_validated {
     use super::*;
 
-    mount!("/strict-validated");
-
-    routes! { post("/", create, operation_id = "shim_strict_validated") }
+    routes! {
+           prefix = "/strict-validated",
+    post("/", create, operation_id = "shim_strict_validated") }
 
     #[handler]
     pub async fn create(axum::Json(_body): axum::Json<NewNote>) -> StatusCode {
@@ -241,9 +241,9 @@ mod strict_validated {
 mod strict_unvalidated {
     use super::*;
 
-    mount!("/strict-unvalidated");
-
     routes! {
+        prefix = "/strict-unvalidated",
+
         post("/", create, operation_id = "shim_strict_unvalidated", validate = false)
     }
 
@@ -256,9 +256,9 @@ mod strict_unvalidated {
 mod strict_response {
     use super::*;
 
-    mount!("/strict-response");
-
-    routes! { get("/", read, operation_id = "shim_strict_response") }
+    routes! {
+           prefix = "/strict-response",
+    get("/", read, operation_id = "shim_strict_response") }
 
     #[handler]
     pub async fn read() -> axum::Json<NewNote> {
@@ -271,9 +271,9 @@ mod strict_response {
 mod raw_json {
     use super::*;
 
-    mount!("/raw-json");
-
-    routes! { post("/", create, operation_id = "shim_raw_json_create") }
+    routes! {
+           prefix = "/raw-json",
+    post("/", create, operation_id = "shim_raw_json_create") }
 
     #[handler]
     pub async fn create(axum::Json(_body): axum::Json<RawNote>) -> StatusCode {
@@ -284,9 +284,9 @@ mod raw_json {
 mod raw_json_opt_out {
     use super::*;
 
-    mount!("/raw-json-opt-out");
-
     routes! {
+        prefix = "/raw-json-opt-out",
+
         post("/", create, operation_id = "shim_raw_json_opt_out", validate = false)
     }
 
@@ -299,9 +299,9 @@ mod raw_json_opt_out {
 mod strict_json {
     use super::*;
 
-    mount!("/strict-json");
-
-    routes! { post("/", create, operation_id = "shim_strict_json_create") }
+    routes! {
+           prefix = "/strict-json",
+    post("/", create, operation_id = "shim_strict_json_create") }
 
     #[handler]
     pub async fn create(Strict(axum::Json(_body)): Strict<axum::Json<NewNote>>) -> StatusCode {
@@ -312,9 +312,9 @@ mod strict_json {
 mod strict_path {
     use super::*;
 
-    mount!("/strict-path");
-
-    routes! { get("/{id}", show, operation_id = "shim_strict_path_show") }
+    routes! {
+           prefix = "/strict-path",
+    get("/{id}", show, operation_id = "shim_strict_path_show") }
 
     #[handler]
     pub async fn show(
@@ -327,9 +327,9 @@ mod strict_path {
 mod result_body {
     use super::*;
 
-    mount!("/result");
-
-    routes! { post("/", create, operation_id = "shim_result_create") }
+    routes! {
+           prefix = "/result",
+    post("/", create, operation_id = "shim_result_create") }
 
     #[handler]
     pub async fn create(
@@ -362,7 +362,7 @@ pub struct NotASchema {
 
 #[test]
 fn a_validated_body_is_not_marked_unverified() {
-    let built = scoped(concat!(module_path!(), "::json_body"));
+    let built = scoped(&json_body::MODULE);
     let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/json"]["post"];
     assert!(
@@ -373,7 +373,7 @@ fn a_validated_body_is_not_marked_unverified() {
 
 #[tokio::test]
 async fn the_raw_layer_validates_a_body_without_serialize() {
-    let built = scoped(concat!(module_path!(), "::raw_json"));
+    let built = scoped(&raw_json::MODULE);
 
     let response = built
         .oneshot_json(http::Method::POST, "/raw-json", r#"{"title":"ab"}"#)
@@ -400,7 +400,7 @@ async fn the_raw_layer_validates_a_body_without_serialize() {
 
 #[tokio::test]
 async fn validate_false_skips_the_raw_layer() {
-    let built = scoped(concat!(module_path!(), "::raw_json_opt_out"));
+    let built = scoped(&raw_json_opt_out::MODULE);
     let response = built
         .oneshot_json(http::Method::POST, "/raw-json-opt-out", r#"{"title":"ab"}"#)
         .await;
@@ -409,7 +409,7 @@ async fn validate_false_skips_the_raw_layer() {
 
 #[tokio::test]
 async fn a_strict_axum_extractor_keeps_axum_and_adds_the_problem_rejection() {
-    let built = scoped(concat!(module_path!(), "::strict_json"));
+    let built = scoped(&strict_json::MODULE);
 
     let response = built
         .oneshot_json(http::Method::POST, "/strict-json", r#"{"title":"ab"}"#)
@@ -439,7 +439,7 @@ async fn a_strict_axum_extractor_keeps_axum_and_adds_the_problem_rejection() {
 
 #[tokio::test]
 async fn a_strict_axum_path_is_validated_by_the_engine() {
-    let built = scoped(concat!(module_path!(), "::strict_path"));
+    let built = scoped(&strict_path::MODULE);
     let response = built.oneshot_get("/strict-path/0").await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let response = built.oneshot_get("/strict-path/2").await;
@@ -448,7 +448,7 @@ async fn a_strict_axum_path_is_validated_by_the_engine() {
 
 #[test]
 fn a_strict_body_is_not_marked_unverified() {
-    let built = scoped(concat!(module_path!(), "::strict_json"));
+    let built = scoped(&strict_json::MODULE);
     let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/strict-json"]["post"];
     assert!(
@@ -459,7 +459,7 @@ fn a_strict_body_is_not_marked_unverified() {
 
 #[tokio::test]
 async fn a_foreign_body_is_validated_by_default() {
-    let built = scoped(concat!(module_path!(), "::json_body"));
+    let built = scoped(&json_body::MODULE);
     let response = built
         .oneshot_json(http::Method::POST, "/json", r#"{"title":"ab"}"#)
         .await;
@@ -475,7 +475,7 @@ async fn a_foreign_body_is_validated_by_default() {
 
 #[tokio::test]
 async fn validate_false_disables_the_shim_check() {
-    let built = scoped(concat!(module_path!(), "::json_opt_out"));
+    let built = scoped(&json_opt_out::MODULE);
     let response = built
         .oneshot_json(http::Method::POST, "/json-opt-out", r#"{"title":"ab"}"#)
         .await;
@@ -485,7 +485,7 @@ async fn validate_false_disables_the_shim_check() {
 #[tokio::test]
 async fn app_level_off_disables_the_shim() {
     let built = App::new(AuthState::default())
-        .scope(concat!(module_path!(), "::json_body"))
+        .include(&json_body::MODULE)
         .validation(Validation::Off)
         .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
         .build();
@@ -497,7 +497,7 @@ async fn app_level_off_disables_the_shim() {
 
 #[tokio::test]
 async fn the_frameworks_own_extractor_is_not_validated_twice() {
-    let built = scoped(concat!(module_path!(), "::owned_json"));
+    let built = scoped(&owned_json::MODULE);
     let response = built
         .oneshot_json(http::Method::POST, "/owned-json", r#"{"title":"ab"}"#)
         .await;
@@ -506,7 +506,7 @@ async fn the_frameworks_own_extractor_is_not_validated_twice() {
 
 #[tokio::test]
 async fn a_foreign_path_extractor_is_validated() {
-    let built = scoped(concat!(module_path!(), "::path_param"));
+    let built = scoped(&path_param::MODULE);
     let response = built.oneshot_get("/path/0").await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
@@ -516,7 +516,7 @@ async fn a_foreign_path_extractor_is_validated() {
 
 #[tokio::test]
 async fn a_foreign_query_extractor_is_validated() {
-    let built = scoped(concat!(module_path!(), "::query_param"));
+    let built = scoped(&query_param::MODULE);
     let response = built.oneshot_get("/query?q=a").await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
@@ -526,7 +526,7 @@ async fn a_foreign_query_extractor_is_validated() {
 
 #[tokio::test]
 async fn a_route_scheme_is_enforced_without_a_handler_argument() {
-    let (built, calls) = scoped_with_counter(concat!(module_path!(), "::auth_without_handler"));
+    let (built, calls) = scoped_with_counter(&auth_without_handler::MODULE);
 
     let response = built.oneshot_get("/auth-open").await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -539,7 +539,7 @@ async fn a_route_scheme_is_enforced_without_a_handler_argument() {
 
 #[tokio::test]
 async fn a_handler_that_declares_auth_authenticates_once() {
-    let (built, calls) = scoped_with_counter(concat!(module_path!(), "::auth_with_handler"));
+    let (built, calls) = scoped_with_counter(&auth_with_handler::MODULE);
 
     let response = built.oneshot(authed_get("/auth")).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -555,7 +555,7 @@ async fn a_handler_that_declares_auth_authenticates_once() {
 
 #[tokio::test]
 async fn a_stateful_handler_shares_the_schemes_state() {
-    let (built, calls) = scoped_with_counter(concat!(module_path!(), "::auth_with_state"));
+    let (built, calls) = scoped_with_counter(&auth_with_state::MODULE);
 
     let response = built.oneshot(authed_get("/auth-state")).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -564,7 +564,7 @@ async fn a_stateful_handler_shares_the_schemes_state() {
 
 #[tokio::test]
 async fn auth_precedes_the_body_and_validation_still_runs() {
-    let (built, _calls) = scoped_with_counter(concat!(module_path!(), "::auth_and_body"));
+    let (built, _calls) = scoped_with_counter(&auth_and_body::MODULE);
 
     let response = built
         .oneshot_json(http::Method::POST, "/auth-body", r#"{"title":"abc"}"#)
@@ -594,7 +594,7 @@ async fn auth_precedes_the_body_and_validation_still_runs() {
 
 #[tokio::test]
 async fn a_result_typed_body_owns_its_rejection_and_is_not_validated() {
-    let built = scoped(concat!(module_path!(), "::result_body"));
+    let built = scoped(&result_body::MODULE);
     let response = built
         .oneshot_json(http::Method::POST, "/result", r#"{"title":"ab"}"#)
         .await;
@@ -603,7 +603,7 @@ async fn a_result_typed_body_owns_its_rejection_and_is_not_validated() {
 
 #[test]
 fn the_opt_out_route_keeps_the_body_marker() {
-    let built = scoped(concat!(module_path!(), "::json_opt_out"));
+    let built = scoped(&json_opt_out::MODULE);
     let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/json-opt-out"]["post"];
     assert_eq!(operation["x-roundhouse-unverified-body"], true);
@@ -613,7 +613,7 @@ fn the_opt_out_route_keeps_the_body_marker() {
 #[test]
 fn strict_accepts_a_body_the_shim_validates() {
     App::new(AuthState::default())
-        .scope(concat!(module_path!(), "::strict_validated"))
+        .include(&strict_validated::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
         .strict()
         .try_build()
@@ -623,7 +623,7 @@ fn strict_accepts_a_body_the_shim_validates() {
 #[test]
 fn strict_rejects_an_opted_out_foreign_body() {
     let error = App::new(AuthState::default())
-        .scope(concat!(module_path!(), "::strict_unvalidated"))
+        .include(&strict_unvalidated::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
         .strict()
         .try_build()
@@ -638,7 +638,7 @@ fn strict_rejects_an_opted_out_foreign_body() {
 #[test]
 fn strict_rejects_a_foreign_response() {
     let error = App::new(AuthState::default())
-        .scope(concat!(module_path!(), "::strict_response"))
+        .include(&strict_response::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
         .strict()
         .try_build()
@@ -652,7 +652,7 @@ fn strict_rejects_a_foreign_response() {
 
 #[test]
 fn the_document_publishes_the_route_scheme() {
-    let built = scoped(concat!(module_path!(), "::auth_without_handler"));
+    let built = scoped(&auth_without_handler::MODULE);
     let document = serde_json::to_value(built.document()).unwrap();
     assert_eq!(
         document["paths"]["/auth-open"]["get"]["security"][0]["Counter"],

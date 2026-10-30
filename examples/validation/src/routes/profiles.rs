@@ -3,9 +3,9 @@ use roundhouse::prelude::*;
 use crate::domain::Profile;
 use crate::error::ApiError;
 
-mount!("/profiles", tags = ["profiles"]);
-
 routes! {
+    prefix = "/profiles",
+    tags = ["profiles"],
     post("/", create, summary = "Create a profile"),
     post(
         "/unchecked",

@@ -9,14 +9,14 @@
 //! cannot be documented without an enforcement decision. Several required `Auth<A>` extractors
 //! AND into one requirement; `Option<Auth<A>>` adds the unauthenticated alternative.
 //!
-//! `mount!(security = [A, ...])` names scheme *types*, not strings. Each entry installs the
-//! `Auth<A>` check on every route below the mount as well as publishing the requirement, so the
-//! document cannot advertise a check the router does not perform. Scheme kinds are never guessed
-//! from names.
+//! Module-level `security = [A, ...]` names scheme *types*, not strings. It installs the `Auth<A>`
+//! check on every route below that module as well as publishing the requirement, so the document
+//! cannot advertise a check the router does not perform. Scheme kinds are never guessed from
+//! names.
 //!
 //! A `routes!` entry with one scheme is enforced by the generated handler shim instead: the
 //! shim extracts [`AuthEnforce<A>`] before the body, and the route's guard is skipped
-//! (`RouteRecord::shim_auth`). If the handler also takes `Auth<A>` (or a mount guard already
+//! (`RouteRecord::shim_auth`). If the handler also takes `Auth<A>` (or a module guard already
 //! authenticated), the successful extraction leaves an [`Authenticated<A>`] marker in the
 //! request extensions and the shim's enforcement is a no-op, so one request authenticates at
 //! most once per scheme.
@@ -89,7 +89,7 @@ pub fn auth_doc<A: AuthScheme, Scopes: AuthScopes>() -> AuthDoc {
 
 /// A security requirement that also installs its own enforcer.
 ///
-/// `mount!(security = [Bearer])` and a `routes!` entry's `security = [Bearer]` expand to these.
+/// A module's `security = [Bearer]` and a `routes!` entry's `security = [Bearer]` expand to these.
 /// The guard is applied to the route's `MethodRouter`, so the declaration and the check are the
 /// same piece of code: the document cannot advertise a scheme that nothing authenticates.
 #[derive(Clone, Copy)]
@@ -103,7 +103,7 @@ pub struct AuthGuard {
 }
 
 impl AuthGuard {
-    /// Construct a guard. Called by `mount!`/`routes!`; not part of the stable API.
+    /// Construct a guard. Called by `routes!`; not part of the stable API.
     #[doc(hidden)]
     pub const fn __new<A: Authenticate>() -> Self {
         Self {
@@ -171,8 +171,8 @@ async fn enforce<A: Authenticate>(
 
 /// A request-scoped marker: this scheme has already authenticated.
 ///
-/// It is inserted by `Auth<A>`, `Option<Auth<A>>` after a successful extraction and by the
-/// mount-level guard. A generated shim's [`AuthEnforce`] checks it, so a route that both declares
+/// It is inserted by `Auth<A>`, `Option<Auth<A>>` after a successful extraction and by a
+/// module-level guard. A generated shim's [`AuthEnforce`] checks it, so a route that both declares
 /// `security = [A]` and takes `Auth<A>` authenticates once.
 pub struct Authenticated<A: AuthScheme>(std::marker::PhantomData<A>);
 
@@ -187,8 +187,8 @@ impl<A: AuthScheme> Copy for Authenticated<A> {}
 /// Enforce a scheme for a route entry without taking its identity.
 ///
 /// This is the extractor a `security = [A]` route entry installs when the handler did not ask for
-/// `Auth<A>`. It is idempotent: if the handler (or a mount guard) already authenticated, this is a
-/// no-op.
+/// `Auth<A>`. It is idempotent: if the handler (or a module guard) already authenticated, this is
+/// a no-op.
 pub struct AuthEnforce<A: Authenticate>(std::marker::PhantomData<A>);
 
 #[allow(clippy::manual_async_fn)]
@@ -225,7 +225,7 @@ pub trait AuthScheme: Sized + Send + Sync + 'static {
     /// The app state this scheme authenticates against. A handler using `Auth<A>` pins its
     /// `MethodRouter` to this type, just like `State<Self::State>`.
     ///
-    /// `Clone` is required so a `mount!(security = [A])` guard can capture the state it
+    /// `Clone` is required so a module `security = [A]` guard can capture the state it
     /// authenticates against. Application states are already `Clone` for `App`.
     type State: Clone + Send + Sync + 'static;
 

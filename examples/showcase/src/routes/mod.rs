@@ -5,4 +5,11 @@ pub mod events;
 pub mod hidden;
 pub mod misc;
 
-mount!(tags = ["showcase"]);
+routes! {
+    tags = ["showcase"],
+    ...collisions::a,
+    ...collisions::b,
+    ...events,
+    ...hidden,
+    ...misc,
+}

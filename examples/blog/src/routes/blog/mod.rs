@@ -5,4 +5,11 @@ pub mod authors;
 pub mod metrics;
 pub mod posts;
 
-mount!("/api/blog", tags = ["blog"]);
+routes! {
+    prefix = "/api/blog",
+    tags = ["blog"],
+    ...admin,
+    ...authors,
+    ...metrics,
+    ...posts,
+}

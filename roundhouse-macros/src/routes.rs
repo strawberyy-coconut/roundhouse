@@ -9,6 +9,24 @@ use crate::util::{
     auth_slice, last_segment, marker_type, parse_security_types, parse_u16, string_slice,
 };
 
+#[derive(Clone, Copy, Default)]
+enum LayerMode {
+    #[default]
+    Full,
+    Route,
+}
+
+#[derive(Default)]
+struct ModuleOptions {
+    prefix: Option<LitStr>,
+    tags: Vec<LitStr>,
+    security: Vec<Type>,
+    layer: Option<Expr>,
+    layer_mode: LayerMode,
+    hidden: bool,
+    doc: Option<Expr>,
+}
+
 struct Entry {
     attrs: Vec<Attribute>,
     method: Ident,
@@ -31,18 +49,9 @@ struct Entry {
     response_override: bool,
 }
 
-impl Parse for Entry {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let attrs = Attribute::parse_outer(input)?;
-        let method: Ident = input.parse()?;
-        let content;
-        syn::parenthesized!(content in input);
-
-        let path: LitStr = content.parse()?;
-        content.parse::<Token![,]>()?;
-        let handler: Path = content.parse()?;
-
-        let mut entry = Entry {
+impl Entry {
+    fn new(attrs: Vec<Attribute>, method: Ident, path: LitStr, handler: Path) -> Self {
+        Self {
             attrs,
             method,
             path,
@@ -62,105 +71,372 @@ impl Parse for Entry {
             deprecated: false,
             public: false,
             response_override: false,
-        };
-        parse_attrs(&content, &mut entry)?;
+        }
+    }
+
+    /// A top-level entry: `get("/path", handler, option = ..)` or `get "/path" => handler`.
+    fn parse_flat(input: ParseStream<'_>) -> Result<Self> {
+        let attrs = Attribute::parse_outer(input)?;
+        let method: Ident = input.parse()?;
+
+        if input.peek(syn::token::Paren) {
+            // `get("/path", handler, option = ..)`
+            let content;
+            syn::parenthesized!(content in input);
+            let path: LitStr = content.parse()?;
+            content.parse::<Token![,]>()?;
+            let handler: Path = content.parse()?;
+            let mut entry = Entry::new(attrs, method, path, handler);
+            parse_entry_options(&content, &mut entry, false)?;
+            Ok(entry)
+        } else {
+            // `get "/path" => handler, option = ..`
+            let path: LitStr = input.parse()?;
+            input.parse::<Token![=>]>()?;
+            let handler: Path = input.parse()?;
+            let mut entry = Entry::new(attrs, method, path, handler);
+            parse_entry_options(input, &mut entry, true)?;
+            Ok(entry)
+        }
+    }
+
+    /// An entry inside `"/path" => { get(handler, option = ..) }`: the group supplies the path.
+    fn parse_grouped(input: ParseStream<'_>, path: LitStr) -> Result<Self> {
+        let attrs = Attribute::parse_outer(input)?;
+        let method: Ident = input.parse()?;
+        let content;
+        syn::parenthesized!(content in input);
+        let handler: Path = content.parse()?;
+        let mut entry = Entry::new(attrs, method, path, handler);
+        parse_entry_options(&content, &mut entry, false)?;
         Ok(entry)
     }
 }
 
-fn parse_group_entry(input: ParseStream<'_>, path: LitStr) -> Result<Entry> {
-    let attrs = Attribute::parse_outer(input)?;
-    let method: Ident = input.parse()?;
-    let content;
-    syn::parenthesized!(content in input);
-
-    let handler: Path = content.parse()?;
-    let mut entry = Entry {
-        attrs,
-        method,
-        path,
-        assert_path: None,
-        handler,
-        summary: None,
-        description: None,
-        operation_id: None,
-        tags: Vec::new(),
-        security: Vec::new(),
-        responses: Vec::new(),
-        layer: None,
-        doc: None,
-        hidden: false,
-        absolute: false,
-        validate: true,
-        deprecated: false,
-        public: false,
-        response_override: false,
-    };
-    parse_attrs(&content, &mut entry)?;
-    Ok(entry)
+#[derive(Default)]
+struct Body {
+    entries: Vec<Entry>,
+    groups: Vec<Group>,
+    spreads: Vec<Path>,
 }
 
-fn parse_attrs(content: ParseStream<'_>, entry: &mut Entry) -> Result<()> {
+impl Body {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        Self::parse_body(input, None)
+    }
+
+    fn parse_shared(input: ParseStream<'_>, path: LitStr) -> Result<Self> {
+        Self::parse_body(input, Some(path))
+    }
+
+    fn parse_body(input: ParseStream<'_>, shared_path: Option<LitStr>) -> Result<Self> {
+        let mut body = Body::default();
+
+        while !input.is_empty() {
+            let attrs = Attribute::parse_outer(input)?;
+
+            if input.peek(Token![...]) {
+                input.parse::<Token![...]>()?;
+                body.spreads.push(input.parse::<Path>()?);
+                if input.peek(Token![,]) {
+                    input.parse::<Token![,]>()?;
+                }
+                continue;
+            }
+
+            if input.peek(LitStr) {
+                let path: LitStr = input.parse()?;
+                let shared_path = input.peek(Token![=>]);
+                let options = if shared_path {
+                    input.parse::<Token![=>]>()?;
+                    ModuleOptions::default()
+                } else {
+                    parse_module_options(input)?
+                };
+                let content;
+                syn::braced!(content in input);
+                let group_body = if shared_path {
+                    // `"/{id}" => { get(show) }` is one path shared by several methods.
+                    Body::parse_shared(&content, path.clone())?
+                } else {
+                    // `"/notes" [tags = ..] { get "/" => list }` is a prefix group.
+                    Body::parse(&content)?
+                };
+                let mut group = Group {
+                    path,
+                    options,
+                    shared_path,
+                    body: group_body,
+                };
+                // In a group, attributes written before the path apply to every entry inside.
+                for entry in &mut group.body.entries {
+                    entry.attrs.splice(0..0, attrs.clone());
+                }
+                body.groups.push(group);
+            } else {
+                let mut entry = match &shared_path {
+                    Some(path) => Entry::parse_grouped(input, path.clone())?,
+                    None => Entry::parse_flat(input)?,
+                };
+                entry.attrs.splice(0..0, attrs);
+                body.entries.push(entry);
+            }
+
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
+        }
+
+        Ok(body)
+    }
+}
+
+struct Group {
+    path: LitStr,
+    options: ModuleOptions,
+    /// `"/path" => { get(handler) }`: the group supplies the full entry path.
+    shared_path: bool,
+    body: Body,
+}
+
+pub struct RoutesInput {
+    options: ModuleOptions,
+    body: Body,
+}
+
+impl Parse for RoutesInput {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        // Root options come before the first entry:
+        //
+        //     routes! {
+        //         prefix = "/api",
+        //         tags = ["api"],
+        //         "/notes" [tags = ["notes"]] { ... }
+        //     }
+        //
+        // A bare `"/api" { ... }` is the same tree with an anonymous root; group options live in
+        // the brackets.
+        let options = parse_root_options(input)?;
+        let body = Body::parse(input)?;
+        Ok(Self { options, body })
+    }
+}
+
+fn parse_root_options(input: ParseStream<'_>) -> Result<ModuleOptions> {
+    let mut options = ModuleOptions::default();
+    while input.peek(Ident) {
+        let fork = input.fork();
+        let key: Ident = fork.call(Ident::parse_any)?;
+        let name = key.to_string();
+        let is_flag = name == "hidden";
+        let is_key = matches!(
+            name.as_str(),
+            "prefix" | "tags" | "security" | "layer" | "layer_mode" | "doc"
+        );
+        if !is_flag && !is_key {
+            break;
+        }
+        if !is_flag && !fork.peek(Token![=]) {
+            break;
+        }
+
+        let key: Ident = input.call(Ident::parse_any)?;
+        parse_module_key(input, &mut options, key)?;
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+        } else {
+            break;
+        }
+    }
+    Ok(options)
+}
+
+const ENTRY_KEYS: &[&str] = &[
+    "summary",
+    "description",
+    "operation_id",
+    "path",
+    "tags",
+    "security",
+    "responses",
+    "layer",
+    "doc",
+    "hidden",
+    "absolute",
+    "public",
+    "deprecated",
+    "override",
+    "validate",
+];
+
+fn parse_entry_options(
+    content: ParseStream<'_>,
+    entry: &mut Entry,
+    stop_at_unknown: bool,
+) -> Result<()> {
     while content.peek(Token![,]) {
+        if stop_at_unknown {
+            let fork = content.fork();
+            fork.parse::<Token![,]>()?;
+            if fork.is_empty() {
+                content.parse::<Token![,]>()?;
+                break;
+            }
+            let key: Ident = match fork.call(Ident::parse_any) {
+                Ok(key) => key,
+                Err(_) => break,
+            };
+            // A known option is ours. An unknown identifier followed by `=` is still an option
+            // (report it as unknown); anything else starts the next entry.
+            if !ENTRY_KEYS.contains(&key.to_string().as_str()) && !fork.peek(Token![=]) {
+                break;
+            }
+        }
+
         content.parse::<Token![,]>()?;
         if content.is_empty() {
             break;
         }
         let key: Ident = content.call(Ident::parse_any)?;
-        match key.to_string().as_str() {
-            "summary" => {
-                content.parse::<Token![=]>()?;
-                entry.summary = Some(content.parse()?);
-            }
-            "description" => {
-                content.parse::<Token![=]>()?;
-                entry.description = Some(content.parse()?);
-            }
-            "operation_id" => {
-                content.parse::<Token![=]>()?;
-                entry.operation_id = Some(content.parse()?);
-            }
-            "path" => {
-                content.parse::<Token![=]>()?;
-                entry.assert_path = Some(content.parse()?);
-            }
-            "tags" => {
-                content.parse::<Token![=]>()?;
-                entry.tags = parse_string_list(content)?;
-            }
-            "security" => {
-                content.parse::<Token![=]>()?;
-                entry.security = parse_security_types(content)?;
-            }
-            "responses" => {
-                let responses;
-                syn::parenthesized!(responses in content);
-                entry.responses = parse_responses(&responses)?;
-            }
-            "layer" => {
-                content.parse::<Token![=]>()?;
-                entry.layer = Some(content.parse()?);
-            }
-            "doc" => {
-                content.parse::<Token![=]>()?;
-                entry.doc = Some(content.parse()?);
-            }
-            "hidden" => entry.hidden = true,
-            "absolute" => entry.absolute = true,
-            "public" => entry.public = true,
-            "deprecated" => entry.deprecated = true,
-            "override" => entry.response_override = true,
-            "validate" => {
-                content.parse::<Token![=]>()?;
-                let value: syn::LitBool = content.parse()?;
-                entry.validate = value.value;
-            }
-            other => {
-                return Err(syn::Error::new(
-                    key.span(),
-                    format!("unknown routes! attribute `{other}`"),
-                ));
-            }
+        parse_entry_key(content, entry, key)?;
+    }
+    Ok(())
+}
+
+fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> Result<()> {
+    match key.to_string().as_str() {
+        "summary" => {
+            content.parse::<Token![=]>()?;
+            entry.summary = Some(content.parse()?);
+        }
+        "description" => {
+            content.parse::<Token![=]>()?;
+            entry.description = Some(content.parse()?);
+        }
+        "operation_id" => {
+            content.parse::<Token![=]>()?;
+            entry.operation_id = Some(content.parse()?);
+        }
+        "path" => {
+            content.parse::<Token![=]>()?;
+            entry.assert_path = Some(content.parse()?);
+        }
+        "tags" => {
+            content.parse::<Token![=]>()?;
+            entry.tags = parse_string_list(content)?;
+        }
+        "security" => {
+            content.parse::<Token![=]>()?;
+            entry.security = parse_security_types(content)?;
+        }
+        "responses" => {
+            let responses;
+            syn::parenthesized!(responses in content);
+            entry.responses = parse_responses(&responses)?;
+        }
+        "layer" => {
+            content.parse::<Token![=]>()?;
+            entry.layer = Some(content.parse()?);
+        }
+        "doc" => {
+            content.parse::<Token![=]>()?;
+            entry.doc = Some(content.parse()?);
+        }
+        "hidden" => entry.hidden = true,
+        "absolute" => entry.absolute = true,
+        "public" => entry.public = true,
+        "deprecated" => entry.deprecated = true,
+        "override" => entry.response_override = true,
+        "validate" => {
+            content.parse::<Token![=]>()?;
+            let value: syn::LitBool = content.parse()?;
+            entry.validate = value.value;
+        }
+        other => {
+            return Err(syn::Error::new(
+                key.span(),
+                format!("unknown routes! attribute `{other}`"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Parse `[tags = .., security = .., layer = .., ...]` after a group's path.
+fn parse_module_options(input: ParseStream<'_>) -> Result<ModuleOptions> {
+    if input.peek(syn::token::Bracket) {
+        let content;
+        syn::bracketed!(content in input);
+        let options = parse_module_options_into(&content, ModuleOptions::default())?;
+        if let Some(prefix) = &options.prefix {
+            return Err(syn::Error::new(
+                prefix.span(),
+                "a group's prefix is its path; remove `prefix = ..` from the brackets",
+            ));
+        }
+        return Ok(options);
+    }
+    Ok(ModuleOptions::default())
+}
+
+fn parse_module_options_into(
+    input: ParseStream<'_>,
+    mut options: ModuleOptions,
+) -> Result<ModuleOptions> {
+    while !input.is_empty() {
+        let key: Ident = input.parse()?;
+        parse_module_key(input, &mut options, key)?;
+        if input.peek(Token![,]) {
+            input.parse::<Token![,]>()?;
+        } else {
+            break;
+        }
+    }
+    Ok(options)
+}
+
+fn parse_module_key(input: ParseStream<'_>, options: &mut ModuleOptions, key: Ident) -> Result<()> {
+    match key.to_string().as_str() {
+        "prefix" => {
+            input.parse::<Token![=]>()?;
+            options.prefix = Some(input.parse()?);
+        }
+        "tags" => {
+            input.parse::<Token![=]>()?;
+            options.tags = parse_string_list(input)?;
+        }
+        "security" => {
+            input.parse::<Token![=]>()?;
+            options.security = parse_security_types(input)?;
+        }
+        "layer" => {
+            input.parse::<Token![=]>()?;
+            options.layer = Some(input.parse()?);
+        }
+        "layer_mode" => {
+            input.parse::<Token![=]>()?;
+            let mode: Ident = input.parse()?;
+            options.layer_mode = match mode.to_string().as_str() {
+                "full" => LayerMode::Full,
+                "route" => LayerMode::Route,
+                other => {
+                    return Err(syn::Error::new(
+                        mode.span(),
+                        format!("expected `full` or `route`, found `{other}`"),
+                    ));
+                }
+            };
+        }
+        "hidden" => options.hidden = true,
+        "doc" => {
+            input.parse::<Token![=]>()?;
+            options.doc = Some(input.parse()?);
+        }
+        other => {
+            return Err(syn::Error::new(
+                key.span(),
+                format!("unknown module attribute `{other}`"),
+            ));
         }
     }
     Ok(())
@@ -196,96 +472,197 @@ fn parse_responses(input: ParseStream<'_>) -> Result<Vec<(u16, Option<Type>)>> {
     Ok(responses)
 }
 
-pub struct RoutesInput {
-    entries: Vec<Entry>,
-    spreads: Vec<syn::Path>,
-}
-
-impl Parse for RoutesInput {
-    fn parse(input: ParseStream<'_>) -> Result<Self> {
-        let mut entries = Vec::new();
-        let mut spreads = Vec::new();
-
-        while !input.is_empty() {
-            let attrs = Attribute::parse_outer(input)?;
-
-            if input.peek(Token![...]) {
-                input.parse::<Token![...]>()?;
-                spreads.push(input.parse::<syn::Path>()?);
-                if input.peek(Token![,]) {
-                    input.parse::<Token![,]>()?;
-                }
-                continue;
-            }
-
-            if input.peek(LitStr) {
-                // Grouped form: "/{id}" => { get(show), patch(update) }
-                let path: LitStr = input.parse()?;
-                input.parse::<Token![=>]>()?;
-                let content;
-                syn::braced!(content in input);
-                while !content.is_empty() {
-                    let mut entry = parse_group_entry(&content, path.clone())?;
-                    entry.attrs.splice(0..0, attrs.clone());
-                    entries.push(entry);
-                    if content.peek(Token![,]) {
-                        content.parse::<Token![,]>()?;
-                    }
-                }
-            } else {
-                let mut entry: Entry = input.parse()?;
-                entry.attrs.splice(0..0, attrs);
-                entries.push(entry);
-            }
-
-            if input.peek(Token![,]) {
-                input.parse::<Token![,]>()?;
-            }
-        }
-
-        Ok(Self { entries, spreads })
-    }
-}
-
 pub fn expand(input: RoutesInput) -> TokenStream {
-    if let Err(error) = validate_entries(&input.entries) {
+    let mut flattened = Vec::new();
+    flatten(&input.body, "", &mut flattened);
+    if let Err(error) = validate_entries(&flattened) {
         return error.to_compile_error();
     }
+
     let krate = crate::util::krate();
-    let mut output = TokenStream::new();
-    for entry in input.entries {
-        let expanded = expand_entry(entry);
-        output.extend(expanded);
-    }
-    let spreads = &input.spreads;
-    output.extend(quote! {
+    let mut ids = 0usize;
+    let mut definitions = TokenStream::new();
+    emit_module(
+        &format_ident!("MODULE"),
+        true,
+        input.options.prefix.as_ref(),
+        &input.options,
+        &input.body,
+        &mut ids,
+        &mut definitions,
+    );
+
+    quote! {
+        #definitions
+
         /// The explicit fragment this `routes!` table contributes.
         #[doc(hidden)]
         pub fn __roundhouse_fragment() -> #krate::Fragment {
-            let mut __fragment = #krate::Fragment::new(module_path!());
-            #( __fragment = __fragment.include(#spreads::__roundhouse_fragment()); )*
-            __fragment
+            #krate::Fragment::new(&MODULE)
         }
+    }
+}
+
+fn emit_module(
+    name: &Ident,
+    public: bool,
+    prefix: Option<&LitStr>,
+    options: &ModuleOptions,
+    body: &Body,
+    ids: &mut usize,
+    definitions: &mut TokenStream,
+) {
+    let krate = crate::util::krate();
+    let module_id = *ids;
+    *ids += 1;
+
+    let mut routes = Vec::new();
+    for entry in &body.entries {
+        let id = *ids;
+        *ids += 1;
+        let ExpandedEntry { defs, record } = expand_entry(entry, id);
+        definitions.extend(defs);
+        let attrs = &entry.attrs;
+        routes.push(quote!(#(#attrs)* #record));
+    }
+
+    let mut children = Vec::new();
+    for (index, group) in body.groups.iter().enumerate() {
+        let child_name = format_ident!("__ROUNDHOUSE_GROUP_{module_id}_{index}");
+        let prefix = if group.shared_path {
+            None
+        } else {
+            Some(&group.path)
+        };
+        emit_module(
+            &child_name,
+            false,
+            prefix,
+            &group.options,
+            &group.body,
+            ids,
+            definitions,
+        );
+        children.push(quote!(&#child_name));
+    }
+    for spread in &body.spreads {
+        children.push(quote!(&#spread::MODULE));
+    }
+
+    let prefix_value = prefix.map(|prefix| prefix.value()).unwrap_or_default();
+    let prefix_lit = LitStr::new(&prefix_value, proc_macro2::Span::call_site());
+    let tags = string_slice(&options.tags);
+    let security = auth_slice(&options.security);
+    let hidden = options.hidden;
+
+    let layer_fn = format_ident!("__roundhouse_module_layer_{module_id}");
+    let layer_value = if options.layer.is_some() {
+        quote!(::core::option::Option::Some(#layer_fn))
+    } else {
+        quote!(::core::option::Option::None)
+    };
+    if let Some(expr) = &options.layer {
+        let body = match options.layer_mode {
+            LayerMode::Full => quote!(router.layer(#expr)),
+            LayerMode::Route => quote!(router.route_layer(#expr)),
+        };
+        definitions.extend(quote! {
+            fn #layer_fn(
+                router: #krate::axum::Router,
+            ) -> #krate::axum::Router {
+                #body
+            }
+        });
+    }
+
+    let doc_fn = format_ident!("__roundhouse_module_doc_{module_id}");
+    let doc_value = if options.doc.is_some() {
+        quote!(::core::option::Option::Some(#doc_fn))
+    } else {
+        quote!(::core::option::Option::None)
+    };
+    if let Some(expr) = &options.doc {
+        definitions.extend(quote! {
+            fn #doc_fn() -> #krate::doc::layer::LayerDoc {
+                #expr
+            }
+        });
+    }
+
+    let line = match prefix {
+        Some(prefix) => {
+            let line = prefix.span().start().line as u32;
+            quote!(#line)
+        }
+        None => quote!(line!()),
+    };
+    let visibility = if public { quote!(pub) } else { quote!() };
+
+    definitions.extend(quote! {
+        #visibility const #name: #krate::registry::Module = #krate::registry::Module::__new(
+            module_path!(),
+            file!(),
+            #line,
+            #prefix_lit,
+            #tags,
+            #security,
+            #hidden,
+            #layer_value,
+            #doc_value,
+            &[#(#routes),*],
+            &[#(#children),*],
+        );
     });
-    output
+}
+
+struct ExpandedEntry {
+    defs: TokenStream,
+    record: Ident,
+}
+
+fn flatten<'a>(body: &'a Body, prefix: &str, out: &mut Vec<(String, &'a Entry)>) {
+    for entry in &body.entries {
+        let path = join_paths(prefix, &entry.path.value());
+        out.push((path, entry));
+    }
+    for group in &body.groups {
+        if group.shared_path {
+            flatten(&group.body, prefix, out);
+        } else {
+            let prefix = join_paths(prefix, &group.path.value());
+            flatten(&group.body, &prefix, out);
+        }
+    }
+}
+
+fn join_paths(prefix: &str, path: &str) -> String {
+    if prefix.is_empty() {
+        path.to_string()
+    } else if path == "/" {
+        prefix.to_string()
+    } else {
+        format!(
+            "{}/{}",
+            prefix.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
+    }
 }
 
 /// Table-local checks. These are the checks a single `routes!` invocation can make from the
 /// tokens alone: two entries that resolve to the same method and template, and two entries whose
 /// operation ids collide. Cross-table collisions still need the resolved route table.
-fn validate_entries(entries: &[Entry]) -> Result<()> {
+fn validate_entries(entries: &[(String, &Entry)]) -> Result<()> {
     use std::collections::HashMap;
 
     let mut routes: HashMap<(String, String), &Entry> = HashMap::new();
     let mut explicit_ids: HashMap<String, proc_macro2::Span> = HashMap::new();
     let mut derived_ids: HashMap<(String, String), &Entry> = HashMap::new();
 
-    for entry in entries {
+    for (full_path, entry) in entries {
         let method = entry.method.to_string();
-        let path = normalise_path(&entry.path.value());
+        let path = normalise_path(full_path);
 
-        // `any` and a concrete method on the same template conflict, and two concrete methods
-        // with the same template collide.
         if let Some(first) = routes.get(&(method.clone(), path.clone())) {
             return Err(duplicate_route_error(first, entry, &method, &path));
         }
@@ -445,14 +822,17 @@ fn method_variant(method: &Ident) -> Result<TokenStream> {
     })
 }
 
-fn expand_entry(entry: Entry) -> TokenStream {
+fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
     let krate = crate::util::krate();
     if !entry.path.value().starts_with('/') {
-        return syn::Error::new(
-            entry.path.span(),
-            "route paths must start with `/` (use `/` for a module's own path)",
-        )
-        .to_compile_error();
+        return ExpandedEntry {
+            defs: syn::Error::new(
+                entry.path.span(),
+                "route paths must start with `/` (use `/` for a module's own path)",
+            )
+            .to_compile_error(),
+            record: format_ident!("__ROUNDHOUSE_ROUTE_{index}"),
+        };
     }
     if entry
         .path
@@ -460,33 +840,35 @@ fn expand_entry(entry: Entry) -> TokenStream {
         .split('/')
         .any(|segment| segment.starts_with(':'))
     {
-        return syn::Error::new(
-            entry.path.span(),
-            "axum 0.7 path syntax (`:id`) is not supported; use `{id}` for a capture and `{*rest}` for a wildcard",
-        )
-        .to_compile_error();
+        return ExpandedEntry {
+            defs: syn::Error::new(
+                entry.path.span(),
+                "axum 0.7 path syntax (`:id`) is not supported; use `{id}` for a capture and `{*rest}` for a wildcard",
+            )
+            .to_compile_error(),
+            record: format_ident!("__ROUNDHOUSE_ROUTE_{index}"),
+        };
     }
+
     let attrs = &entry.attrs;
     let method_ident = format_ident!("{}", entry.method);
     let method = match method_variant(&entry.method) {
         Ok(method) => method,
-        Err(error) => return error.to_compile_error(),
+        Err(error) => {
+            return ExpandedEntry {
+                defs: error.to_compile_error(),
+                record: format_ident!("__ROUNDHOUSE_ROUTE_{index}"),
+            };
+        }
     };
     let path = &entry.path;
     let assert_path = option_lit(&entry.assert_path);
     let handler = &entry.handler;
     let marker_type = marker_type(handler);
-    // Validation is on by default. The policy is chosen here, at the route entry, and the shim
-    // (generated beside the handler) applies it without changing the handler's signature.
-    //
-    // One scheme is enforced by the shim, which authenticates as part of extraction. Several
-    // schemes stay on the guard layer (they form one AND requirement); the shim only validates.
     let single_scheme = match entry.security.as_slice() {
         [scheme] => Some(scheme),
         _ => None,
     };
-    // The state the router provides to the shim. With one scheme, the shim needs the scheme's
-    // state even when the handler itself is stateless.
     let shim_state = match single_scheme {
         Some(scheme) => quote!(<#scheme as #krate::auth::AuthScheme>::State),
         None => quote!(<#marker_type as #krate::doc::HandlerMeta>::State),
@@ -513,18 +895,16 @@ fn expand_entry(entry: Entry) -> TokenStream {
             >()
         ),
     };
+    let handler_alias = format_ident!("__RoundhouseHandler{index}");
     // Through an alias so a missing `#[handler]` reports one "type not found" error rather than
     // also interpreting the marker as a module path.
-    let route_handler = quote!(__RoundhouseHandler::__roundhouse_shim::<#policy>);
-    // The router skips the guard layer for a scheme the shim already enforces.
+    let route_handler = quote!(#handler_alias::__roundhouse_shim::<#policy>);
     let shim_auth = match single_scheme {
         Some(scheme) => quote!(&[<#scheme as #krate::auth::AuthScheme>::NAME]),
         None => quote!(&[]),
     };
     let operation_id = option_lit(&entry.operation_id);
     let handler_name = LitStr::new(&last_segment(handler), entry.path.span());
-    // `assert!` treats its message as a format string. Escape the template's braces so a capture
-    // is printed literally in the compile error.
     let assertion_message = LitStr::new(
         &format!(
             "roundhouse: Path<T> in handler `{}` does not declare every capture in `{}`",
@@ -553,17 +933,15 @@ fn expand_entry(entry: Entry) -> TokenStream {
             "roundhouse: `{} {}` has no success response; return a concrete response type or \
              declare `responses(..)` in the table",
             method_ident,
-            // `assert!` treats the message as a format string; keep captures literal.
             entry.path.value().replace('{', "{{").replace('}', "}}")
         ),
         entry.path.span(),
     );
-    // Point the const assertion at the entry's path rather than the whole macro invocation.
     let success_assert = quote_spanned! { entry.path.span()=>
         const _: () = {
             if !#declared_success {
                 if let ::core::option::Option::Some(__statuses) =
-                    <__RoundhouseHandler as #krate::doc::HandlerMeta>::INFERRED_SUCCESS
+                    <#handler_alias as #krate::doc::HandlerMeta>::INFERRED_SUCCESS
                 {
                     assert!(!__statuses.is_empty(), #no_success_message);
                 }
@@ -586,15 +964,20 @@ fn expand_entry(entry: Entry) -> TokenStream {
     });
     let line = entry.path.span().start().line as u32;
 
+    let route_fn = format_ident!("__roundhouse_route_{index}");
+    let responses_fn = format_ident!("__roundhouse_responses_{index}");
+    let layer_fn = format_ident!("__roundhouse_layer_{index}");
+    let doc_fn = format_ident!("__roundhouse_entry_doc_{index}");
+    let record_name = format_ident!("__ROUNDHOUSE_ROUTE_{index}");
+
     let layer_value = if entry.layer.is_some() {
-        quote!(::core::option::Option::Some(__roundhouse_route_layer))
+        quote!(::core::option::Option::Some(#layer_fn))
     } else {
         quote!(::core::option::Option::None)
     };
-
     let layer = match &entry.layer {
         Some(expr) => quote! {
-            fn __roundhouse_route_layer(
+            fn #layer_fn(
                 method_router: #krate::axum::routing::MethodRouter,
             ) -> #krate::axum::routing::MethodRouter {
                 method_router.layer(#expr)
@@ -602,16 +985,14 @@ fn expand_entry(entry: Entry) -> TokenStream {
         },
         None => quote! {},
     };
-
     let doc_value = if entry.doc.is_some() {
-        quote!(::core::option::Option::Some(__roundhouse_entry_doc))
+        quote!(::core::option::Option::Some(#doc_fn))
     } else {
         quote!(::core::option::Option::None)
     };
-
     let doc = match &entry.doc {
         Some(expr) => quote! {
-            fn __roundhouse_entry_doc(docs: &mut #krate::doc::HandlerDocs) {
+            fn #doc_fn(docs: &mut #krate::doc::HandlerDocs) {
                 let hook: fn(&mut #krate::doc::HandlerDocs) = #expr;
                 hook(docs)
             }
@@ -619,12 +1000,14 @@ fn expand_entry(entry: Entry) -> TokenStream {
         None => quote! {},
     };
 
-    quote! {
+    let defs = quote! {
+        #(#attrs)*
+        #[allow(non_camel_case_types)]
+        type #handler_alias = #marker_type;
+
         #(#attrs)*
         #[allow(non_upper_case_globals)]
         const _: () = {
-            type __RoundhouseHandler = #marker_type;
-
             #success_assert
 
             const _: () = {
@@ -636,59 +1019,68 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     #assertion_message,
                 );
             };
-
-            fn __roundhouse_route()
-                -> ::std::boxed::Box<dyn ::core::any::Any + ::core::marker::Send + ::core::marker::Sync>
-            {
-                let method_router: #krate::axum::routing::MethodRouter<#shim_state> =
-                    #krate::axum::routing::#method_ident(#route_handler);
-                ::std::boxed::Box::new(method_router)
-            }
-
-            #layer
-            #doc
-
-            fn __roundhouse_responses(
-                components: &mut #krate::utoipa::openapi::schema::Components,
-            ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {
-                let mut __responses = ::std::vec::Vec::new();
-                #(#responses)*
-                __responses
-            }
-
-            #krate::inventory::submit! {
-                #krate::registry::RouteRecord::__new(
-                    module_path!(),
-                    file!(),
-                    #line,
-                    #method,
-                    #path,
-                    #assert_path,
-                    #operation_id,
-                    #handler_name,
-                    #summary,
-                    #description,
-                    #tags,
-                    #security,
-                    #required_auth,
-                    #shim_auth,
-                    #hidden,
-                    #absolute,
-                    #validate,
-                    #deprecated,
-                    #public,
-                    #response_override,
-                    __roundhouse_responses,
-                    #state,
-                    #state_name,
-                    __roundhouse_route,
-                    #layer_value,
-                    <#marker_type as #krate::doc::HandlerMeta>::docs_with,
-                    <#marker_type as #krate::doc::HandlerMeta>::body,
-                    #doc_value,
-                )
-            }
         };
+
+        #(#attrs)*
+        fn #route_fn()
+            -> ::std::boxed::Box<dyn ::core::any::Any + ::core::marker::Send + ::core::marker::Sync>
+        {
+            let method_router: #krate::axum::routing::MethodRouter<#shim_state> =
+                #krate::axum::routing::#method_ident(#route_handler);
+            ::std::boxed::Box::new(method_router)
+        }
+
+        #(#attrs)*
+        #layer
+        #(#attrs)*
+        #doc
+
+        #(#attrs)*
+        fn #responses_fn(
+            components: &mut #krate::utoipa::openapi::schema::Components,
+        ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {
+            let mut __responses = ::std::vec::Vec::new();
+            #(#responses)*
+            __responses
+        }
+
+        #(#attrs)*
+        #[allow(non_upper_case_globals)]
+        const #record_name: #krate::registry::RouteRecord = #krate::registry::RouteRecord::__new(
+            module_path!(),
+            file!(),
+            #line,
+            #method,
+            #path,
+            #assert_path,
+            #operation_id,
+            #handler_name,
+            #summary,
+            #description,
+            #tags,
+            #security,
+            #required_auth,
+            #shim_auth,
+            #hidden,
+            #absolute,
+            #validate,
+            #deprecated,
+            #public,
+            #response_override,
+            #responses_fn,
+            #state,
+            #state_name,
+            #route_fn,
+            #layer_value,
+            <#marker_type as #krate::doc::HandlerMeta>::docs_with,
+            <#marker_type as #krate::doc::HandlerMeta>::body,
+            #doc_value,
+        );
+    };
+
+    ExpandedEntry {
+        defs,
+        record: record_name,
     }
 }
 

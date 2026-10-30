@@ -1,4 +1,4 @@
-//! The manual-documentation, foreign-schema, merge and mount contracts.
+//! The manual-documentation, foreign-schema, merge and module-composition contracts.
 
 use roundhouse::prelude::*;
 use roundhouse::{App, BuildError};
@@ -14,9 +14,9 @@ fn document(built: &roundhouse::Built) -> serde_json::Value {
 mod manual {
     use super::*;
 
-    mount!("/manual");
-
     routes! {
+        prefix = "/manual",
+
         get(
             "/items/{id}",
             show,
@@ -53,9 +53,9 @@ pub struct Foreign {
 mod foreign {
     use super::*;
 
-    mount!("/foreign-schema");
-
     routes! {
+        prefix = "/foreign-schema",
+
         get("/response", response, operation_id = "foreign_schema_response"),
         post("/request", request, operation_id = "foreign_schema_request"),
     }
@@ -74,9 +74,9 @@ mod foreign {
 mod mounted {
     use super::*;
 
-    mount!("/inner");
-
-    routes! { get("/x/{id}", x) }
+    routes! {
+           prefix = "/inner",
+    get("/x/{id}", x) }
 
     #[handler]
     pub async fn x(Path(id): Path<u64>) -> String {
@@ -87,7 +87,7 @@ mod mounted {
 #[test]
 fn a_doc_hook_clears_the_marker_and_its_parameter_is_checked() {
     let built = App::new(State)
-        .scope(concat!(module_path!(), "::manual"))
+        .include(&manual::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
         .try_build()
         .expect("manual docs build");
@@ -107,9 +107,9 @@ fn a_doc_hook_clears_the_marker_and_its_parameter_is_checked() {
 mod manual_conflict {
     use super::*;
 
-    mount!("/manual-conflict");
-
     routes! {
+        prefix = "/manual-conflict",
+
         get(
             "/items/{id}",
             show,
@@ -140,7 +140,7 @@ mod manual_conflict {
 #[test]
 fn a_hand_written_parameter_goes_through_the_conflict_check() {
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::manual_conflict"))
+        .include(&manual_conflict::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
         .try_build()
         .err()
@@ -151,9 +151,9 @@ fn a_hand_written_parameter_goes_through_the_conflict_check() {
 mod manual_unknown {
     use super::*;
 
-    mount!("/manual-unknown");
-
     routes! {
+        prefix = "/manual-unknown",
+
         get(
             "/items",
             show,
@@ -177,7 +177,7 @@ mod manual_unknown {
 #[test]
 fn a_hand_written_capture_still_has_to_exist() {
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::manual_unknown"))
+        .include(&manual_unknown::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
         .try_build()
         .err()
@@ -188,7 +188,7 @@ fn a_hand_written_capture_still_has_to_exist() {
 #[test]
 fn a_foreign_utoipa_type_is_documented_but_still_unverified() {
     let built = App::new(State)
-        .scope(concat!(module_path!(), "::foreign"))
+        .include(&foreign::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
         .try_build()
         .expect("foreign ToSchema types build");
@@ -215,31 +215,25 @@ fn a_foreign_utoipa_type_is_documented_but_still_unverified() {
 }
 
 #[tokio::test]
-async fn app_mount_serves_a_scope_at_extra_prefixes() {
+async fn an_explicit_module_is_served_at_its_declared_prefix() {
     let built = App::new(State)
-        .scope(concat!(module_path!(), "::mounted"))
-        .mount("/v1", concat!(module_path!(), "::mounted"))
-        .mount("/v2", concat!(module_path!(), "::mounted"))
+        .include(&mounted::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
         .build();
 
-    for path in ["/inner/x/7", "/v1/inner/x/7", "/v2/inner/x/7"] {
-        assert_eq!(
-            built.oneshot_get(path).await.status(),
-            axum::http::StatusCode::OK,
-            "{path}"
-        );
-    }
+    assert_eq!(
+        built.oneshot_get("/inner/x/7").await.status(),
+        axum::http::StatusCode::OK
+    );
     let document = document(&built);
-    assert!(document["paths"]["/v1/inner/x/{id}"]["get"].is_object());
-    assert!(document["paths"]["/v2/inner/x/{id}"]["get"].is_object());
+    assert!(document["paths"]["/inner/x/{id}"]["get"].is_object());
 }
 
 #[test]
 fn app_merge_is_visible_and_strict_rejects_it() {
     let merged = axum::Router::new().route("/merged", axum::routing::get(|| async { "merged" }));
     let built = App::new(State)
-        .scope(concat!(module_path!(), "::mounted"))
+        .include(&mounted::MODULE)
         .merge(merged)
         .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
         .build();
@@ -256,7 +250,7 @@ fn app_merge_is_visible_and_strict_rejects_it() {
     assert!(built.merges()[0].location().contains("roadmap.rs"));
 
     let strict = App::new(State)
-        .scope(concat!(module_path!(), "::mounted"))
+        .include(&mounted::MODULE)
         .merge(axum::Router::new().route("/merged", axum::routing::get(|| async { "merged" })))
         .strict()
         .try_build()
@@ -273,7 +267,7 @@ fn the_facade_covers_info_openapi_and_components() {
 
     let _components = roundhouse::openapi::Components::new();
     let built = App::new(State)
-        .scope(concat!(module_path!(), "::mounted"))
+        .include(&mounted::MODULE)
         .openapi(move || info.clone())
         .build();
     let document: &roundhouse::openapi::OpenApi = built.document();
@@ -281,21 +275,15 @@ fn the_facade_covers_info_openapi_and_components() {
 }
 
 #[tokio::test]
-async fn a_mount_handle_replaces_the_string_module_path() {
+async fn a_module_reference_composes_without_a_string_path() {
     let built = App::new(State)
-        .scope(mounted::MOUNT)
-        .mount("/v3", mounted::MOUNT)
+        .include(&mounted::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
         .build();
 
-    assert_eq!(mounted::MOUNT.prefix(), "/inner");
     assert_eq!(
         built.oneshot_get("/inner/x/7").await.status(),
         axum::http::StatusCode::OK
     );
-    assert_eq!(
-        built.oneshot_get("/v3/inner/x/7").await.status(),
-        axum::http::StatusCode::OK
-    );
-    assert!(document(&built)["paths"]["/v3/inner/x/{id}"]["get"].is_object());
+    assert!(document(&built)["paths"]["/inner/x/{id}"]["get"].is_object());
 }

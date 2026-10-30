@@ -3,12 +3,12 @@ use serde::Serialize;
 
 use crate::schemes::BearerAuth;
 
-// `security` names the scheme *type*: the guard below is installed on every route in this
-// module, and the same declaration publishes the requirement in the document.
-mount!("/guarded", security = [BearerAuth]);
-
+// `security` names the scheme *type*: the guard is installed on every route in this module,
+// and the same declaration publishes the requirement in the document.
 routes! {
-    get("/whoami", whoami, summary = "Bearer required by the mount"),
+    prefix = "/guarded",
+    security = [BearerAuth],
+    get("/whoami", whoami, summary = "Bearer required by the module"),
 }
 
 #[derive(Serialize, ToSchema, ApiSchema)]

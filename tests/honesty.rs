@@ -8,8 +8,8 @@ use serde::Serialize;
 #[derive(Clone)]
 pub struct State;
 
-fn scoped(module: &'static str) -> App<State> {
-    App::new(State).scope(module)
+fn scoped(module: &'static roundhouse::Module) -> App<State> {
+    App::new(State).include(module)
 }
 
 fn document(app: Built) -> serde_json::Value {
@@ -19,9 +19,9 @@ fn document(app: Built) -> serde_json::Value {
 mod declared {
     use super::*;
 
-    mount!("/declared");
-
     routes! {
+        prefix = "/declared",
+
         get("/x", x, operation_id = "declared_x", responses(200)),
     }
 
@@ -39,9 +39,9 @@ pub struct Payload {
 mod typed {
     use super::*;
 
-    mount!("/typed");
-
     routes! {
+        prefix = "/typed",
+
         get("/x", x, operation_id = "typed_x", responses(200 = Payload)),
     }
 
@@ -59,9 +59,9 @@ pub struct OtherPayload {
 mod override_response {
     use super::*;
 
-    mount!("/override-response");
-
     routes! {
+        prefix = "/override-response",
+
         get("/x", x, operation_id = "override_x", responses(200 = Payload), override),
     }
 
@@ -74,9 +74,9 @@ mod override_response {
 mod conflict_response {
     use super::*;
 
-    mount!("/conflict-response");
-
     routes! {
+        prefix = "/conflict-response",
+
         get("/x", x, operation_id = "conflict_x", responses(200 = Payload)),
     }
 
@@ -89,9 +89,9 @@ mod conflict_response {
 mod problem_error {
     use super::*;
 
-    mount!("/problem-error");
-
-    routes! { get("/x", x, operation_id = "problem_error_x") }
+    routes! {
+           prefix = "/problem-error",
+    get("/x", x, operation_id = "problem_error_x") }
 
     #[allow(clippy::result_large_err)]
     #[handler]
@@ -103,9 +103,9 @@ mod problem_error {
 mod dynamic_status {
     use super::*;
 
-    mount!("/dynamic-status");
-
-    routes! { post("/x", x, operation_id = "dynamic_status_x") }
+    routes! {
+           prefix = "/dynamic-status",
+    post("/x", x, operation_id = "dynamic_status_x") }
 
     #[handler]
     pub async fn x() -> (StatusCode, Json<Payload>) {
@@ -133,9 +133,9 @@ impl IntoResponse for BlindError {
 mod blind_error {
     use super::*;
 
-    mount!("/blind-error");
-
-    routes! { get("/x", x, operation_id = "blind_error_x") }
+    routes! {
+           prefix = "/blind-error",
+    get("/x", x, operation_id = "blind_error_x") }
 
     #[handler]
     pub async fn x() -> Result<Json<Payload>, BlindError> {
@@ -146,9 +146,9 @@ mod blind_error {
 mod extension {
     use super::*;
 
-    mount!("/extension");
-
-    routes! { get("/x", x, operation_id = "extension_x") }
+    routes! {
+           prefix = "/extension",
+    get("/x", x, operation_id = "extension_x") }
 
     #[handler]
     pub async fn x(
@@ -163,14 +163,14 @@ mod extension {
 mod foreign {
     use super::*;
 
-    mount!("/foreign");
-
     #[derive(Serialize, serde::Deserialize)]
     pub struct Plain {
         pub id: i64,
     }
 
     routes! {
+        prefix = "/foreign",
+
         get("/response", response, operation_id = "foreign_response"),
         post("/request", request, operation_id = "foreign_request"),
     }
@@ -203,9 +203,9 @@ impl IntoResponse for BlindResponse {
 mod blind_response {
     use super::*;
 
-    mount!("/blind-response");
-
-    routes! { get("/x", x, operation_id = "blind_response_x") }
+    routes! {
+           prefix = "/blind-response",
+    get("/x", x, operation_id = "blind_response_x") }
 
     #[handler]
     pub async fn x() -> BlindResponse {
@@ -216,9 +216,9 @@ mod blind_response {
 mod cross_duplicate_route_a {
     use super::*;
 
-    mount!("/cross-dup");
-
-    routes! { get("/x", a, operation_id = "cross_dup_a") }
+    routes! {
+           prefix = "/cross-dup",
+    get("/x", a, operation_id = "cross_dup_a") }
 
     #[handler]
     pub async fn a() -> &'static str {
@@ -229,9 +229,9 @@ mod cross_duplicate_route_a {
 mod cross_duplicate_route_b {
     use super::*;
 
-    mount!("/cross-dup");
-
-    routes! { get("/x", b, operation_id = "cross_dup_b") }
+    routes! {
+           prefix = "/cross-dup",
+    get("/x", b, operation_id = "cross_dup_b") }
 
     #[handler]
     pub async fn b() -> &'static str {
@@ -242,9 +242,9 @@ mod cross_duplicate_route_b {
 mod cross_duplicate_operation_a {
     use super::*;
 
-    mount!("/cross-op-a");
-
-    routes! { get("/", a, operation_id = "shared_operation") }
+    routes! {
+           prefix = "/cross-op-a",
+    get("/", a, operation_id = "shared_operation") }
 
     #[handler]
     pub async fn a() -> &'static str {
@@ -255,9 +255,9 @@ mod cross_duplicate_operation_a {
 mod cross_duplicate_operation_b {
     use super::*;
 
-    mount!("/cross-op-b");
-
-    routes! { get("/", b, operation_id = "shared_operation") }
+    routes! {
+           prefix = "/cross-op-b",
+    get("/", b, operation_id = "shared_operation") }
 
     #[handler]
     pub async fn b() -> &'static str {
@@ -268,9 +268,9 @@ mod cross_duplicate_operation_b {
 mod metadata {
     use super::*;
 
-    mount!("/metadata");
-
     routes! {
+        prefix = "/metadata",
+
         get("/x", x, operation_id = "metadata_x", deprecated, public),
     }
 
@@ -283,9 +283,9 @@ mod metadata {
 mod default_status {
     use super::*;
 
-    mount!("/default-status");
-
     routes! {
+        prefix = "/default-status",
+
         get("/x", x, operation_id = "default_status_x"),
     }
 
@@ -297,7 +297,7 @@ mod default_status {
 
 #[test]
 fn declared_success_builds_and_documents_no_body() {
-    let app = scoped(concat!(module_path!(), "::declared"))
+    let app = scoped(&declared::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("declared success builds");
@@ -307,7 +307,7 @@ fn declared_success_builds_and_documents_no_body() {
 
 #[test]
 fn a_typed_response_declaration_uses_the_named_schema() {
-    let app = scoped(concat!(module_path!(), "::typed"))
+    let app = scoped(&typed::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("typed response builds");
@@ -321,7 +321,7 @@ fn a_typed_response_declaration_uses_the_named_schema() {
 
 #[test]
 fn a_declared_response_overrides_the_inferred_one() {
-    let app = scoped(concat!(module_path!(), "::override_response"))
+    let app = scoped(&override_response::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("override builds");
@@ -339,7 +339,7 @@ fn a_declared_response_overrides_the_inferred_one() {
 
 #[test]
 fn a_declared_response_that_contradicts_the_handler_needs_override() {
-    let error = scoped(concat!(module_path!(), "::conflict_response"))
+    let error = scoped(&conflict_response::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .err()
@@ -353,7 +353,7 @@ fn a_declared_response_that_contradicts_the_handler_needs_override() {
 
 #[test]
 fn foreign_extractors_are_marked_and_strict_turns_the_marker_into_an_error() {
-    let module = concat!(module_path!(), "::foreign");
+    let module = &foreign::MODULE;
     let app = scoped(module)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
@@ -374,7 +374,7 @@ fn foreign_extractors_are_marked_and_strict_turns_the_marker_into_an_error() {
 
 #[test]
 fn problem_error_type_documents_a_default_problem_response() {
-    let app = scoped(concat!(module_path!(), "::problem_error"))
+    let app = scoped(&problem_error::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("Problem builds");
@@ -389,7 +389,7 @@ fn problem_error_type_documents_a_default_problem_response() {
 
 #[tokio::test]
 async fn a_status_bearing_tuple_documents_default_not_200() {
-    let app = scoped(concat!(module_path!(), "::dynamic_status"))
+    let app = scoped(&dynamic_status::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("dynamic status builds");
@@ -406,7 +406,7 @@ async fn a_status_bearing_tuple_documents_default_not_200() {
 
 #[test]
 fn an_error_type_without_documentation_is_loud() {
-    let module = concat!(module_path!(), "::blind_error");
+    let module = &blind_error::MODULE;
     let app = scoped(module)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
@@ -429,7 +429,7 @@ fn an_error_type_without_documentation_is_loud() {
 
 #[tokio::test]
 async fn docs_implies_the_document_route() {
-    let app = scoped(concat!(module_path!(), "::declared"))
+    let app = scoped(&declared::MODULE)
         .docs()
         .try_build()
         .expect("docs() supplies a document even without openapi()");
@@ -442,7 +442,7 @@ async fn docs_implies_the_document_route() {
 
 #[test]
 fn a_missing_extension_documents_the_problem_it_produces() {
-    let app = scoped(concat!(module_path!(), "::extension"))
+    let app = scoped(&extension::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("extension route builds");
@@ -458,7 +458,7 @@ fn a_missing_extension_documents_the_problem_it_produces() {
 fn an_unclassifiable_response_still_needs_a_declaration() {
     // The macro cannot see inside a hand-written `IntoResponse`, so the aggregate build remains
     // the place that reports it.
-    let error = scoped(concat!(module_path!(), "::blind_response"))
+    let error = scoped(&blind_response::MODULE)
         .try_build()
         .err()
         .expect("a custom response type without a declaration must fail");
@@ -468,8 +468,8 @@ fn an_unclassifiable_response_still_needs_a_declaration() {
 #[test]
 fn cross_table_duplicate_routes_fail_the_build() {
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::cross_duplicate_route_a"))
-        .scope(concat!(module_path!(), "::cross_duplicate_route_b"))
+        .include(&cross_duplicate_route_a::MODULE)
+        .include(&cross_duplicate_route_b::MODULE)
         .try_build()
         .err()
         .expect("two tables resolving to GET /cross-dup/x must fail");
@@ -480,8 +480,8 @@ fn cross_table_duplicate_routes_fail_the_build() {
 #[test]
 fn cross_table_duplicate_operation_ids_fail_the_build() {
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::cross_duplicate_operation_a"))
-        .scope(concat!(module_path!(), "::cross_duplicate_operation_b"))
+        .include(&cross_duplicate_operation_a::MODULE)
+        .include(&cross_duplicate_operation_b::MODULE)
         .try_build()
         .err()
         .expect("two tables sharing an operationId must fail");
@@ -491,7 +491,7 @@ fn cross_table_duplicate_operation_ids_fail_the_build() {
 
 #[test]
 fn deprecated_and_public_are_no_longer_no_ops() {
-    let app = scoped(concat!(module_path!(), "::metadata"))
+    let app = scoped(&metadata::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("metadata route builds");
@@ -503,7 +503,7 @@ fn deprecated_and_public_are_no_longer_no_ops() {
 
 #[test]
 fn a_status_code_return_documents_a_default_response() {
-    let app = scoped(concat!(module_path!(), "::default_status"))
+    let app = scoped(&default_status::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
         .expect("StatusCode is a declared shape");

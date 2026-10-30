@@ -1,4 +1,4 @@
-//! Captures in `mount!` prefixes, assembled with `merge`.
+//! Captures in `module!` prefixes, assembled with `merge`.
 //!
 //! The module tree is a grouping construct: every route is registered at its full resolved path.
 //! Layers and handlers therefore see the full request URI, and `MatchedPath` is exactly the
@@ -16,10 +16,10 @@ use serde::Serialize;
 #[derive(Clone, Default)]
 pub struct State;
 
-fn scoped(module: &'static str) -> App<State> {
+fn scoped(module: &'static roundhouse::Module) -> App<State> {
     App::new(State)
-        .scope(module)
-        .openapi(|| roundhouse::openapi::Info::new("Mount captures", "0.1.0"))
+        .include(module)
+        .openapi(|| roundhouse::openapi::Info::new("Module captures", "0.1.0"))
 }
 
 async fn full_uri(request: axum::extract::Request, next: Next) -> Response {
@@ -35,9 +35,10 @@ async fn full_uri(request: axum::extract::Request, next: Next) -> Response {
 mod dynamic_parent {
     use super::*;
 
-    mount!("/{project_id}/issues", tags = ["issues"]);
-
     routes! {
+        prefix = "/{project_id}/issues",
+        tags = ["issues"],
+
         get("/", list, operation_id = "issues_list"),
         get("/{issue_id}", show, operation_id = "issues_show"),
         get("/{issue_id}/matched", matched, operation_id = "issues_matched"),
@@ -78,9 +79,9 @@ mod dynamic_parent {
 mod unconsumed {
     use super::*;
 
-    mount!("/{org}/members");
-
-    routes! { get("/", list, operation_id = "unconsumed_list") }
+    routes! {
+           prefix = "/{org}/members",
+    get("/", list, operation_id = "unconsumed_list") }
 
     #[handler]
     pub async fn list() -> &'static str {
@@ -91,9 +92,9 @@ mod unconsumed {
 mod unknown_parameter {
     use super::*;
 
-    mount!("/{project_id}/issues");
-
-    routes! { get("/{issue_id}", show, operation_id = "unknown_parameter_show") }
+    routes! {
+           prefix = "/{project_id}/issues",
+    get("/{issue_id}", show, operation_id = "unknown_parameter_show") }
 
     #[derive(Clone, Default, Deserialize, PathParams)]
     pub struct Extra {
@@ -107,12 +108,12 @@ mod unknown_parameter {
     }
 }
 
-mod duplicate_mount_leaf {
+mod duplicate_module_leaf {
     use super::*;
 
-    mount!("/{id}");
-
-    routes! { get("/{id}", show, operation_id = "duplicate_mount_leaf_show") }
+    routes! {
+           prefix = "/{id}",
+    get("/{id}", show, operation_id = "duplicate_module_leaf_show") }
 
     #[handler]
     pub async fn show() -> &'static str {
@@ -120,12 +121,12 @@ mod duplicate_mount_leaf {
     }
 }
 
-mod catch_all_mount {
+mod catch_all_module {
     use super::*;
 
-    mount!("/{*rest}");
-
-    routes! { get("/x", broken, operation_id = "catch_all_mount_broken") }
+    routes! {
+           prefix = "/{*rest}",
+    get("/x", broken, operation_id = "catch_all_module_broken") }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -133,12 +134,12 @@ mod catch_all_mount {
     }
 }
 
-mod old_syntax_mount {
+mod old_syntax_module {
     use super::*;
 
-    mount!("/:id");
-
-    routes! { get("/x", broken, operation_id = "old_syntax_mount_broken") }
+    routes! {
+           prefix = "/:id",
+    get("/x", broken, operation_id = "old_syntax_module_broken") }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -146,12 +147,12 @@ mod old_syntax_mount {
     }
 }
 
-mod malformed_mount {
+mod malformed_module {
     use super::*;
 
-    mount!("/{id");
-
-    routes! { get("/x", broken, operation_id = "malformed_mount_broken") }
+    routes! {
+           prefix = "/{id",
+    get("/x", broken, operation_id = "malformed_module_broken") }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -159,12 +160,12 @@ mod malformed_mount {
     }
 }
 
-mod param_suffix_mount {
+mod param_suffix_module {
     use super::*;
 
-    mount!("/{bar}-foo");
-
-    routes! { get("/x", broken, operation_id = "param_suffix_mount_broken") }
+    routes! {
+           prefix = "/{bar}-foo",
+    get("/x", broken, operation_id = "param_suffix_module_broken") }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -175,9 +176,9 @@ mod param_suffix_mount {
 mod malformed_route {
     use super::*;
 
-    mount!("/malformed");
-
-    routes! { get("/{id", broken, operation_id = "malformed_route_broken") }
+    routes! {
+           prefix = "/malformed",
+    get("/{id", broken, operation_id = "malformed_route_broken") }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -188,9 +189,9 @@ mod malformed_route {
 mod empty_capture_route {
     use super::*;
 
-    mount!("/empty");
-
-    routes! { get("/{}", broken, operation_id = "empty_capture_route_broken") }
+    routes! {
+           prefix = "/empty",
+    get("/{}", broken, operation_id = "empty_capture_route_broken") }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -201,9 +202,9 @@ mod empty_capture_route {
 mod param_suffix_route {
     use super::*;
 
-    mount!("/suffix");
-
-    routes! { get("/{bar}-foo", broken, operation_id = "param_suffix_route_broken") }
+    routes! {
+           prefix = "/suffix",
+    get("/{bar}-foo", broken, operation_id = "param_suffix_route_broken") }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -214,9 +215,9 @@ mod param_suffix_route {
 mod catch_all_leaf {
     use super::*;
 
-    mount!("/{project_id}/files");
-
-    routes! { get("/{*rest}", get_file, operation_id = "catch_all_leaf_get") }
+    routes! {
+           prefix = "/{project_id}/files",
+    get("/{*rest}", get_file, operation_id = "catch_all_leaf_get") }
 
     #[handler]
     pub async fn get_file(Path(rest): Path<std::collections::HashMap<String, String>>) -> String {
@@ -227,12 +228,10 @@ mod catch_all_leaf {
 mod layered_capture {
     use super::*;
 
-    mount!(
-        "/{project_id}/issues",
-        layer = middleware::from_fn(full_uri)
-    );
-
-    routes! { get("/{issue_id}", show, operation_id = "layered_capture_show") }
+    routes! {
+           prefix = "/{project_id}/issues",
+           layer = middleware::from_fn(full_uri),
+    get("/{issue_id}", show, operation_id = "layered_capture_show") }
 
     #[handler]
     pub async fn show() -> &'static str {
@@ -243,16 +242,19 @@ mod layered_capture {
 mod route_layered_parent {
     use super::*;
 
-    mount!(
-        "/rl/{project_id}",
+    routes! {
+        prefix = "/rl/{project_id}",
         layer = middleware::from_fn(full_uri),
         layer_mode = route,
-    );
+        ...child,
+    }
 
     pub mod child {
         use roundhouse::prelude::*;
 
-        routes! { get("/{issue_id}", show, operation_id = "route_layered_show") }
+        routes! {
+            get("/{issue_id}", show, operation_id = "route_layered_show"),
+        }
 
         #[handler]
         pub async fn show() -> &'static str {
@@ -262,12 +264,19 @@ mod route_layered_parent {
 }
 
 mod shared {
+    use super::*;
+
+    routes! {
+        ...get,
+        ...post,
+    }
+
     pub mod get {
         use roundhouse::prelude::*;
 
-        mount!("/shared/{id}");
-
-        routes! { get("/", get_thing, operation_id = "shared_get") }
+        routes! {
+                   prefix = "/shared/{id}",
+        get("/", get_thing, operation_id = "shared_get") }
 
         #[handler]
         pub async fn get_thing() -> &'static str {
@@ -278,9 +287,9 @@ mod shared {
     pub mod post {
         use roundhouse::prelude::*;
 
-        mount!("/shared/{id}");
-
-        routes! { post("/", post_thing, operation_id = "shared_post") }
+        routes! {
+                   prefix = "/shared/{id}",
+        post("/", post_thing, operation_id = "shared_post") }
 
         #[handler]
         pub async fn post_thing() -> &'static str {
@@ -290,12 +299,19 @@ mod shared {
 }
 
 mod conflicts {
+    use super::*;
+
+    routes! {
+        ...param,
+        ...catch_all,
+    }
+
     pub mod param {
         use roundhouse::prelude::*;
 
-        mount!("/conflict");
-
-        routes! { get("/{a}", a, operation_id = "conflict_param") }
+        routes! {
+                   prefix = "/conflict",
+        get("/{a}", a, operation_id = "conflict_param") }
 
         #[handler]
         pub async fn a() -> &'static str {
@@ -306,9 +322,9 @@ mod conflicts {
     pub mod catch_all {
         use roundhouse::prelude::*;
 
-        mount!("/conflict");
-
-        routes! { get("/{*rest}", rest, operation_id = "conflict_catch_all") }
+        routes! {
+                   prefix = "/conflict",
+        get("/{*rest}", rest, operation_id = "conflict_catch_all") }
 
         #[handler]
         pub async fn rest() -> &'static str {
@@ -320,12 +336,17 @@ mod conflicts {
 mod scoped_below {
     use super::*;
 
-    mount!("/api/v1");
+    routes! {
+        prefix = "/api/v1",
+        ...issues,
+    }
 
     pub mod issues {
         use roundhouse::prelude::*;
 
-        routes! { get("/", list, operation_id = "scoped_below_list") }
+        routes! {
+            get("/", list, operation_id = "scoped_below_list"),
+        }
 
         #[handler]
         pub async fn list() -> &'static str {
@@ -338,9 +359,9 @@ mod scoped_below {
 mod validated {
     use super::*;
 
-    mount!("/{project_id}/reports");
-
     routes! {
+        prefix = "/{project_id}/reports",
+
         get("/{report_id}", show, operation_id = "validated_show"),
         get("/{report_id}/lying", lying, operation_id = "validated_lying"),
     }
@@ -393,8 +414,8 @@ fn path_parameters(app: &roundhouse::Built, path: &str, method: &str) -> Vec<ser
 }
 
 #[tokio::test]
-async fn a_mount_capture_reaches_a_handler_on_the_leaf_index() {
-    let app = scoped(concat!(module_path!(), "::dynamic_parent")).build();
+async fn a_module_capture_reaches_a_handler_on_the_leaf_index() {
+    let app = scoped(&dynamic_parent::MODULE).build();
     let response = app.oneshot_get("/42/issues").await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = http_body_util::BodyExt::collect(response.into_body())
@@ -405,8 +426,8 @@ async fn a_mount_capture_reaches_a_handler_on_the_leaf_index() {
 }
 
 #[tokio::test]
-async fn mount_and_leaf_captures_deserialize_together() {
-    let app = scoped(concat!(module_path!(), "::dynamic_parent")).build();
+async fn module_and_leaf_captures_deserialize_together() {
+    let app = scoped(&dynamic_parent::MODULE).build();
     let response = app.oneshot_get("/42/issues/7").await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = http_body_util::BodyExt::collect(response.into_body())
@@ -418,7 +439,7 @@ async fn mount_and_leaf_captures_deserialize_together() {
 
 #[tokio::test]
 async fn matched_path_is_the_full_document_path() {
-    let app = scoped(concat!(module_path!(), "::dynamic_parent")).build();
+    let app = scoped(&dynamic_parent::MODULE).build();
     let response = app.oneshot_get("/42/issues/7/matched").await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = http_body_util::BodyExt::collect(response.into_body())
@@ -430,7 +451,7 @@ async fn matched_path_is_the_full_document_path() {
 
 #[test]
 fn both_captures_are_documented_with_the_path_struct_schema() {
-    let app = scoped(concat!(module_path!(), "::dynamic_parent")).build();
+    let app = scoped(&dynamic_parent::MODULE).build();
 
     let list = path_parameters(&app, "/{project_id}/issues", "get");
     assert_eq!(list.len(), 1);
@@ -451,8 +472,8 @@ fn both_captures_are_documented_with_the_path_struct_schema() {
 }
 
 #[test]
-fn an_unconsumed_mount_capture_is_documented_as_a_string_with_a_diagnostic() {
-    let app = scoped(concat!(module_path!(), "::unconsumed")).build();
+fn an_unconsumed_module_capture_is_documented_as_a_string_with_a_diagnostic() {
+    let app = scoped(&unconsumed::MODULE).build();
     let parameters = path_parameters(&app, "/{org}/members", "get");
     assert_eq!(parameters.len(), 1);
     assert_eq!(parameters[0]["name"], "org");
@@ -468,7 +489,7 @@ fn an_unconsumed_mount_capture_is_documented_as_a_string_with_a_diagnostic() {
 
 #[test]
 fn strict_escalates_the_synthesized_capture_diagnostic() {
-    let error = scoped(concat!(module_path!(), "::unconsumed"))
+    let error = scoped(&unconsumed::MODULE)
         .strict()
         .try_build()
         .err()
@@ -478,7 +499,7 @@ fn strict_escalates_the_synthesized_capture_diagnostic() {
 
 #[test]
 fn a_path_name_outside_the_full_template_is_a_build_error() {
-    let error = scoped(concat!(module_path!(), "::unknown_parameter"))
+    let error = scoped(&unknown_parameter::MODULE)
         .try_build()
         .err()
         .expect("bogus is not a capture");
@@ -489,8 +510,8 @@ fn a_path_name_outside_the_full_template_is_a_build_error() {
 }
 
 #[test]
-fn a_duplicate_capture_between_mount_and_leaf_is_rejected() {
-    let error = scoped(concat!(module_path!(), "::duplicate_mount_leaf"))
+fn a_duplicate_capture_between_module_and_leaf_is_rejected() {
+    let error = scoped(&duplicate_module_leaf::MODULE)
         .try_build()
         .err()
         .expect("the full template repeats `id`");
@@ -498,50 +519,44 @@ fn a_duplicate_capture_between_mount_and_leaf_is_rejected() {
 }
 
 #[test]
-fn a_catch_all_in_a_mount_is_rejected() {
-    let error = scoped(concat!(module_path!(), "::catch_all_mount"))
+fn a_catch_all_in_a_module_is_rejected() {
+    let error = scoped(&catch_all_module::MODULE)
         .try_build()
         .err()
-        .expect("a mount cannot end in a catch-all");
-    assert!(matches!(error, BuildError::InvalidMountPrefix { .. }));
+        .expect("a module cannot end in a catch-all");
+    assert!(matches!(error, BuildError::InvalidPrefix { .. }));
 }
 
 #[test]
-fn old_axum_syntax_in_a_mount_is_rejected() {
-    let error = scoped(concat!(module_path!(), "::old_syntax_mount"))
+fn old_axum_syntax_in_a_module_is_rejected() {
+    let error = scoped(&old_syntax_module::MODULE)
         .try_build()
         .err()
         .expect("`:id` is axum 0.7 syntax");
-    assert!(matches!(error, BuildError::InvalidMountPrefix { .. }));
+    assert!(matches!(error, BuildError::InvalidPrefix { .. }));
 }
 
 #[test]
-fn malformed_mount_prefixes_are_build_errors_not_panics() {
-    for module in ["malformed_mount", "param_suffix_mount"] {
-        let name = match module {
-            "malformed_mount" => concat!(module_path!(), "::malformed_mount"),
-            _ => concat!(module_path!(), "::param_suffix_mount"),
-        };
+fn malformed_module_prefixes_are_build_errors_not_panics() {
+    for (module, name) in [
+        ("malformed_module", &malformed_module::MODULE),
+        ("param_suffix_module", &param_suffix_module::MODULE),
+    ] {
         let error = scoped(name)
             .try_build()
             .err()
             .unwrap_or_else(|| panic!("`{module}` should be rejected"));
-        assert!(matches!(error, BuildError::InvalidMountPrefix { .. }));
+        assert!(matches!(error, BuildError::InvalidPrefix { .. }));
     }
 }
 
 #[test]
 fn malformed_leaf_templates_are_build_errors_not_panics() {
-    for module in [
-        "malformed_route",
-        "empty_capture_route",
-        "param_suffix_route",
+    for (module, name) in [
+        ("malformed_route", &malformed_route::MODULE),
+        ("empty_capture_route", &empty_capture_route::MODULE),
+        ("param_suffix_route", &param_suffix_route::MODULE),
     ] {
-        let name = match module {
-            "malformed_route" => concat!(module_path!(), "::malformed_route"),
-            "empty_capture_route" => concat!(module_path!(), "::empty_capture_route"),
-            _ => concat!(module_path!(), "::param_suffix_route"),
-        };
         let error = scoped(name)
             .try_build()
             .err()
@@ -551,8 +566,8 @@ fn malformed_leaf_templates_are_build_errors_not_panics() {
 }
 
 #[tokio::test]
-async fn a_leaf_catch_all_works_under_a_dynamic_mount() {
-    let app = scoped(concat!(module_path!(), "::catch_all_leaf")).build();
+async fn a_leaf_catch_all_works_under_a_dynamic_module() {
+    let app = scoped(&catch_all_leaf::MODULE).build();
     let response = app.oneshot_get("/9/files/a/b.txt").await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = http_body_util::BodyExt::collect(response.into_body())
@@ -563,8 +578,8 @@ async fn a_leaf_catch_all_works_under_a_dynamic_mount() {
 }
 
 #[tokio::test]
-async fn a_layer_on_a_dynamic_mount_sees_the_full_uri() {
-    let app = scoped(concat!(module_path!(), "::layered_capture")).build();
+async fn a_layer_on_a_dynamic_module_sees_the_full_uri() {
+    let app = scoped(&layered_capture::MODULE).build();
     let response = app.oneshot_get("/42/issues/7").await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()["x-uri"], "/42/issues/7");
@@ -576,7 +591,7 @@ async fn a_layer_on_a_dynamic_mount_sees_the_full_uri() {
 
 #[tokio::test]
 async fn a_parent_route_layer_wraps_child_routes_but_not_the_outer_404() {
-    let app = scoped(concat!(module_path!(), "::route_layered_parent")).build();
+    let app = scoped(&route_layered_parent::MODULE).build();
 
     let response = app.oneshot_get("/rl/42/7").await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -588,8 +603,8 @@ async fn a_parent_route_layer_wraps_child_routes_but_not_the_outer_404() {
 }
 
 #[tokio::test]
-async fn a_method_mismatch_under_a_dynamic_mount_is_405_with_allow() {
-    let app = scoped(concat!(module_path!(), "::dynamic_parent")).build();
+async fn a_method_mismatch_under_a_dynamic_module_is_405_with_allow() {
+    let app = scoped(&dynamic_parent::MODULE).build();
     let response = app
         .oneshot(
             axum::http::Request::builder()
@@ -610,7 +625,7 @@ async fn a_method_mismatch_under_a_dynamic_mount_is_405_with_allow() {
 
 #[tokio::test]
 async fn the_same_full_path_merges_methods_from_different_modules() {
-    let app = scoped(concat!(module_path!(), "::shared")).build();
+    let app = scoped(&shared::MODULE).build();
 
     let response = app.oneshot_get("/shared/9").await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -639,7 +654,7 @@ async fn the_same_full_path_merges_methods_from_different_modules() {
 
 #[test]
 fn overlapping_shapes_are_a_route_conflict_not_a_panic() {
-    let error = scoped(concat!(module_path!(), "::conflicts"))
+    let error = scoped(&conflicts::MODULE)
         .try_build()
         .err()
         .expect("`{a}` and `{*rest}` share a matchit position");
@@ -648,7 +663,7 @@ fn overlapping_shapes_are_a_route_conflict_not_a_panic() {
 
 #[test]
 fn resolved_routes_use_full_paths() {
-    let app = scoped(concat!(module_path!(), "::dynamic_parent")).build();
+    let app = scoped(&dynamic_parent::MODULE).build();
     let listing = app
         .routes()
         .iter()
@@ -663,14 +678,13 @@ fn resolved_routes_use_full_paths() {
         .collect::<String>();
     assert!(listing.contains("/{project_id}/issues"));
     assert!(listing.contains("/{project_id}/issues/{issue_id}"));
-    assert!(listing.contains("mount_captures.rs"));
+    assert!(listing.contains("module_captures.rs"));
 }
 
 #[tokio::test]
-async fn a_scope_below_a_mount_keeps_the_ancestor_prefix() {
-    // `scope` selects declarations, not a new URL root. The mount above the scope still supplies
-    // the structural prefix (and its tags, security and layers) for every selected route.
-    let app = scoped(concat!(module_path!(), "::scoped_below::issues")).build();
+async fn a_nested_module_keeps_the_ancestor_prefix() {
+    // Composition is explicit: the parent module owns the prefix and spreads its child.
+    let app = scoped(&scoped_below::MODULE).build();
     assert_eq!(app.routes().len(), 1);
     assert_eq!(app.routes()[0].path, "/api/v1");
     let document = serde_json::to_value(app.document()).unwrap();
@@ -681,10 +695,8 @@ async fn a_scope_below_a_mount_keeps_the_ancestor_prefix() {
 
 #[cfg(feature = "schema-engine")]
 #[tokio::test]
-async fn validate_responses_matches_the_document_under_a_dynamic_mount() {
-    let app = scoped(concat!(module_path!(), "::validated"))
-        .validate_responses()
-        .build();
+async fn validate_responses_matches_the_document_under_a_dynamic_module() {
+    let app = scoped(&validated::MODULE).validate_responses().build();
     let response = app.oneshot_get("/9/reports/3").await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = http_body_util::BodyExt::collect(response.into_body())
@@ -698,12 +710,10 @@ async fn validate_responses_matches_the_document_under_a_dynamic_mount() {
 
 #[cfg(feature = "schema-engine")]
 #[tokio::test]
-async fn response_validation_actually_runs_under_a_dynamic_mount() {
+async fn response_validation_actually_runs_under_a_dynamic_module() {
     // If `MatchedPath` were the leaf path, the validator would have no entry, skip the body, and
     // this deliberately invalid response would leak out as a 200.
-    let app = scoped(concat!(module_path!(), "::validated"))
-        .validate_responses()
-        .build();
+    let app = scoped(&validated::MODULE).validate_responses().build();
     let response = app.oneshot_get("/9/reports/3/lying").await;
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let body = http_body_util::BodyExt::collect(response.into_body())

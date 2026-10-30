@@ -10,7 +10,7 @@ use axum::routing::get;
 pub struct AppState;
 
 pub fn app(state: AppState) -> roundhouse::App<AppState> {
-    roundhouse::app!(state)
+    roundhouse::app!(state, routes)
         .layer(middleware::from_fn(headers::global))
         .fallback(|| async { (StatusCode::IM_A_TEAPOT, "custom fallback") })
         .merge(merged_router())

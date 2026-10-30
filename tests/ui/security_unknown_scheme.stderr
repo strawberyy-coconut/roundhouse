@@ -1,8 +1,8 @@
 error[E0277]: the trait bound `NotAScheme: Authenticate` is not satisfied
- --> tests/ui/security_unknown_scheme.rs:5:20
+ --> tests/ui/security_unknown_scheme.rs:5:23
   |
-5 | mount!(security = [NotAScheme]);
-  |                    ^^^^^^^^^^ unsatisfied trait bound
+5 | routes! { security = [NotAScheme] }
+  |                       ^^^^^^^^^^ unsatisfied trait bound
   |
 help: the trait `Authenticate` is not implemented for `NotAScheme`
  --> tests/ui/security_unknown_scheme.rs:3:1

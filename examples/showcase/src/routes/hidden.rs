@@ -1,9 +1,10 @@
 use roundhouse::prelude::*;
 use serde::Serialize;
 
-mount!("/internal", hidden, tags = ["internal"]);
-
 routes! {
+    prefix = "/internal",
+    hidden,
+    tags = ["internal"],
     get("/health", health, summary = "Internal health"),
 }
 

@@ -324,7 +324,7 @@ fn operation(
         }
         let schema = if captures.len() == 1 {
             // A scalar `Path<T>` carries one schema and no name; it can only describe a template
-            // with one capture. With several captures (a mount plus a leaf, say) a string is the
+            // with one capture. With several captures (a module prefix plus a leaf, say) a string is the
             // honest fallback, and the diagnostic below asks for a typed extractor.
             docs.path_schema.and_then(|schema| schema())
         } else {
@@ -417,7 +417,7 @@ fn operation(
     }
 
     let required = docs.required_auth;
-    // A mount guard plus `Option<Auth<A>>` on the handler must not publish the same scheme as
+    // A module guard plus `Option<Auth<A>>` on the handler must not publish the same scheme as
     // both required and optional.
     let optional: Vec<_> = docs
         .optional_auth

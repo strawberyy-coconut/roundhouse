@@ -14,18 +14,18 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Default)]
 pub struct State;
 
-fn app(module: &'static str) -> roundhouse::Built {
+fn app(module: &'static roundhouse::Module) -> roundhouse::Built {
     App::new(State)
-        .scope(module)
+        .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Parity", "0.1.0"))
         .build()
 }
 
-fn document(module: &'static str) -> serde_json::Value {
+fn document(module: &'static roundhouse::Module) -> serde_json::Value {
     serde_json::to_value(app(module).document()).unwrap()
 }
 
-async fn get(module: &'static str, uri: &str) -> (StatusCode, String) {
+async fn get(module: &'static roundhouse::Module, uri: &str) -> (StatusCode, String) {
     let app = app(module);
     let response = app.oneshot_get(uri).await;
     let status = response.status();
@@ -53,9 +53,9 @@ fn parameter<'a>(parameters: &'a [serde_json::Value], name: &str) -> &'a serde_j
 mod query_names {
     use super::*;
 
-    mount!("/query-names");
-
-    routes! { get("/list", list, operation_id = "query_names_list") }
+    routes! {
+           prefix = "/query-names",
+    get("/list", list, operation_id = "query_names_list") }
 
     #[derive(Deserialize, QueryParams)]
     #[serde(rename_all = "camelCase")]
@@ -73,7 +73,7 @@ mod query_names {
 
 #[tokio::test]
 async fn query_names_follow_serde_rename_all_and_default() {
-    let document = document(concat!(module_path!(), "::query_names"));
+    let document = document(&query_names::MODULE);
     let parameters = query_parameters(&document, "/query-names/list");
     assert!(parameters.iter().any(|p| p["name"] == "perPage"));
     assert!(parameters.iter().any(|p| p["name"] == "includeArchived"));
@@ -83,7 +83,7 @@ async fn query_names_follow_serde_rename_all_and_default() {
     assert_eq!(parameter(&parameters, "includeArchived")["required"], false);
 
     let (status, body) = get(
-        concat!(module_path!(), "::query_names"),
+        &query_names::MODULE,
         "/query-names/list?perPage=5&includeArchived=true",
     )
     .await;
@@ -91,11 +91,7 @@ async fn query_names_follow_serde_rename_all_and_default() {
     assert_eq!(body, "5:true");
 
     // The snake_case spelling is not the wire name: serde ignores it.
-    let (status, body) = get(
-        concat!(module_path!(), "::query_names"),
-        "/query-names/list?per_page=5",
-    )
-    .await;
+    let (status, body) = get(&query_names::MODULE, "/query-names/list?per_page=5").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, "0:false");
 }
@@ -103,9 +99,9 @@ async fn query_names_follow_serde_rename_all_and_default() {
 mod query_arrays {
     use super::*;
 
-    mount!("/query-arrays");
-
-    routes! { get("/filter", filter, operation_id = "query_arrays_filter") }
+    routes! {
+           prefix = "/query-arrays",
+    get("/filter", filter, operation_id = "query_arrays_filter") }
 
     #[derive(Deserialize, QueryParams)]
     pub struct Filter {
@@ -128,7 +124,7 @@ mod query_arrays {
 
 #[tokio::test]
 async fn repeated_query_keys_are_parsed_and_documented_as_exploded_arrays() {
-    let document = document(concat!(module_path!(), "::query_arrays"));
+    let document = document(&query_arrays::MODULE);
     let parameters = query_parameters(&document, "/query-arrays/filter");
     let tags = parameter(&parameters, "tags");
     assert_eq!(tags["schema"]["type"], "array");
@@ -137,16 +133,12 @@ async fn repeated_query_keys_are_parsed_and_documented_as_exploded_arrays() {
     assert_eq!(tags["required"], true);
     assert_eq!(parameter(&parameters, "labels")["required"], false);
 
-    let (status, body) = get(
-        concat!(module_path!(), "::query_arrays"),
-        "/query-arrays/filter?tags=a&tags=b",
-    )
-    .await;
+    let (status, body) = get(&query_arrays::MODULE, "/query-arrays/filter?tags=a&tags=b").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, "a,b||");
 
     let (status, body) = get(
-        concat!(module_path!(), "::query_arrays"),
+        &query_arrays::MODULE,
         "/query-arrays/filter?tags=a&tags=b&labels=x&owner=me",
     )
     .await;
@@ -157,9 +149,9 @@ async fn repeated_query_keys_are_parsed_and_documented_as_exploded_arrays() {
 mod query_container_default {
     use super::*;
 
-    mount!("/query-default");
-
-    routes! { get("/page", page, operation_id = "query_default_page") }
+    routes! {
+           prefix = "/query-default",
+    get("/page", page, operation_id = "query_default_page") }
 
     #[derive(Deserialize, QueryParams)]
     #[serde(default)]
@@ -182,16 +174,12 @@ mod query_container_default {
 
 #[tokio::test]
 async fn container_default_makes_every_query_field_optional() {
-    let document = document(concat!(module_path!(), "::query_container_default"));
+    let document = document(&query_container_default::MODULE);
     let parameters = query_parameters(&document, "/query-default/page");
     assert_eq!(parameter(&parameters, "page")["required"], false);
     assert_eq!(parameter(&parameters, "size")["required"], false);
 
-    let (status, body) = get(
-        concat!(module_path!(), "::query_container_default"),
-        "/query-default/page",
-    )
-    .await;
+    let (status, body) = get(&query_container_default::MODULE, "/query-default/page").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, "1:10");
 }
@@ -199,9 +187,9 @@ async fn container_default_makes_every_query_field_optional() {
 mod query_skip {
     use super::*;
 
-    mount!("/query-skip");
-
-    routes! { get("/list", list, operation_id = "query_skip_list") }
+    routes! {
+           prefix = "/query-skip",
+    get("/list", list, operation_id = "query_skip_list") }
 
     #[derive(Deserialize, QueryParams)]
     pub struct Skipping {
@@ -218,12 +206,12 @@ mod query_skip {
 
 #[tokio::test]
 async fn skipped_query_fields_are_not_documented() {
-    let document = document(concat!(module_path!(), "::query_skip"));
+    let document = document(&query_skip::MODULE);
     let parameters = query_parameters(&document, "/query-skip/list");
     assert!(parameters.iter().all(|p| p["name"] != "internal"));
 
     let (status, body) = get(
-        concat!(module_path!(), "::query_skip"),
+        &query_skip::MODULE,
         "/query-skip/list?page=2&internal=secret",
     )
     .await;
@@ -234,9 +222,9 @@ async fn skipped_query_fields_are_not_documented() {
 mod query_flatten {
     use super::*;
 
-    mount!("/query-flatten");
-
-    routes! { get("/list", list, operation_id = "query_flatten_list") }
+    routes! {
+           prefix = "/query-flatten",
+    get("/list", list, operation_id = "query_flatten_list") }
 
     #[derive(Deserialize, QueryParams)]
     pub struct Filter {
@@ -264,7 +252,7 @@ mod query_flatten {
 
 #[tokio::test]
 async fn flattened_query_fields_are_top_level_parameters() {
-    let document = document(concat!(module_path!(), "::query_flatten"));
+    let document = document(&query_flatten::MODULE);
     let parameters = query_parameters(&document, "/query-flatten/list");
     let names: Vec<&str> = parameters
         .iter()
@@ -274,7 +262,7 @@ async fn flattened_query_fields_are_top_level_parameters() {
     assert!(!names.contains(&"filter"));
 
     let (status, body) = get(
-        concat!(module_path!(), "::query_flatten"),
+        &query_flatten::MODULE,
         "/query-flatten/list?status=open&assignee=me&page=2",
     )
     .await;
@@ -285,9 +273,9 @@ async fn flattened_query_fields_are_top_level_parameters() {
 mod path_names {
     use super::*;
 
-    mount!("/path-names");
-
-    routes! { get("/{projectId}", show, operation_id = "path_names_show") }
+    routes! {
+           prefix = "/path-names",
+    get("/{projectId}", show, operation_id = "path_names_show") }
 
     #[derive(Deserialize, PathParams)]
     #[serde(rename_all = "camelCase")]
@@ -303,14 +291,14 @@ mod path_names {
 
 #[tokio::test]
 async fn path_names_follow_serde_rename_all() {
-    let document = document(concat!(module_path!(), "::path_names"));
+    let document = document(&path_names::MODULE);
     let parameters = document["paths"]["/path-names/{projectId}"]["get"]["parameters"]
         .as_array()
         .unwrap();
     assert_eq!(parameters.len(), 1);
     assert_eq!(parameters[0]["name"], "projectId");
 
-    let (status, body) = get(concat!(module_path!(), "::path_names"), "/path-names/7").await;
+    let (status, body) = get(&path_names::MODULE, "/path-names/7").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, "7");
 }
@@ -319,9 +307,9 @@ async fn path_names_follow_serde_rename_all() {
 mod path_uuid {
     use super::*;
 
-    mount!("/path-uuid");
-
-    routes! { get("/{id}", show, operation_id = "path_uuid_show") }
+    routes! {
+           prefix = "/path-uuid",
+    get("/{id}", show, operation_id = "path_uuid_show") }
 
     #[handler]
     pub async fn show(Path(id): Path<uuid::Uuid>) -> String {
@@ -332,7 +320,7 @@ mod path_uuid {
 #[cfg(feature = "uuid")]
 #[tokio::test]
 async fn path_uuid_compiles_and_documents_the_template_capture() {
-    let document = document(concat!(module_path!(), "::path_uuid"));
+    let document = document(&path_uuid::MODULE);
     let parameters = document["paths"]["/path-uuid/{id}"]["get"]["parameters"]
         .as_array()
         .unwrap();
@@ -340,28 +328,20 @@ async fn path_uuid_compiles_and_documents_the_template_capture() {
     assert_eq!(parameters[0]["schema"]["format"], "uuid");
 
     let id = uuid::Uuid::from_u128(42);
-    let (status, body) = get(
-        concat!(module_path!(), "::path_uuid"),
-        &format!("/path-uuid/{id}"),
-    )
-    .await;
+    let (status, body) = get(&path_uuid::MODULE, &format!("/path-uuid/{id}")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, id.to_string());
 
-    let (status, _) = get(
-        concat!(module_path!(), "::path_uuid"),
-        "/path-uuid/not-a-uuid",
-    )
-    .await;
+    let (status, _) = get(&path_uuid::MODULE, "/path-uuid/not-a-uuid").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 mod body_container_default {
     use super::*;
 
-    mount!("/body-default");
-
-    routes! { post("/", create, operation_id = "body_default_create") }
+    routes! {
+           prefix = "/body-default",
+    post("/", create, operation_id = "body_default_create") }
 
     #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
     #[serde(default)]
@@ -387,11 +367,11 @@ mod body_container_default {
 
 #[tokio::test]
 async fn a_body_container_default_is_not_required_in_the_schema() {
-    let document = document(concat!(module_path!(), "::body_container_default"));
+    let document = document(&body_container_default::MODULE);
     let schema = &document["components"]["schemas"]["Body"];
     assert!(schema["required"].is_null() || schema["required"].as_array().unwrap().is_empty());
 
-    let app = app(concat!(module_path!(), "::body_container_default"));
+    let app = app(&body_container_default::MODULE);
     let response = app
         .oneshot_json(http::Method::POST, "/body-default", "{}")
         .await;
@@ -406,9 +386,9 @@ async fn a_body_container_default_is_not_required_in_the_schema() {
 mod custom_extractor {
     use super::*;
 
-    mount!("/tenant");
-
-    routes! { get("/", list, operation_id = "tenant_list") }
+    routes! {
+           prefix = "/tenant",
+    get("/", list, operation_id = "tenant_list") }
 
     pub struct Tenant(pub String);
 
@@ -434,14 +414,14 @@ mod custom_extractor {
 
 #[test]
 fn a_custom_extractor_is_marked_and_strict_makes_it_a_diagnostic() {
-    let document = document(concat!(module_path!(), "::custom_extractor"));
+    let document = document(&custom_extractor::MODULE);
     assert_eq!(
         document["paths"]["/tenant"]["get"]["x-roundhouse-unverified-extractor"],
         true
     );
 
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::custom_extractor"))
+        .include(&custom_extractor::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Parity", "0.1.0"))
         .strict()
         .try_build()
@@ -453,9 +433,9 @@ fn a_custom_extractor_is_marked_and_strict_makes_it_a_diagnostic() {
 mod foreign_extension {
     use super::*;
 
-    mount!("/foreign-extension");
-
-    routes! { get("/", x, operation_id = "foreign_extension_x") }
+    routes! {
+           prefix = "/foreign-extension",
+    get("/", x, operation_id = "foreign_extension_x") }
 
     #[handler]
     pub async fn x(_value: axum::extract::Extension<std::sync::Arc<usize>>) -> String {
@@ -465,7 +445,7 @@ mod foreign_extension {
 
 #[test]
 fn a_foreign_extension_is_marked_rather_than_documented_as_a_problem() {
-    let document = document(concat!(module_path!(), "::foreign_extension"));
+    let document = document(&foreign_extension::MODULE);
     let operation = &document["paths"]["/foreign-extension"]["get"];
     assert_eq!(operation["x-roundhouse-unverified-extractor"], true);
     assert!(operation["responses"]["500"].is_null());

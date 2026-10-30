@@ -10,9 +10,10 @@ pub struct State;
 mod routes {
     use super::*;
 
-    mount!("/things");
-
-    routes! { get("/", list, operation_id = "things_list", tags = ["things"]) }
+    routes! {
+        prefix = "/things",
+        get("/", list, operation_id = "things_list", tags = ["things"]),
+    }
 
     #[handler]
     pub async fn list() -> &'static str {
@@ -23,7 +24,7 @@ mod routes {
 #[test]
 fn servers_and_the_document_hook_reach_the_built_document() {
     let built = roundhouse::App::new(State)
-        .scope(concat!(module_path!(), "::routes"))
+        .include(&routes::MODULE)
         .server(Server::new("https://api.example.com"))
         .servers([Server::new("https://staging.example.com")])
         .document(|document| {

@@ -1,6 +1,6 @@
 //! A `security` declaration is enforced by the router, not merely documented.
 //!
-//! `mount!(security = [A])` and a `routes!` entry's `security = [A]` are scheme *types*: the
+//! Module `security = [A]` and a `routes!` entry's `security = [A]` are scheme *types*: the
 //! guard is monomorphized over `A` and installed on every route it covers. These tests check the
 //! runtime rejection, the published requirement, and the build-time state check.
 
@@ -58,9 +58,10 @@ impl Authenticate for Bearer {
 mod guarded {
     use super::*;
 
-    mount!("/guarded", security = [Bearer]);
-
     routes! {
+        prefix = "/guarded",
+        security = [Bearer],
+
         get("/open", open),
         get("/own", own),
         get("/optional", optional),
@@ -124,9 +125,10 @@ mod mismatched {
         }
     }
 
-    mount!("/mismatched", security = [Other]);
-
     routes! {
+        prefix = "/mismatched",
+        security = [Other],
+
         get("/x", x),
     }
 
@@ -136,15 +138,15 @@ mod mismatched {
     }
 }
 
-fn scoped(module: &'static str, state: State) -> App<State> {
+fn scoped(module: &'static roundhouse::Module, state: State) -> App<State> {
     App::new(state)
-        .scope(module)
+        .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Security", "0.1.0"))
 }
 
 fn built() -> (Built, State) {
     let state = State::default();
-    let app = scoped(concat!(module_path!(), "::guarded"), state.clone()).build();
+    let app = scoped(&guarded::MODULE, state.clone()).build();
     (app, state)
 }
 
@@ -157,12 +159,12 @@ async fn request(app: &Built, uri: &str, authorization: Option<&str>) -> axum::r
 }
 
 #[tokio::test]
-async fn mount_security_is_enforced_and_documented() {
+async fn module_security_is_enforced_and_documented() {
     let (app, _) = built();
     let document = serde_json::to_value(app.document()).unwrap();
     assert!(
         document["paths"]["/guarded/open"]["get"]["security"][0]["bearer"].is_array(),
-        "the mount guard must publish its requirement"
+        "the module guard must publish its requirement"
     );
     assert!(
         document["paths"]["/guarded/own"]["get"]["security"][0]["bearer"].is_array(),
@@ -193,16 +195,16 @@ async fn a_handler_that_already_enforces_the_scheme_is_not_authenticated_twice()
     assert_eq!(
         state.calls(),
         1,
-        "the mount guard must defer to Auth<Bearer>"
+        "the module guard must defer to Auth<Bearer>"
     );
 
     let response = request(&app, "/guarded/open", Some("Bearer ok")).await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(state.calls(), 2, "the mount guard runs for a bare route");
+    assert_eq!(state.calls(), 2, "the module guard runs for a bare route");
 }
 
 #[tokio::test]
-async fn an_optional_handler_still_requires_the_mount_scheme() {
+async fn an_optional_handler_still_requires_the_module_scheme() {
     let (app, _) = built();
 
     assert_eq!(
@@ -219,7 +221,7 @@ async fn an_optional_handler_still_requires_the_mount_scheme() {
 
 #[tokio::test]
 async fn entry_security_is_enforced_too() {
-    let app = scoped(concat!(module_path!(), "::entry"), State::default()).build();
+    let app = scoped(&entry::MODULE, State::default()).build();
 
     assert_eq!(
         request(&app, "/entry", None).await.status(),
@@ -233,7 +235,7 @@ async fn entry_security_is_enforced_too() {
 
 #[test]
 fn a_guard_against_another_state_is_a_build_error() {
-    let error = scoped(concat!(module_path!(), "::mismatched"), State::default())
+    let error = scoped(&mismatched::MODULE, State::default())
         .try_build()
         .err()
         .expect("the guard's state must match the app state");

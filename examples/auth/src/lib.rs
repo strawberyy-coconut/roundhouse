@@ -51,7 +51,7 @@ impl AppState {
 }
 
 pub fn app(state: AppState) -> roundhouse::App<AppState> {
-    roundhouse::app!(state)
+    roundhouse::app!(state, routes)
         .openapi(|| Info::new("Auth API", env!("CARGO_PKG_VERSION")))
         .docs()
 }

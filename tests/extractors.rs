@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Default)]
 pub struct State;
 
-fn app(module: &'static str) -> roundhouse::Built {
+fn app(module: &'static roundhouse::Module) -> roundhouse::Built {
     roundhouse::App::new(State)
-        .scope(module)
+        .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Extractors", "0.1.0"))
         .build()
 }
@@ -29,9 +29,10 @@ mod axum_alias {
     // The explicit import wins over the prelude's `Json`.
     use axum::Json;
 
-    mount!("/axum-alias");
-
-    routes! { post("/", create, operation_id = "axum_alias_create") }
+    routes! {
+        prefix = "/axum-alias",
+        post("/", create, operation_id = "axum_alias_create"),
+    }
 
     #[handler]
     pub async fn create(Json(_body): Json<Contact>) -> StatusCode {
@@ -43,10 +44,9 @@ mod axum_alias_unvalidated {
     use super::*;
     use axum::Json;
 
-    mount!("/axum-alias-unvalidated");
-
     routes! {
-        post("/", create, operation_id = "axum_alias_unvalidated_create", validate = false)
+        prefix = "/axum-alias-unvalidated",
+        post("/", create, operation_id = "axum_alias_unvalidated_create", validate = false),
     }
 
     #[handler]
@@ -59,9 +59,10 @@ mod roundhouse_alias {
     use super::*;
     use roundhouse::Json as Payload;
 
-    mount!("/roundhouse-alias");
-
-    routes! { post("/", create, operation_id = "roundhouse_alias_create") }
+    routes! {
+        prefix = "/roundhouse-alias",
+        post("/", create, operation_id = "roundhouse_alias_create"),
+    }
 
     #[handler]
     pub async fn create(Payload(_body): Payload<Contact>) -> StatusCode {
@@ -74,9 +75,10 @@ mod body_alias {
     // Named `Body`, but it is axum's JSON extractor: it must not document `octet-stream`.
     use axum::Json as Body;
 
-    mount!("/body-alias");
-
-    routes! { post("/", create, operation_id = "body_alias_create") }
+    routes! {
+        prefix = "/body-alias",
+        post("/", create, operation_id = "body_alias_create"),
+    }
 
     #[handler]
     pub async fn create(Body(_body): Body<Contact>) -> StatusCode {
@@ -86,7 +88,7 @@ mod body_alias {
 
 #[test]
 fn axum_json_is_validated_and_documented() {
-    let built = app(concat!(module_path!(), "::axum_alias"));
+    let built = app(&axum_alias::MODULE);
     let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/axum-alias"]["post"];
 
@@ -106,7 +108,7 @@ fn axum_json_is_validated_and_documented() {
 
 #[tokio::test]
 async fn axum_json_is_validated_by_default() {
-    let built = app(concat!(module_path!(), "::axum_alias"));
+    let built = app(&axum_alias::MODULE);
     // The route entry validates by default, so the shim enforces the constraint even though the
     // handler uses axum's extractor.
     let response = built
@@ -117,7 +119,7 @@ async fn axum_json_is_validated_by_default() {
 
 #[tokio::test]
 async fn validate_false_opts_a_route_out() {
-    let built = app(concat!(module_path!(), "::axum_alias_unvalidated"));
+    let built = app(&axum_alias_unvalidated::MODULE);
     let response = built
         .oneshot_json(
             http::Method::POST,
@@ -130,7 +132,7 @@ async fn validate_false_opts_a_route_out() {
 
 #[test]
 fn an_alias_of_roundhouse_json_still_documents_and_enforces_the_constraint() {
-    let built = app(concat!(module_path!(), "::roundhouse_alias"));
+    let built = app(&roundhouse_alias::MODULE);
     let document = serde_json::to_value(built.document()).unwrap();
     let schema = &document["paths"]["/roundhouse-alias"]["post"]["requestBody"]["content"]["application/json"]
         ["schema"];
@@ -143,7 +145,7 @@ fn an_alias_of_roundhouse_json_still_documents_and_enforces_the_constraint() {
 
 #[tokio::test]
 async fn an_alias_of_roundhouse_json_still_validates_at_runtime() {
-    let built = app(concat!(module_path!(), "::roundhouse_alias"));
+    let built = app(&roundhouse_alias::MODULE);
     let response = built
         .oneshot_json(http::Method::POST, "/roundhouse-alias", r#"{"title":"ab"}"#)
         .await;
@@ -152,7 +154,7 @@ async fn an_alias_of_roundhouse_json_still_validates_at_runtime() {
 
 #[test]
 fn a_json_extractor_aliased_as_body_is_not_documented_as_octet_stream() {
-    let built = app(concat!(module_path!(), "::body_alias"));
+    let built = app(&body_alias::MODULE);
     let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/body-alias"]["post"];
 

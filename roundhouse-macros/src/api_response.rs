@@ -423,12 +423,6 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             }
         }
 
-        #krate::inventory::submit! {
-            #krate::registry::ResponseRecord::__new(
-                || ::core::any::type_name::<#ident>(),
-                #docs_fn,
-            )
-        }
     })
 }
 

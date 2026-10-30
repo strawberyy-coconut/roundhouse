@@ -9,9 +9,10 @@ pub struct State;
 mod routes {
     use super::*;
 
-    mount!("/validity");
-
-    routes! { get("/items/{id}", show) }
+    routes! {
+        prefix = "/validity",
+        get("/items/{id}", show),
+    }
 
     #[handler]
     pub async fn show(Path(id): Path<u64>) -> String {
@@ -21,7 +22,7 @@ mod routes {
 
 fn built() -> roundhouse::Built {
     App::new(State)
-        .scope(concat!(module_path!(), "::routes"))
+        .include(&routes::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Validity", "0.1.0"))
         .build()
 }
@@ -57,9 +58,10 @@ mod invalid_pattern {
     #![allow(clippy::invalid_regex)]
     use super::*;
 
-    mount!("/invalid-pattern");
-
-    routes! { post("/", create, operation_id = "invalid_pattern_create") }
+    routes! {
+        prefix = "/invalid-pattern",
+        post("/", create, operation_id = "invalid_pattern_create"),
+    }
 
     #[derive(serde::Serialize, serde::Deserialize, ToSchema, ApiSchema)]
     pub struct Payload {
@@ -76,7 +78,7 @@ mod invalid_pattern {
 #[test]
 fn an_invalid_schema_pattern_is_a_build_error_not_a_runtime_panic() {
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::invalid_pattern"))
+        .include(&invalid_pattern::MODULE)
         .try_build()
         .err()
         .expect("an invalid pattern must fail the build");

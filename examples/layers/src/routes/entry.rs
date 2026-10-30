@@ -1,9 +1,8 @@
 use axum::middleware;
 use roundhouse::prelude::*;
 
-mount!("/entry");
-
 routes! {
+    prefix = "/entry",
     get(
         "/ok",
         ok,

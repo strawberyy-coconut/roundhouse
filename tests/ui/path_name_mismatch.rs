@@ -6,8 +6,9 @@ pub struct Wrong {
     pub other: u64,
 }
 
-mount!("/ui");
-routes! { get("/{id}", show) }
+routes! {
+    prefix = "/ui",
+ get("/{id}", show) }
 
 #[handler]
 pub async fn show(Path(Wrong { other }): Path<Wrong>) -> String {

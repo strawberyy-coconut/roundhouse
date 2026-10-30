@@ -10,5 +10,6 @@ use roundhouse::openapi::Info;
 pub struct AppState;
 
 pub fn app(state: AppState) -> roundhouse::App<AppState> {
-    roundhouse::app!(state).openapi(|| Info::new("Validation API", env!("CARGO_PKG_VERSION")))
+    roundhouse::app!(state, routes)
+        .openapi(|| Info::new("Validation API", env!("CARGO_PKG_VERSION")))
 }

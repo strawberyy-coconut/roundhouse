@@ -11,7 +11,7 @@ use roundhouse::openapi::Info;
 use tower_http::trace::TraceLayer;
 
 pub fn app(state: AppState) -> roundhouse::App<AppState> {
-    roundhouse::app!(state)
+    roundhouse::app!(state, routes)
         .layer(TraceLayer::new_for_http())
         .openapi(|| Info::new("Blog API", env!("CARGO_PKG_VERSION")))
 }

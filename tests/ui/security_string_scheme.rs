@@ -1,5 +1,5 @@
 use roundhouse::prelude::*;
 
-mount!(security = ["bearer"]);
+routes! { security = ["bearer"] }
 
 fn main() {}

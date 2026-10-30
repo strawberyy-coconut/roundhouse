@@ -2,7 +2,7 @@
 //!
 //! An OpenAPI-first framework for [axum]. You declare routes, parameters, schemas, auth and errors
 //! once; roundhouse builds the `axum::Router` **and** the OpenAPI 3.1 document from those same
-//! declarations. There is no separate wiring step and no hand-maintained spec.
+//! declarations. The route tree is the wiring: no link-time registry and no hand-maintained spec.
 //!
 //! [axum]: https://docs.rs/axum
 //!
@@ -15,8 +15,8 @@
 //! serde = { version = "1", features = ["derive"] }
 //! ```
 //!
-//! A route lives beside its handler in a `routes!` table, and the module that owns a subtree
-//! declares its prefix once in `mount!`:
+//! A route lives beside its handler in a `routes!` table. The same table declares the module's
+//! prefix, tags, security and layers, and composes child modules with `...module`:
 //!
 //! ```no_run
 //! use roundhouse::prelude::*;
@@ -26,8 +26,11 @@
 //!     pub message: String,
 //! }
 //!
-//! mount!("/v1", tags = ["hello"]);
-//! routes! { get("/hello/{name}", hello) }
+//! routes! {
+//!     prefix = "/v1",
+//!     tags = ["hello"],
+//!     get("/hello/{name}", hello),
+//! }
 //!
 //! #[handler]
 //! pub async fn hello(Path(name): Path<String>) -> Json<Hello> {
@@ -49,14 +52,14 @@
 //!
 //! ## How it fits together
 //!
-//! 1. **Declare.** `routes!` records each operation, `mount!` records a prefix plus the tags,
-//!    layers and `Auth<A>` guards descendants inherit, and `#[handler]` derives the documentation
-//!    half from the handler signature.
-//! 2. **Build.** [`App::build`](router::App::build) joins every declaration in scope into a
+//! 1. **Declare.** `routes!` emits one `Module` per invocation: its prefix, tags, layers and
+//!    `Auth<A>` guards, the routes declared in that table, and the children composed with
+//!    `...module`. `#[handler]` derives the documentation half from the handler signature.
+//! 2. **Build.** [`App::build`](router::App::build) walks the composed module tree into a
 //!    [`Built`]: the `axum::Router`, the resolved route table, and the document.
 //!    A single table's duplicates, operation ids and missing success responses are rejected by
-//!    the macro during expansion; collisions between tables, state mismatches and auth guards
-//!    whose state does not match the app are found here.
+//!    the macro during expansion; collisions across composed modules, state mismatches and auth
+//!    guards whose state does not match the app are found here.
 //!    [`App::try_build`](router::App::try_build) reports the latter without panicking.
 //! 3. **Enforce.** The extractors in [`extract`] enforce the constraints they publish, and
 //!    [`auth`] enforces the security requirements it publishes. Rejections are [`Problem`].
@@ -66,7 +69,7 @@
 //! | Module | What it covers |
 //! |---|---|
 //! | [`prelude`] | everything a route module normally imports |
-//! | [`router`] | `App`, `Built`, `Scope`, `MountHandle` |
+//! | [`router`] | `App`, `Built`, `Fragment`, `Module` |
 //! | [`extract`] | `Json`, `Form`, `Path`, `Query`, `Extension`, `Validation` |
 //! | [`doc`] | `ApiSchema`, parameter tables, response docs, layer docs |
 //! | [`auth`] | `Auth<A>`, `AuthScheme`, `Authenticate`, `Authorize` |
@@ -77,8 +80,8 @@
 //! | [`schema`] | schema derivation and validation without axum |
 //! | `multipart` | `Multipart<F>`, `FilePart`, `TempFile` (feature-gated) |
 //!
-//! The derive macros and `routes!`/`mount!` are re-exported at the crate root; [`prelude`] is the
-//! usual import for application code.
+//! The derive macros and `routes!` are re-exported at the crate root; [`prelude`] is the usual
+//! import for application code.
 //!
 //! ## Feature flags
 //!
@@ -97,7 +100,7 @@
 //!
 //! ## Examples
 //!
-//! The repository ships runnable examples for routing, mounts and layers, validation, uploads,
+//! The repository ships runnable examples for routing, module composition and layers, validation, uploads,
 //! auth and utoipa interop (see the `examples/` directory). `examples/notes` is the smallest and
 //! the best starting point.
 //!
@@ -142,15 +145,13 @@ pub use multipart::TempFile;
 #[cfg(feature = "multipart")]
 pub use multipart::{FilePart, Multipart, MultipartForm};
 pub use problem::Problem;
+pub use registry::Module;
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
-pub use router::{
-    App, Built, DocumentRejections, Fragment, MergeRecord, MountHandle, ResolvedRoute, Scope,
-};
+pub use router::{App, Built, DocumentRejections, Fragment, MergeRecord, ResolvedRoute};
 pub use utoipa::{PartialSchema, ToSchema};
 
 pub use axum;
 pub use http;
-pub use inventory;
 pub use regex;
 pub use serde_json;
 pub use utoipa;
@@ -159,20 +160,32 @@ pub use utoipa;
 pub use roundhouse_macros::Multipart;
 #[cfg(feature = "macros")]
 pub use roundhouse_macros::{
-    ApiError, ApiResponse, ApiSchema, PathParams, QueryParams, handler, mount, routes,
+    ApiError, ApiResponse, ApiSchema, PathParams, QueryParams, handler, routes,
 };
 
-/// Start an app, scoped to the calling crate so linked dependencies' routes stay out.
+/// Start an app from the fragment declared in the calling module.
 ///
-/// The scope is the crate name, not the calling module: moving `main` into a submodule must not
-/// silently produce an empty app.
+/// ```ignore
+/// routes! { ...routes }
+/// let app = roundhouse::app!(state);
+/// ```
+///
+/// `app!(state, module)` roots the app at another module's fragment, which is how a library's
+/// route tree is composed:
+///
+/// ```ignore
+/// let app = roundhouse::app!(state, other_crate::routes);
+/// ```
+///
+/// Both forms are equivalent to `App::new(state).fragment(..)`; the builder form is available
+/// when the root is chosen at runtime.
 #[macro_export]
 macro_rules! app {
     ($state:expr) => {
-        $crate::App::new($state).scope(env!("CARGO_CRATE_NAME"))
-    };
-    ($state:expr, fragment) => {
         $crate::App::new($state).fragment(__roundhouse_fragment())
+    };
+    ($state:expr, $($module:ident)::+) => {
+        $crate::App::new($state).fragment($($module)::+::__roundhouse_fragment())
     };
 }
 
@@ -195,7 +208,7 @@ pub mod prelude {
     #[cfg(feature = "multipart")]
     pub use crate::{FilePart, Multipart};
     #[cfg(feature = "macros")]
-    pub use crate::{PathParams, QueryParams, handler, mount, routes};
+    pub use crate::{PathParams, QueryParams, handler, routes};
     pub use axum::response::sse::{Event, KeepAlive, Sse};
 
     pub use axum::extract::{FromRequest, FromRequestParts, State};

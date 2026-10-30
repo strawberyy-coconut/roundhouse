@@ -1,5 +1,5 @@
 error[E0425]: cannot find type `show_missing_roundhouse_handler_attribute` in this scope
- --> tests/ui/missing_handler.rs:4:21
+ --> tests/ui/missing_handler.rs:5:12
   |
-4 | routes! { get("/x", show) }
-  |                     ^^^^ not found in this scope
+5 |  get("/x", show) }
+  |            ^^^^ not found in this scope

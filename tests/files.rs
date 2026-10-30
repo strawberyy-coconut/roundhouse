@@ -10,9 +10,9 @@ pub struct State;
 mod files {
     use super::*;
 
-    mount!("/files", tags = ["files"]);
-
     routes! {
+        prefix = "/files",
+        tags = ["files"],
         post("/upload", upload, summary = "Upload a file"),
         get("/download", download, summary = "Download bytes"),
         get("/raw", raw, summary = "Download a file"),
@@ -87,7 +87,7 @@ mod files {
 
 fn app() -> Built {
     roundhouse::App::new(State)
-        .scope(module_path!())
+        .include(&files::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Files", "0.1.0"))
         .build()
 }
@@ -359,7 +359,7 @@ async fn a_non_multipart_content_type_is_415() {
 #[tokio::test]
 async fn max_parts_bounds_the_part_count() {
     let app = roundhouse::App::new(State)
-        .scope(module_path!())
+        .include(&files::MODULE)
         .max_parts(1)
         .build();
     let body = multipart(
@@ -388,7 +388,7 @@ fn unbounded_file_fields_are_reported_and_strict_rejects_them() {
         .expect("the unbounded file field is called out");
 
     let error = roundhouse::App::new(State)
-        .scope(concat!(module_path!(), "::files"))
+        .include(&files::MODULE)
         .strict()
         .try_build()
         .err()

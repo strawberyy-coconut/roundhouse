@@ -1,19 +1,20 @@
 //! The application builder, route resolution and router assembly.
 //!
-//! [`App`] starts from application state. In application code, prefer the [`app!`](crate::app!)
-//! macro, which also scopes discovery to the calling crate so routes from linked dependencies do
-//! not join by accident. Builder methods then configure mounts, layers, the document, validation
-//! and request limits. [`App::build`] resolves every declaration in scope into a [`Built`]:
+//! [`App`] starts from application state and an explicit module tree. In application code, prefer
+//! the [`app!`](crate::app!) macro: `app!(state)` roots the app at the fragment declared in the
+//! calling module, while `app!(state, module)` names another module's fragment. Builder methods
+//! then configure layers, the document, validation and request limits. [`App::build`] walks the
+//! tree into a [`Built`]:
 //!
 //! - [`Built::router`] — the ready `axum::Router`;
 //! - [`Built::document`] and [`Built::openapi_json`] — the OpenAPI 3.1 document;
 //! - [`Built::routes`] — the resolved table, with each declaration's source location.
 //!
 //! A single `routes!` table rejects its own duplicate routes, duplicate operation ids and missing
-//! success responses during expansion, so `cargo check` catches those. Resolution of the whole
-//! tree is still fallible at build time: the records are link-time, and collisions across tables,
-//! mount prefixes, state mismatches and the final document need the aggregate view. Use
-//! [`App::try_build`] in a test or a check binary so CI can fail without starting a server.
+//! success responses during expansion, so `cargo check` catches those. Resolution of the composed
+//! tree is still fallible at build time: collisions across modules, prefix joins, state
+//! mismatches and the final document need the aggregate view. Use [`App::try_build`] in a test
+//! or a check binary so CI can fail without starting a server.
 //! [`App::router`] is the escape hatch that returns a plain `axum::Router<S>` for embedding in a
 //! larger axum application.
 //!
@@ -21,6 +22,7 @@
 //! # use roundhouse::prelude::*;
 //! # fn state() -> () {}
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # roundhouse::routes! {}
 //! let built = roundhouse::app!(state()).build();
 //! std::fs::write("target/openapi.json", built.openapi_json())?;
 //! // built.router() is the axum router; built.routes() has the source locations.
@@ -42,83 +44,49 @@ use axum::routing::{MethodRouter, Route};
 use tower::{Layer, Service, ServiceExt};
 
 use crate::auth::AuthGuard;
-use crate::build_error::{BuildError, Source};
+use crate::build_error::BuildError;
 use crate::doc::{self, HandlerDocs};
 use crate::openapi::{Info, OpenApi};
 use crate::prefix;
 use crate::problem::Problem;
-use crate::registry::{self, Method, MountLayer, MountRecord, RouteRecord};
+use crate::registry::{Method, Module, RouteRecord};
 
 type RouterLayer = Box<dyn Fn(Router<()>) -> Router<()> + Send + Sync>;
 type DocumentHook = Box<dyn Fn(&mut OpenApi) + Send + Sync>;
 
-/// A typed handle to a module's route declarations, exported by `mount!` as `MOUNT`.
+/// An explicit group of route modules emitted by `routes!`.
 ///
-/// `App::scope`, `App::include` and `App::mount` accept this instead of a raw module path, so a
-/// partial move across a crate boundary fails to compile rather than silently selecting fewer
-/// routes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MountHandle {
-    scope: &'static str,
-    prefix: &'static str,
-}
-
-impl MountHandle {
-    pub const fn new(scope: &'static str, prefix: &'static str) -> Self {
-        Self { scope, prefix }
-    }
-
-    pub const fn scope(self) -> &'static str {
-        self.scope
-    }
-
-    pub const fn prefix(self) -> &'static str {
-        self.prefix
-    }
-}
-
-/// An explicit group of route modules, produced by `routes!` spreads.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// A `routes!` invocation produces one [`Module`] and a `__roundhouse_fragment()` function
+/// returning this value. `...module` spreads compose fragments, and [`App::fragment`] roots the
+/// app at one. The fragment owns the modules directly; there is no link-time discovery.
+#[derive(Debug, Clone, Default)]
 pub struct Fragment {
-    modules: Vec<&'static str>,
+    roots: Vec<&'static Module>,
 }
 
 impl Fragment {
-    pub fn new(module: &'static str) -> Self {
+    /// Start a fragment at one module.
+    pub fn new(module: &'static Module) -> Self {
         Self {
-            modules: vec![module],
+            roots: vec![module],
         }
     }
 
+    /// Add every root of `other` to this fragment.
     pub fn include(mut self, other: Self) -> Self {
-        self.modules.extend(other.modules);
+        self.roots.extend(other.roots);
         self
     }
 
-    pub fn modules(&self) -> &[&'static str] {
-        &self.modules
+    /// Add one module root.
+    pub fn with(mut self, module: &'static Module) -> Self {
+        self.roots.push(module);
+        self
     }
-}
 
-/// A module scope for [`App::scope`], [`App::include`] and [`App::mount`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Scope(&'static str);
-
-impl Scope {
-    pub const fn module_path(self) -> &'static str {
-        self.0
-    }
-}
-
-impl From<&'static str> for Scope {
-    fn from(scope: &'static str) -> Self {
-        Self(scope)
-    }
-}
-
-impl From<MountHandle> for Scope {
-    fn from(handle: MountHandle) -> Self {
-        Self(handle.scope)
+    /// The root modules in composition order.
+    pub fn roots(&self) -> &[&'static Module] {
+        &self.roots
     }
 }
 
@@ -145,14 +113,6 @@ impl MergeRecord {
     pub fn location(&self) -> String {
         format!("{}:{}", self.source.file, self.source.line)
     }
-}
-
-/// `App::mount(prefix, scope)`: an additional prefix for routes declared under `scope`.
-#[derive(Clone, Copy)]
-struct MountBinding {
-    prefix: &'static str,
-    scope: &'static str,
-    source: crate::build_error::Source,
 }
 
 /// Whether extractor rejection responses are added to the document.
@@ -189,12 +149,11 @@ type ValidationState = (
 /// resolved table and the cached OpenAPI document.
 pub struct App<S> {
     state: S,
-    scopes: Vec<&'static str>,
+    roots: Vec<&'static Module>,
     global_layers: Vec<RouterLayer>,
     global_layer_docs: Vec<fn() -> crate::doc::layer::LayerDoc>,
     fallback: Option<RouterLayer>,
     merges: Vec<PendingMerge>,
-    mounts: Vec<MountBinding>,
     info: Option<Box<dyn Fn() -> Info + Send + Sync>>,
     servers: Vec<utoipa::openapi::Server>,
     document_hooks: Vec<DocumentHook>,
@@ -217,12 +176,11 @@ where
     pub fn new(state: S) -> Self {
         Self {
             state,
-            scopes: Vec::new(),
+            roots: Vec::new(),
             global_layers: Vec::new(),
             global_layer_docs: Vec::new(),
             fallback: None,
             merges: Vec::new(),
-            mounts: Vec::new(),
             info: None,
             servers: Vec::new(),
             document_hooks: Vec::new(),
@@ -239,23 +197,22 @@ where
         }
     }
 
-    /// Restrict discovery to a module path (and its descendants, on `::` boundaries).
+    /// Root the app at one module tree emitted by `routes!`.
     ///
-    /// Accepts a `mount!` handle (`other_crate::routes::MOUNT`) as well as a string module path.
-    pub fn scope(mut self, scope: impl Into<Scope>) -> Self {
-        self.scopes.push(scope.into().module_path());
+    /// Compose several modules with [`App::fragment`] or by spreading them in a `routes!` table.
+    /// The module tree is the complete route set: nothing is discovered from the linker.
+    pub fn include(mut self, module: &'static Module) -> Self {
+        self.roots.push(module);
         self
     }
 
-    /// Select routes through an explicit [`Fragment`] instead of crate-name discovery.
+    /// Root the app at an explicit [`Fragment`].
+    ///
+    /// This is what `app!(state)` and `app!(state, module)` call; the builder form is useful for
+    /// tests, libraries and applications that choose a route subset at runtime.
     pub fn fragment(mut self, fragment: Fragment) -> Self {
-        self.scopes.extend(fragment.modules);
+        self.roots.extend(fragment.roots);
         self
-    }
-
-    /// Alias for [`App::scope`], for routes supplied by a library crate.
-    pub fn include(self, scope: impl Into<Scope>) -> Self {
-        self.scope(scope)
     }
 
     /// Apply a tower layer globally, outermost.
@@ -306,22 +263,6 @@ where
         self.merges.push(PendingMerge {
             router,
             source: crate::build_error::Source::new("App::merge", location.file(), location.line()),
-        });
-        self
-    }
-
-    /// Serve routes declared under `scope` at `prefix` as well as their normal location.
-    ///
-    /// This is the composition path for a route table owned by another crate, and for serving one
-    /// table at more than one versioned prefix. The selected declarations go through the same
-    /// state, conflict, capture, security and response checks as every other route.
-    #[track_caller]
-    pub fn mount(mut self, prefix: &'static str, scope: impl Into<Scope>) -> Self {
-        let location = std::panic::Location::caller();
-        self.mounts.push(MountBinding {
-            prefix,
-            scope: scope.into().module_path(),
-            source: crate::build_error::Source::new("App::mount", location.file(), location.line()),
         });
         self
     }
@@ -447,9 +388,9 @@ where
 
     /// Resolve and assemble everything. Panics with the same report `try_build` returns.
     ///
-    /// Duplicate routes, state mismatches and mount errors are discovered here, not by
-    /// `cargo check`: the route tables are link-time records. Use [`App::try_build`] in a test or
-    /// check binary when CI must fail without starting the server.
+    /// Duplicate routes across composed modules, state mismatches and prefix errors are
+    /// discovered here. Use [`App::try_build`] in a test or check binary when CI must fail without
+    /// starting the server.
     pub fn build(self) -> Built {
         let built = self.try_build().unwrap_or_else(|error| panic!("{error}"));
         for diagnostic in built.diagnostics() {
@@ -524,13 +465,10 @@ where
 
         let schema_engine = if self.validation == crate::extract::Validation::Schema {
             let components = document.as_utoipa().components.clone().unwrap_or_default();
-            let types = inventory::iter::<registry::ComponentTypeRecord>
-                .into_iter()
-                .map(|record| ((record.type_id)(), (record.name)()));
             Some(Arc::new(
                 roundhouse_schema::engine::SchemaEngine::from_components_bodies_and_parts(
                     &components,
-                    types,
+                    std::iter::empty::<(TypeId, String)>(),
                     bodies,
                     parts,
                 )
@@ -749,9 +687,8 @@ where
         &self,
         diagnostics: &mut Vec<crate::build_error::Diagnostic>,
     ) -> Result<Vec<ResolvedRoute>, BuildError> {
-        resolve_routes(
-            &self.scopes,
-            &self.mounts,
+        resolve_tree(
+            &self.roots,
             self.strict,
             &self.global_layer_docs,
             Some(TypeId::of::<S>()),
@@ -767,120 +704,72 @@ where
         engine: Option<&Arc<roundhouse_schema::engine::SchemaEngine>>,
         route_bodies: &BTreeMap<String, (TypeId, String)>,
     ) -> Result<Router<()>, BuildError> {
-        let roots = self.roots(resolved);
-
-        let mut mounts_by_module: BTreeMap<&'static str, &'static MountRecord> = BTreeMap::new();
-        for mount in inventory::iter::<registry::MountRecord>.into_iter() {
-            if roots
-                .iter()
-                .any(|root| prefix::is_ancestor(root, mount.module_path))
-            {
-                mounts_by_module.insert(mount.module_path, mount);
-            }
-        }
-
-        let mut routes_by_module: BTreeMap<&'static str, Vec<(String, MethodRouter<()>)>> =
-            BTreeMap::new();
-        let mut absolute: Vec<(&'static RouteRecord, MethodRouter<()>)> = Vec::new();
+        let mut by_record: HashMap<*const RouteRecord, (String, MethodRouter<()>)> = HashMap::new();
+        let mut absolute: Vec<(String, MethodRouter<()>)> = Vec::new();
 
         for route in resolved {
             let method_router =
                 build_method_router::<S>(route, &self.state, engine, self.max_body, route_bodies)?;
             if route.record.absolute {
-                absolute.push((route.record, method_router));
+                absolute.push((route.path.clone(), method_router));
             } else {
-                routes_by_module
-                    .entry(route.module_path)
-                    .or_default()
-                    .push((route.path.clone(), method_router));
-            }
-        }
-
-        let mut all_modules: BTreeSet<&'static str> = BTreeSet::new();
-        for route in resolved {
-            if route.record.absolute {
-                continue;
-            }
-            let root = roots
-                .iter()
-                .copied()
-                .filter(|root| prefix::is_ancestor(root, route.module_path))
-                .max_by_key(|root| prefix::depth(root))
-                .unwrap_or_else(|| first_segment(route.module_path));
-            let mut module = route.module_path;
-            loop {
-                all_modules.insert(module);
-                if module == root {
-                    break;
-                }
-                match module.rsplit_once("::") {
-                    Some((parent, _)) => module = parent,
-                    None => break,
-                }
-            }
-        }
-        for module in mounts_by_module.keys() {
-            all_modules.insert(module);
-        }
-
-        let mut children: BTreeMap<&'static str, Vec<&'static str>> = BTreeMap::new();
-        for module in &all_modules {
-            if let Some((parent, _)) = module.rsplit_once("::")
-                && all_modules.contains(parent)
-            {
-                children.entry(parent).or_default().push(module);
+                by_record.insert(
+                    route.record as *const RouteRecord,
+                    (route.path.clone(), method_router),
+                );
             }
         }
 
         let mut router = Router::<()>::new();
-
-        let mut built_roots: Vec<&'static str> = Vec::new();
-        for root in &roots {
-            if all_modules.contains(root) || mounts_by_module.contains_key(root) {
-                built_roots.push(root);
+        let mut seen: BTreeSet<*const Module> = BTreeSet::new();
+        for root in &self.roots {
+            if !seen.insert(*root as *const Module) {
+                continue;
             }
-        }
-        for root in built_roots {
-            // Every module registers its routes at the full resolved path, so the tree is flat:
-            // a root and its descendants are one router merged into the app.
-            router = router.merge(build_module(
-                root,
-                &all_modules,
-                &children,
-                &routes_by_module,
-                &mounts_by_module,
-            ));
+            let (root_router, _) = build_module(root, &by_record);
+            router = router.merge(root_router);
         }
 
-        for (record, method_router) in absolute {
-            router = router.route(&prefix::join("", record.path), method_router);
+        // An `absolute` route owns its full URL, so it is not part of any module router and no
+        // module layer, prefix, tag or guard applies to it.
+        for (path, method_router) in absolute {
+            router = router.route(&path, method_router);
         }
 
         Ok(router.fallback(|| async { Problem::not_found("no route matched this request") }))
     }
-
-    fn roots(&self, resolved: &[ResolvedRoute]) -> Vec<&'static str> {
-        // The tree is flat and already filtered to this app's scopes; rooting it at the first
-        // module segment lets ancestor mounts (including ones above a `scope`) contribute their
-        // layers to the selected routes without pulling in any unselected route.
-        let mut roots: Vec<&'static str> = resolved
-            .iter()
-            .map(|route| first_segment(route.module_path))
-            .collect();
-        roots.sort();
-        roots.dedup();
-        roots
-    }
 }
 
-fn selected(scopes: &[&'static str], module: &str) -> bool {
-    scopes.is_empty() || scopes.iter().any(|scope| prefix::in_scope(scope, module))
+fn build_module(
+    module: &'static Module,
+    routes: &HashMap<*const RouteRecord, (String, MethodRouter<()>)>,
+) -> (Router<()>, bool) {
+    let mut router = Router::<()>::new();
+    let mut has_routes = false;
+
+    for record in module.routes {
+        if let Some((path, method_router)) = routes.get(&(record as *const RouteRecord)) {
+            router = router.route(path, method_router.clone());
+            has_routes = true;
+        }
+    }
+
+    for child in module.children {
+        let (child_router, child_has_routes) = build_module(child, routes);
+        has_routes |= child_has_routes;
+        router = router.merge(child_router);
+    }
+
+    if has_routes && let Some(layer) = module.layer {
+        router = layer(router);
+    }
+
+    (router, has_routes)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn resolve_routes(
-    scopes: &[&'static str],
-    app_mounts: &[MountBinding],
+fn resolve_tree(
+    roots: &[&'static Module],
     strict: bool,
     global_layer_docs: &[fn() -> crate::doc::layer::LayerDoc],
     expected_state: Option<TypeId>,
@@ -888,279 +777,24 @@ fn resolve_routes(
     merges: usize,
     diagnostics: &mut Vec<crate::build_error::Diagnostic>,
 ) -> Result<Vec<ResolvedRoute>, BuildError> {
-    let selected_by_mount = |module: &str| {
-        app_mounts
-            .iter()
-            .any(|mount| prefix::in_scope(mount.scope, module))
+    let mut state = ResolveState {
+        expected_state,
+        expected_state_name,
+        global_layer_docs,
+        seen: HashMap::new(),
+        resolved: Vec::new(),
     };
-    let records: Vec<&'static RouteRecord> = inventory::iter::<registry::RouteRecord>
-        .into_iter()
-        .filter(|route| selected(scopes, route.module_path) || selected_by_mount(route.module_path))
-        .collect();
-    // A scope selects a subtree, not a new root. Mounts above the scope still provide the
-    // structural prefix, tags, security and layers for every route inside it.
-    let mounts: Vec<&'static MountRecord> = inventory::iter::<registry::MountRecord>
-        .into_iter()
-        .filter(|mount| {
-            selected(scopes, mount.module_path)
-                || records
-                    .iter()
-                    .any(|route| prefix::is_ancestor(mount.module_path, route.module_path))
-        })
-        .collect();
 
-    // A guard captures the app state when the router is assembled. Reject a scheme whose
-    // `AuthScheme::State` is a different type now, while the source location is still useful,
-    // instead of panicking inside the generated layer.
-    if let Some(expected) = expected_state {
-        for mount in &mounts {
-            for guard in mount.security {
-                if (guard.state)() != expected {
-                    return Err(BuildError::SecurityStateMismatch {
-                        name: guard.name.to_string(),
-                        expected: expected_state_name,
-                        actual: (guard.state_name)(),
-                        source: Source::new(mount.module_path, mount.file, mount.line),
-                    });
-                }
-            }
+    let mut seen_roots: BTreeSet<*const Module> = BTreeSet::new();
+    for root in roots {
+        if !seen_roots.insert(*root as *const Module) {
+            continue;
         }
-        for record in &records {
-            for guard in record.security {
-                if (guard.state)() != expected {
-                    return Err(BuildError::SecurityStateMismatch {
-                        name: guard.name.to_string(),
-                        expected: expected_state_name,
-                        actual: (guard.state_name)(),
-                        source: record.source_ref(),
-                    });
-                }
-            }
-        }
+        let inherited = Inherited::default();
+        walk_module(root, inherited, strict, diagnostics, &mut state)?;
     }
 
-    for mount in &mounts {
-        if let Err(reason) = prefix::validate_mount_prefix(mount.prefix) {
-            return Err(BuildError::InvalidMountPrefix {
-                prefix: mount.prefix.to_string(),
-                reason,
-                source: crate::build_error::Source::new(mount.module_path, mount.file, mount.line),
-            });
-        }
-        let used = records
-            .iter()
-            .any(|route| prefix::is_ancestor(mount.module_path, route.module_path));
-        if !used && selected(scopes, mount.module_path) {
-            crate::build_error::report(
-                diagnostics,
-                strict,
-                crate::build_error::Diagnostic::new(
-                    crate::build_error::Source::new(mount.module_path, mount.file, mount.line),
-                    format!("mount! `{}` has no routes below it", mount.prefix),
-                ),
-            )?;
-        }
-    }
-
-    let mut resolved = Vec::new();
-
-    for mount in app_mounts {
-        if let Err(reason) = prefix::validate_mount_prefix(mount.prefix) {
-            return Err(BuildError::InvalidMountPrefix {
-                prefix: mount.prefix.to_string(),
-                reason,
-                source: mount.source,
-            });
-        }
-        if !records
-            .iter()
-            .any(|route| prefix::in_scope(mount.scope, route.module_path))
-        {
-            return Err(BuildError::EmptyScope { scope: mount.scope });
-        }
-    }
-
-    for scope in scopes {
-        let matches = inventory::iter::<registry::RouteRecord>
-            .into_iter()
-            .any(|route| prefix::is_ancestor(scope, route.module_path))
-            || inventory::iter::<registry::MountRecord>
-                .into_iter()
-                .any(|mount| prefix::is_ancestor(scope, mount.module_path));
-        if !matches {
-            return Err(BuildError::EmptyScope { scope });
-        }
-    }
-
-    let mut seen: HashMap<(Method, String), &'static RouteRecord> = HashMap::new();
-
-    for record in records {
-        if let Some(expected) = expected_state
-            && let Some(actual) = (record.state)()
-            && actual != expected
-        {
-            return Err(BuildError::StateMismatch {
-                operation_id: record
-                    .operation_id
-                    .unwrap_or(record.handler_name)
-                    .to_string(),
-                expected: (record.state_name)(),
-                actual: expected_state_name,
-                source: record.source_ref(),
-            });
-        }
-        if let Err(reason) = prefix::validate_template(record.path) {
-            return Err(BuildError::InvalidTemplate {
-                reason,
-                source: record.source_ref(),
-            });
-        }
-
-        let ancestors: Vec<&'static MountRecord> = mounts
-            .iter()
-            .copied()
-            .filter(|mount| prefix::is_ancestor(mount.module_path, record.module_path))
-            .collect();
-
-        let mut ancestors = ancestors;
-        ancestors.sort_by_key(|mount| prefix::depth(mount.module_path));
-
-        let mut layer_docs: Vec<crate::doc::layer::LayerDoc> = if record.absolute {
-            Vec::new()
-        } else {
-            ancestors
-                .iter()
-                .filter_map(|mount| mount.doc)
-                .map(|doc| doc())
-                .collect()
-        };
-        layer_docs.extend(global_layer_docs.iter().map(|doc| doc()));
-
-        // The assertion describes the declaration's own prefix chain, before any
-        // `App::mount` binding. A library can therefore assert its public URL and still be
-        // mounted at a versioned prefix by an application.
-        let declared_path = if record.absolute {
-            prefix::join("", record.path)
-        } else {
-            prefix::join_all(ancestors.iter().map(|mount| mount.prefix), record.path)
-        };
-        if let Some(expected) = record.assert_path
-            && declared_path != expected
-        {
-            return Err(BuildError::PathAssertion {
-                expected: expected.to_string(),
-                actual: declared_path,
-                source: record.source_ref(),
-            });
-        }
-
-        let normal = selected(scopes, record.module_path);
-        let mut bindings: Vec<Option<MountBinding>> = Vec::new();
-        if record.absolute {
-            // `absolute` means the entry owns its full path, so it is emitted once even if more
-            // than one app mount covers its scope.
-            bindings.push(None);
-        } else {
-            if normal {
-                bindings.push(None);
-            }
-            bindings.extend(
-                app_mounts
-                    .iter()
-                    .copied()
-                    .filter(|mount| prefix::in_scope(mount.scope, record.module_path))
-                    .map(Some),
-            );
-        }
-
-        // `absolute` owns its full URL, so it sees only the guards declared on the entry itself.
-        let auth = if record.absolute {
-            dedup_guards(record.security.iter().copied())
-        } else {
-            dedup_guards(
-                ancestors
-                    .iter()
-                    .flat_map(|mount| mount.security.iter().copied())
-                    .chain(record.security.iter().copied()),
-            )
-        };
-
-        for binding in bindings {
-            let (path, tags, hidden) = if record.absolute {
-                (prefix::join("", record.path), Vec::new(), record.hidden)
-            } else {
-                let path = match binding {
-                    Some(mount) => prefix::join_all(
-                        std::iter::once(mount.prefix)
-                            .chain(ancestors.iter().map(|mount| mount.prefix)),
-                        record.path,
-                    ),
-                    None => {
-                        prefix::join_all(ancestors.iter().map(|mount| mount.prefix), record.path)
-                    }
-                };
-                let tags = ancestors
-                    .iter()
-                    .flat_map(|mount| mount.tags.iter().copied())
-                    .collect();
-                let hidden = record.hidden || ancestors.iter().any(|mount| mount.hidden);
-                (path, tags, hidden)
-            };
-
-            let normalised = prefix::normalise_template(&path);
-            let mut captures = prefix::captures(&path);
-            let total = captures.len();
-            captures.sort();
-            captures.dedup();
-            if captures.len() != total {
-                return Err(BuildError::InvalidTemplate {
-                    reason: format!("`{path}` declares the same capture name more than once"),
-                    source: record.source_ref(),
-                });
-            }
-            let mount_prefix = binding.as_ref().map(|mount| mount.prefix);
-            let operation_id = record
-                .operation_id
-                .map(str::to_string)
-                .unwrap_or_else(|| default_operation_id(record, mount_prefix));
-            let key = (record.method, normalised.clone());
-            if let Some(previous) = seen.get(&key) {
-                return Err(BuildError::DuplicateRoute {
-                    method: record.method,
-                    path,
-                    first: previous.source_ref(),
-                    second: record.source_ref(),
-                });
-            }
-            for ((existing_method, existing_path), previous) in &seen {
-                if *existing_path == normalised
-                    && (*existing_method == Method::Any || record.method == Method::Any)
-                    && *existing_method != record.method
-                {
-                    return Err(BuildError::DuplicateRoute {
-                        method: record.method,
-                        path,
-                        first: previous.source_ref(),
-                        second: record.source_ref(),
-                    });
-                }
-            }
-            seen.insert(key, record);
-
-            resolved.push(ResolvedRoute {
-                method: record.method,
-                path,
-                operation_id,
-                module_path: record.module_path,
-                record,
-                tags,
-                auth: auth.clone(),
-                hidden,
-                layer_docs: layer_docs.clone(),
-            });
-        }
-    }
-
+    let mut resolved = state.resolved;
     resolved.sort_by(|a, b| {
         a.path
             .cmp(&b.path)
@@ -1178,7 +812,7 @@ fn resolve_routes(
             continue;
         }
         previous_path = Some(route.path.as_str());
-        // A mount and leaf that are valid alone can still combine into a template the router
+        // A prefix and leaf that are valid alone can still combine into a template the router
         // cannot serve (for example more captures than matchit can name). Re-check the full
         // path before handing it to matchit, which panics past its own limit.
         if let Err(reason) = prefix::validate_template(route.path.as_str()) {
@@ -1212,6 +846,223 @@ fn resolve_routes(
     }
 
     Ok(resolved)
+}
+
+struct ResolveState<'a> {
+    expected_state: Option<TypeId>,
+    expected_state_name: &'static str,
+    global_layer_docs: &'a [fn() -> crate::doc::layer::LayerDoc],
+    seen: HashMap<(Method, String), &'static RouteRecord>,
+    resolved: Vec<ResolvedRoute>,
+}
+
+#[derive(Default, Clone)]
+struct Inherited {
+    prefix: String,
+    tags: Vec<&'static str>,
+    guards: Vec<AuthGuard>,
+    hidden: bool,
+    layer_docs: Vec<crate::doc::layer::LayerDoc>,
+}
+
+fn walk_module(
+    module: &'static Module,
+    inherited: Inherited,
+    strict: bool,
+    diagnostics: &mut Vec<crate::build_error::Diagnostic>,
+    state: &mut ResolveState<'_>,
+) -> Result<bool, BuildError> {
+    if let Err(reason) = prefix::validate_prefix(module.prefix) {
+        return Err(BuildError::InvalidPrefix {
+            prefix: module.prefix.to_string(),
+            reason,
+            source: module.source_ref(),
+        });
+    }
+
+    if let Some(expected) = state.expected_state {
+        for guard in module.security {
+            if (guard.state)() != expected {
+                return Err(BuildError::SecurityStateMismatch {
+                    name: guard.name.to_string(),
+                    expected: state.expected_state_name,
+                    actual: (guard.state_name)(),
+                    source: module.source_ref(),
+                });
+            }
+        }
+    }
+
+    let mut context = Inherited {
+        prefix: prefix::join(&inherited.prefix, module.prefix),
+        tags: inherited.tags,
+        guards: inherited.guards,
+        hidden: inherited.hidden,
+        layer_docs: inherited.layer_docs,
+    };
+    context.tags.extend(module.tags.iter().copied());
+    context.guards.extend(module.security.iter().copied());
+    context.hidden |= module.hidden;
+    if let Some(doc) = module.doc {
+        context.layer_docs.push(doc());
+    }
+
+    let mut has_routes = false;
+    for record in module.routes {
+        has_routes |= emit_route(record, module, &context, strict, diagnostics, state)?;
+    }
+    for child in module.children {
+        has_routes |= walk_module(child, context.clone(), strict, diagnostics, state)?;
+    }
+
+    if !has_routes {
+        crate::build_error::report(
+            diagnostics,
+            strict,
+            crate::build_error::Diagnostic::new(
+                module.source_ref(),
+                format!(
+                    "module `{}` declares no routes and has no routes below it",
+                    module.module_path
+                ),
+            ),
+        )?;
+    }
+
+    Ok(has_routes)
+}
+
+fn emit_route(
+    record: &'static RouteRecord,
+    module: &'static Module,
+    context: &Inherited,
+    _strict: bool,
+    _diagnostics: &mut Vec<crate::build_error::Diagnostic>,
+    state: &mut ResolveState<'_>,
+) -> Result<bool, BuildError> {
+    if let Some(expected) = state.expected_state
+        && let Some(actual) = (record.state)()
+        && actual != expected
+    {
+        return Err(BuildError::StateMismatch {
+            operation_id: record
+                .operation_id
+                .unwrap_or(record.handler_name)
+                .to_string(),
+            expected: (record.state_name)(),
+            actual: state.expected_state_name,
+            source: record.source_ref(),
+        });
+    }
+    if let Err(reason) = prefix::validate_template(record.path) {
+        return Err(BuildError::InvalidTemplate {
+            reason,
+            source: record.source_ref(),
+        });
+    }
+    if let Some(expected) = state.expected_state {
+        for guard in record.security {
+            if (guard.state)() != expected {
+                return Err(BuildError::SecurityStateMismatch {
+                    name: guard.name.to_string(),
+                    expected: state.expected_state_name,
+                    actual: (guard.state_name)(),
+                    source: record.source_ref(),
+                });
+            }
+        }
+    }
+
+    let (path, tags, auth, hidden, mut layer_docs) = if record.absolute {
+        (
+            prefix::join("", record.path),
+            Vec::new(),
+            dedup_guards(record.security.iter().copied()),
+            record.hidden,
+            Vec::new(),
+        )
+    } else {
+        (
+            prefix::join(&context.prefix, record.path),
+            context.tags.clone(),
+            dedup_guards(
+                context
+                    .guards
+                    .iter()
+                    .copied()
+                    .chain(record.security.iter().copied()),
+            ),
+            context.hidden || record.hidden,
+            context.layer_docs.clone(),
+        )
+    };
+    layer_docs.extend(state.global_layer_docs.iter().map(|doc| doc()));
+
+    if let Some(expected) = record.assert_path
+        && path != expected
+    {
+        return Err(BuildError::PathAssertion {
+            expected: expected.to_string(),
+            actual: path,
+            source: record.source_ref(),
+        });
+    }
+
+    let normalised = prefix::normalise_template(&path);
+    let mut captures = prefix::captures(&path);
+    let total = captures.len();
+    captures.sort();
+    captures.dedup();
+    if captures.len() != total {
+        return Err(BuildError::InvalidTemplate {
+            reason: format!("`{path}` declares the same capture name more than once"),
+            source: record.source_ref(),
+        });
+    }
+
+    let operation_id = record
+        .operation_id
+        .map(str::to_string)
+        .unwrap_or_else(|| default_operation_id(record));
+    let key = (record.method, normalised.clone());
+    if let Some(previous) = state.seen.get(&key) {
+        return Err(BuildError::DuplicateRoute {
+            method: record.method,
+            path,
+            first: previous.source_ref(),
+            second: record.source_ref(),
+        });
+    }
+    for ((existing_method, existing_path), previous) in &state.seen {
+        if *existing_path == normalised
+            && (*existing_method == Method::Any || record.method == Method::Any)
+            && *existing_method != record.method
+        {
+            return Err(BuildError::DuplicateRoute {
+                method: record.method,
+                path,
+                first: previous.source_ref(),
+                second: record.source_ref(),
+            });
+        }
+    }
+    state.seen.insert(key, record);
+
+    // Keep the module in the resolved route for callers that inspect the tree; it is not used
+    // for assembly, which walks `Module::routes` directly.
+    let _ = module;
+    state.resolved.push(ResolvedRoute {
+        method: record.method,
+        path,
+        operation_id,
+        module_path: record.module_path,
+        record,
+        tags,
+        auth,
+        hidden,
+        layer_docs,
+    });
+    Ok(true)
 }
 
 /// Inherited guards plus the entry's own, with one guard per scheme name.
@@ -1308,17 +1159,11 @@ fn docs_html(spec_path: &str) -> String {
     )
 }
 
-fn first_segment(module: &'static str) -> &'static str {
-    module.split("::").next().unwrap_or(module)
-}
-
 /// `GET blog::posts::show` → `get_blog_posts_show`.
 ///
 /// The id follows the declaration, not the URL, so moving a route under a different prefix does
-/// not rename every generated client method. A second binding of the same table (via
-/// `App::mount`) appends that binding's prefix, because one OpenAPI document cannot contain two
-/// operations with the same id. An explicit `operation_id` always wins.
-fn default_operation_id(record: &RouteRecord, mount_prefix: Option<&str>) -> String {
+/// not rename every generated client method. An explicit `operation_id` always wins.
+fn default_operation_id(record: &RouteRecord) -> String {
     let mut parts = vec![record.method.as_str().to_ascii_lowercase()];
     for segment in record.module_path.split("::") {
         let segment = sanitize(segment);
@@ -1329,12 +1174,6 @@ fn default_operation_id(record: &RouteRecord, mount_prefix: Option<&str>) -> Str
     let handler = sanitize(record.handler_name);
     if parts.last().is_none_or(|last| *last != handler) {
         parts.push(handler);
-    }
-    if let Some(prefix) = mount_prefix {
-        let prefix = sanitize(prefix);
-        if !prefix.is_empty() {
-            parts.push(prefix);
-        }
     }
     parts.join("_")
 }
@@ -1352,64 +1191,6 @@ fn sanitize(input: &str) -> String {
         }
     }
     out.trim_matches('_').to_string()
-}
-
-fn build_module(
-    module: &'static str,
-    modules: &BTreeSet<&'static str>,
-    children: &BTreeMap<&'static str, Vec<&'static str>>,
-    routes: &BTreeMap<&'static str, Vec<(String, MethodRouter<()>)>>,
-    mounts: &BTreeMap<&'static str, &'static MountRecord>,
-) -> Router<()> {
-    let (router, _) = build_module_inner(module, modules, children, routes, mounts);
-    router
-}
-
-/// Build one module router, returning whether it contains any routes.
-///
-/// The flag lets `build_module` skip a `route_layer` on a module whose routes were all filtered
-/// out; axum panics when a route layer is added to a router with no routes.
-fn build_module_inner(
-    module: &'static str,
-    modules: &BTreeSet<&'static str>,
-    children: &BTreeMap<&'static str, Vec<&'static str>>,
-    routes: &BTreeMap<&'static str, Vec<(String, MethodRouter<()>)>>,
-    mounts: &BTreeMap<&'static str, &'static MountRecord>,
-) -> (Router<()>, bool) {
-    let mut router = Router::<()>::new();
-    let mut has_routes = false;
-
-    if let Some(items) = routes.get(module) {
-        for (path, method_router) in items {
-            router = router.route(path, method_router.clone());
-            has_routes = true;
-        }
-    }
-
-    if let Some(items) = children.get(module) {
-        for child in items {
-            if !modules.contains(child) {
-                continue;
-            }
-            let (child_router, child_has_routes) =
-                build_module_inner(child, modules, children, routes, mounts);
-            has_routes |= child_has_routes;
-            router = router.merge(child_router);
-        }
-    }
-
-    if has_routes
-        && let Some(mount) = mounts.get(module)
-        && let Some(layer) = mount.layer
-    {
-        router = apply_mount_layer(router, layer);
-    }
-
-    (router, has_routes)
-}
-
-fn apply_mount_layer(router: Router<()>, layer: MountLayer) -> Router<()> {
-    layer(router)
 }
 
 fn build_method_router<S>(
@@ -1615,7 +1396,7 @@ pub struct ResolvedRoute {
     pub module_path: &'static str,
     pub record: &'static RouteRecord,
     pub tags: Vec<&'static str>,
-    /// Auth guards inherited from mounts plus this entry's own `security`; installed on the
+    /// Guards inherited from modules plus this entry's own `security`; installed on the
     /// method router unless the handler already requires the same scheme.
     pub auth: Vec<AuthGuard>,
     pub hidden: bool,

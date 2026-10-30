@@ -1,4 +1,4 @@
-//! `app!` scopes by crate, so moving the call into a submodule cannot empty the app.
+//! `app!(state, module)` roots the app at a fragment from another module.
 
 use roundhouse::prelude::*;
 
@@ -8,9 +8,10 @@ pub struct State;
 mod routes {
     use super::*;
 
-    mount!("/app-scope");
-
-    routes! { get("/x", x) }
+    routes! {
+        prefix = "/app-scope",
+        get("/x", x),
+    }
 
     #[handler]
     pub async fn x() -> &'static str {
@@ -22,7 +23,7 @@ mod launch {
     use super::*;
 
     pub fn app() -> roundhouse::App<State> {
-        roundhouse::app!(State)
+        roundhouse::app!(State, crate::routes)
     }
 }
 

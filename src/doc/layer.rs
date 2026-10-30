@@ -3,7 +3,7 @@
 use super::{BodyDoc, HeaderDoc, Param, ResponseDoc};
 use crate::auth::{AuthScheme, SchemeDoc};
 
-/// What a layer guarantees, merged into every operation beneath its mount.
+/// What a layer guarantees, merged into every operation beneath its module.
 #[derive(Clone, Default)]
 pub struct LayerDoc {
     pub responses: Vec<ResponseDoc>,

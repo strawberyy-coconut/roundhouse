@@ -9,8 +9,9 @@ pub struct State;
 mod document_path {
     use super::*;
 
-    mount!("/");
-    routes! { get("/openapi.json", x, operation_id = "document_path_x") }
+    routes! {
+           prefix = "/",
+    get("/openapi.json", x, operation_id = "document_path_x") }
 
     #[handler]
     pub async fn x() -> &'static str {
@@ -21,7 +22,7 @@ mod document_path {
 #[test]
 fn a_declared_route_cannot_claim_the_document_path() {
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::document_path"))
+        .include(&document_path::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Paths", "0.1.0"))
         .try_build()
         .err()
@@ -33,8 +34,9 @@ fn a_declared_route_cannot_claim_the_document_path() {
 mod docs_path {
     use super::*;
 
-    mount!("/");
-    routes! { get("/docs", x, operation_id = "docs_path_x") }
+    routes! {
+           prefix = "/",
+    get("/docs", x, operation_id = "docs_path_x") }
 
     #[handler]
     pub async fn x() -> &'static str {
@@ -45,7 +47,7 @@ mod docs_path {
 #[test]
 fn a_declared_route_cannot_claim_the_docs_path() {
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::docs_path"))
+        .include(&docs_path::MODULE)
         .docs()
         .try_build()
         .err()
@@ -57,7 +59,7 @@ fn a_declared_route_cannot_claim_the_docs_path() {
 #[test]
 fn the_document_and_docs_routes_cannot_share_a_path() {
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::merged"))
+        .include(&merged::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Paths", "0.1.0"))
         .docs_route("/openapi.json")
         .try_build()
@@ -69,8 +71,9 @@ fn the_document_and_docs_routes_cannot_share_a_path() {
 mod merged {
     use super::*;
 
-    mount!("/merged");
-    routes! { get("/x", x, operation_id = "merged_x") }
+    routes! {
+           prefix = "/merged",
+    get("/x", x, operation_id = "merged_x") }
 
     #[handler]
     pub async fn x() -> &'static str {
@@ -82,7 +85,7 @@ mod merged {
 fn a_merged_router_collision_is_a_build_error() {
     let merged = axum::Router::new().route("/merged/x", axum::routing::get(|| async { "merged" }));
     let error = App::new(State)
-        .scope(concat!(module_path!(), "::merged"))
+        .include(&merged::MODULE)
         .merge(merged)
         .try_build()
         .err()

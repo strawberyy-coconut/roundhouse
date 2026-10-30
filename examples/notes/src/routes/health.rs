@@ -1,8 +1,7 @@
 use roundhouse::prelude::*;
 
-mount!(tags = ["ops"]);
-
 routes! {
+    tags = ["ops"],
     get("/healthz", healthz, summary = "Liveness probe"),
 }
 

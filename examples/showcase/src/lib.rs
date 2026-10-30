@@ -17,7 +17,7 @@ async fn inject_extension(mut request: Request, next: Next) -> Response {
 }
 
 pub fn app(state: AppState) -> roundhouse::App<AppState> {
-    roundhouse::app!(state)
+    roundhouse::app!(state, routes)
         .layer(middleware::from_fn(inject_extension))
         .validation_status(StatusCode::UNPROCESSABLE_ENTITY)
         .document_rejections(false)

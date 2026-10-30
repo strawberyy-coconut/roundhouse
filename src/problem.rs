@@ -18,12 +18,3 @@ impl crate::doc::ApiResponse for Problem {
         vec![crate::doc::ResponseDoc::problem_default()]
     }
 }
-
-// Join the same link-time registry the derives use, so `stored_responses_for::<Problem>` finds
-// this implementation.
-inventory::submit! {
-    crate::registry::ResponseRecord::__new(
-        std::any::type_name::<Problem>,
-        <Problem as crate::doc::ApiResponse>::responses,
-    )
-}

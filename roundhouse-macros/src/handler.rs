@@ -479,7 +479,10 @@ fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenStream>> {
         let mut statements = ok_statements(ok, 200)?;
         statements.push(quote! {
             let __before = docs.responses.len();
-            docs.responses.extend(#krate::doc::stored_responses_for::<#err>(components));
+            docs.responses.extend({
+                use #krate::doc::ProbeResponses as _;
+                (&#krate::doc::ResponseProbe::<#err>::new()).probe_responses(components)
+            });
             if docs.responses.len() == __before {
                 docs.undocumented_error = ::core::option::Option::Some(
                     ::core::any::type_name::<#err>(),
@@ -628,9 +631,10 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
                 return Ok(Vec::new());
             }
             Ok(vec![quote! {
-                docs.responses.extend(
-                    #krate::doc::stored_responses_for::<#ty>(components)
-                );
+                docs.responses.extend({
+                    use #krate::doc::ProbeResponses as _;
+                    (&#krate::doc::ResponseProbe::<#ty>::new()).probe_responses(components)
+                });
             }])
         }
     }

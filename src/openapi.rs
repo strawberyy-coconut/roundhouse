@@ -8,6 +8,7 @@
 //! ```no_run
 //! use roundhouse::openapi::Info;
 //!
+//! roundhouse::routes! {}
 //! let app = roundhouse::app!(())
 //!     .openapi(|| Info::new("Notes API", "0.1.0").description("A small example"));
 //! ```

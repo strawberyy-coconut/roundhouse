@@ -3,4 +3,8 @@ use roundhouse::prelude::*;
 pub mod guarded;
 pub mod protected;
 
-mount!(tags = ["auth"]);
+routes! {
+    tags = ["auth"],
+    ...guarded,
+    ...protected,
+}

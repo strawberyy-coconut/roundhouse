@@ -6,8 +6,9 @@
 //!
 //! The crate has two kinds of macros:
 //!
-//! - [`mount!`](macro@mount) and [`routes!`](macro@routes) declare a module's route table. They
-//!   expand to items and must be invoked at module scope, not inside a function body.
+//! - [`routes!`](macro@routes) declares a module's route table, its prefix, tags, security and
+//!   layers, and composes child modules. It expands to items and must be invoked at module scope,
+//!   not inside a function body.
 //! - [`#[handler]`](macro@handler) and the derive macros attach the metadata that the route table
 //!   needs to build both an `axum::Router` and an OpenAPI document.
 //!
@@ -21,9 +22,9 @@
 //!     message: String,
 //! }
 //!
-//! mount!("/v1", tags = ["greetings"]);
-//!
 //! routes! {
+//!     prefix = "/v1",
+//!     tags = ["greetings"],
 //!     get("/hello/{name}", hello, summary = "Say hello"),
 //! }
 //!
@@ -40,7 +41,6 @@
 mod api_response;
 mod api_schema;
 mod handler;
-mod mount;
 mod multipart;
 mod path_params;
 mod query_params;
@@ -51,93 +51,15 @@ mod util;
 use proc_macro::TokenStream;
 use syn::{DeriveInput, ItemFn, parse_macro_input};
 
-/// Declare a module's mount prefix and the metadata shared by its routes.
-///
-/// `mount!` belongs at module scope, next to the module's [`routes!`](macro@routes) table. It
-/// emits a `pub const MOUNT: roundhouse::MountHandle` for the module and registers the module as a
-/// route subtree. A module may contain at most one `mount!`; a second one collides on `MOUNT`.
-///
-/// A module without `mount!` still has routes: they are discovered through its parent module's
-/// prefix or through `App::scope` / `App::include`. Use `mount!` when the module owns a prefix or
-/// shared documentation.
-///
-/// # Syntax
-///
-/// ```text
-/// mount!();
-/// mount!(prefix);
-/// mount!(prefix, option, option, ...);
-/// mount!(None, option, option, ...);
-/// ```
-///
-/// The prefix is optional. `mount!(None)` is the explicit spelling for "this module has no
-/// prefix", which is useful when only the other options are needed.
-///
-/// # Options
-///
-/// - `tags = ["tag", ...]` — tags added to every non-`absolute` operation below this module.
-/// - `security = [Scheme, ...]` — scheme *types* installed as an `Auth<Scheme>` guard on every
-///   non-`absolute` operation below this module, and published in the document. Several schemes
-///   form one AND requirement. Write `[Bearer]`, not `["bearer"]` or `[Auth<Bearer>]`; scopes
-///   belong on the handler argument (`Auth<Bearer, ReadPosts>`). A handler that already takes
-///   `Auth<Scheme>` is not authenticated twice.
-/// - `layer = expression` — a tower layer applied to the module's router. The expression is
-///   evaluated once while the app is built.
-/// - `layer_mode = full` (default) — apply the layer to the whole subtree, like
-///   `axum::Router::layer`.
-/// - `layer_mode = route` — apply the layer only to routes that already match, like
-///   `axum::Router::route_layer`. This is what you want for middleware that depends on matched
-///   path parameters.
-/// - `hidden` — keep the module's routes in the router but omit them from the OpenAPI document.
-/// - `doc = expression` — an expression returning `roundhouse::doc::layer::LayerDoc`, merged into
-///   every operation below the module. This describes what a terminating layer does; it does not
-///   install the layer. Helpers such as `doc::layer::rate_limit`, `timeout`, `body_limit` and
-///   `auth::<A>()` construct the common cases.
-///
-/// The prefix is joined with ancestor prefixes and each route's path. Trailing and repeated
-/// slashes collapse, so `mount!("/api/")` plus `get("/health", ..)` becomes `/api/health`.
-/// Captures such as `/{project_id}` are allowed in a prefix; catch-alls such as `/{*rest}` are
-/// not, because they would swallow the entire subtree.
-///
-/// # Example
-///
-/// ```ignore
-/// use roundhouse::prelude::*;
-///
-/// mount!(
-///     "/api/v1",
-///     tags = ["notes"],
-///     security = [Bearer],
-///     layer = tower_http::trace::TraceLayer::new_for_http(),
-///     doc = roundhouse::doc::layer::rate_limit(429),
-/// );
-///
-/// routes! {
-///     get("/notes/{id}", show),
-/// }
-/// ```
-///
-/// # Composing modules
-///
-/// The generated handle can be passed to `App::scope`, `App::include` or `App::mount` instead of a
-/// string module path:
-///
-/// ```ignore
-/// use other_crate::notes::MOUNT;
-///
-/// let app = roundhouse::app!(()).include(MOUNT);
-/// ```
-#[proc_macro]
-pub fn mount(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as mount::MountInput);
-    mount::expand(input).into()
-}
-
 /// Declare the HTTP routes owned by the current module.
 ///
 /// `routes!` is invoked at module scope. Every entry contributes one route to the router and one
 /// operation to the OpenAPI document. Each handler must have been annotated with
 /// [`#[handler]`](macro@handler); the route table uses the marker type that attribute generates.
+///
+/// A module may contain at most one `routes!` invocation: it emits `MODULE` and
+/// `__roundhouse_fragment()` beside the routes. Use a nested group or a child module when a table
+/// grows large, and `...module` to compose it.
 ///
 /// # Syntax
 ///
@@ -166,6 +88,28 @@ pub fn mount(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
+/// A module declares its prefix and shared policy before the entries, and a string followed by a
+/// block is a nested module with its own prefix and options. `...module` composes another
+/// module's tree at the point it appears:
+///
+/// ```ignore
+/// // routes/mod.rs
+/// mod notes;
+/// mod blog;
+///
+/// routes! {
+///     prefix = "/api",
+///     tags = ["api"],
+///     ...notes,
+///     "/blog" [tags = ["blog"]] {
+///         get "/" => blog::list,
+///         post "/" => blog::create, responses(201 = Post),
+///     },
+/// }
+/// ```
+///
+/// The compact entry form `get "/path" => handler` is equivalent to `get("/path", handler)`.
+///
 /// The supported verbs are `get`, `post`, `put`, `patch`, `delete`, `head`, `options`, `trace`
 /// and `any`. `any` is served but cannot be represented as one OpenAPI operation, so it is
 /// omitted from the document with a build diagnostic. Commas between entries are optional.
@@ -188,36 +132,35 @@ pub fn mount(input: TokenStream) -> TokenStream {
 ///
 /// If the handler takes `Path<T>` where `T: roundhouse::PathNames`, the macro statically checks
 /// that every capture in the leaf path is declared by `T`. The check is deliberately a subset
-/// check: a mount prefix may add captures that the table cannot see. The full resolved path is
-/// validated again when the app is built.
+/// check: a parent module prefix may add captures that the entry cannot see. The full resolved
+/// path is validated again when the app is built.
 ///
 /// # Entry options
 ///
 /// - `summary = "..."` / `description = "..."` — the operation's OpenAPI summary and description.
 /// - `operation_id = "..."` — an explicit operation id. When omitted, an id is derived from the
 ///   method, module path and handler name. Explicit ids must be unique within a document.
-/// - `tags = ["tag", ...]` — operation tags, appended to the tags inherited from `mount!`.
+/// - `tags = ["tag", ...]` — operation tags, appended to the tags inherited from enclosing
+///   modules.
 /// - `security = [Scheme, ...]` — scheme types enforced on this entry, appended to the guards
-///   inherited from `mount!`. One scheme is enforced by the generated handler shim as an
-///   extractor; several form one AND requirement on the guard layer. As with `mount!`, entries
-///   are types (`Bearer`), not strings. A handler that already takes `Auth<A>` is not
-///   authenticated a second time.
+///   inherited from enclosing modules. One scheme is enforced by the generated handler shim as an
+///   extractor; several form one AND requirement on the guard layer. Entries are types (`Bearer`),
+///   not strings. A handler that already takes `Auth<A>` is not authenticated a second time.
 /// - `responses(status, status = Type, ...)` — declare responses that the handler's return type
 ///   cannot express. A bare status documents an empty response; `status = Type` documents a JSON
 ///   body of `Type`. Declarations add to or refine the inferred responses.
 /// - `override` — permit a `responses(..)` declaration to replace an inferred response with a
 ///   different status/body. Without it, a contradictory declaration is a build error.
-/// - `path = "/v1/notes/{id}"` — assert the path this entry declares, including `mount!`
-///   prefixes but before any `App::mount` binding. Useful for keeping a library's public URL
-///   stable.
+/// - `path = "/v1/notes/{id}"` — assert the resolved path this entry declares, including every
+///   parent module prefix. Useful for keeping a library's public URL stable.
 /// - `layer = expression` — a tower layer applied to this route's `MethodRouter`.
 /// - `doc = expression` — a hook of type `fn(&mut roundhouse::doc::HandlerDocs)` that runs after
 ///   the handler's inferred documentation and before document checks. It can add hand-written
 ///   parameters, bodies or responses; the additions still go through conflict and capture
 ///   validation.
 /// - `hidden` — serve the route but omit it from the document.
-/// - `absolute` — the path owns the full URL. Module prefixes and mount-level tags, security and
-///   hidden flags do not apply; a `security` declared on the entry itself still does.
+/// - `absolute` — the path owns the full URL. Module prefixes, tags, security, layers and hidden
+///   flags do not apply; a `security` declared on the entry itself still does.
 /// - `deprecated` — mark the operation deprecated in the document.
 /// - `public` — add the `x-roundhouse-public` extension to the operation.
 /// - `validate = false` — parse the request as usual but skip `#[schema(..)]` constraint
@@ -228,6 +171,27 @@ pub fn mount(input: TokenStream) -> TokenStream {
 ///   publishes constraints, including `axum::Json`, `axum::extract::Path`, `axum::extract::Query`
 ///   and `axum::Form`; the framework's own extractors already validate during extraction and are
 ///   not checked twice. `Result<Extractor, E>` arguments own their rejection and are left alone.
+///
+/// # Module options
+///
+/// The root table accepts these before the first entry; a `"/path" [..] { .. }` group accepts the
+/// same options in its brackets:
+///
+/// - `prefix = "/path"` — the module's URL segment (root table only; a group uses its path).
+/// - `tags = ["tag", ...]` — tags added to every non-`absolute` route below the module.
+/// - `security = [Scheme, ...]` — scheme types installed as an `Auth<Scheme>` guard on every
+///   non-`absolute` route below the module, and published in the document. Several schemes form
+///   one AND requirement. Scopes belong on the handler argument (`Auth<Bearer, ReadPosts>`).
+/// - `layer = expression` — a tower layer applied to the module's router.
+/// - `layer_mode = full` (default) — apply the layer to the whole subtree, like
+///   `axum::Router::layer`; `route` uses `route_layer`.
+/// - `hidden` — keep the module's routes in the router but omit them from the document.
+/// - `doc = expression` — an expression returning `roundhouse::doc::layer::LayerDoc`, merged into
+///   every operation below the module.
+///
+/// Prefixes join on the tree: `routes! { prefix = "/api", ...notes }` plus a child module with
+/// `prefix = "/notes"` serves `/api/notes/...`. Captures such as `/{project_id}` are allowed in a
+/// prefix; catch-alls are not.
 ///
 /// # Compile-time checks
 ///
@@ -240,8 +204,8 @@ pub fn mount(input: TokenStream) -> TokenStream {
 /// - an entry whose return type the macro can classify as producing no success response, unless
 ///   the entry declares one with `responses(..)`.
 ///
-/// Checks that need the resolved route table — collisions between separate tables, mount
-/// prefixes, a handler state that disagrees with the app — remain `BuildError`s from
+/// Checks that need the composed tree — collisions across separate modules, resolved prefix
+/// joins, a handler state that disagrees with the app — remain `BuildError`s from
 /// `App::try_build()`.
 ///
 /// # Example
@@ -249,9 +213,9 @@ pub fn mount(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// use roundhouse::prelude::*;
 ///
-/// mount!("/api", tags = ["notes"]);
-///
 /// routes! {
+///     prefix = "/api",
+///     tags = ["notes"],
 ///     get("/notes/{id}", show, operation_id = "get_note"),
 ///     post(
 ///         "/notes",
@@ -293,7 +257,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// - `Path<T>` — records the capture names from `T: roundhouse::PathNames` and the schema for a
 ///   scalar `Path<T>`. With a scalar type the names are unknown, so the compile-time check is
 ///   skipped and the build validates the document instead.
-/// - `Query<T>` — documents the query parameters from `T: roundhouse::QueryParams`.
+/// - `Query<T>` and `RepeatedQuery<T>` — document query parameters from `T: roundhouse::QueryParams`.
 /// - `Json<T>`, `Form<T>` and `Multipart<F>` — document the request body. A handler may read the
 ///   request body at most once; a second body extractor is a compile error.
 /// - `Auth<A>` and `Option<Auth<A, Scopes>>` — document the security scheme, required or optional

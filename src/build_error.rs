@@ -62,7 +62,7 @@ pub enum BuildError {
         operation_id: String,
         source: Source,
     },
-    /// A body extractor the document cannot verify (`axum::Json`, hand-mounted bodies).
+    /// A body extractor the document cannot verify (`axum::Json`, hand-written bodies).
     UnverifiedBody {
         operation_id: String,
         source: Source,
@@ -80,7 +80,7 @@ pub enum BuildError {
     },
     /// A security requirement with no registered scheme kind.
     UnverifiedSecurity { name: String, source: Source },
-    /// A mount- or entry-level security guard authenticates against a different state than the
+    /// A module- or entry-level security guard authenticates against a different state than the
     /// app.
     SecurityStateMismatch {
         name: String,
@@ -94,8 +94,8 @@ pub enum BuildError {
         status: u16,
         source: Source,
     },
-    /// A mount prefix axum cannot serve, or one that ends in a catch-all.
-    InvalidMountPrefix {
+    /// A module prefix axum cannot serve, or one that ends in a catch-all.
+    InvalidPrefix {
         prefix: String,
         reason: String,
         source: Source,
@@ -133,11 +133,9 @@ pub enum BuildError {
         actual: &'static str,
         source: Source,
     },
-    /// A `scope(..)` that matches no route or mount.
-    EmptyScope { scope: &'static str },
-    /// No routes resolved at all (usually `app!` called outside the library root).
+    /// The app resolved no routes.
     EmptyApp,
-    /// A registered handler could not be turned into a method router.
+    /// A handler could not be built into a method router (state mismatch at assembly).
     HandlerBuild {
         operation_id: String,
         message: String,
@@ -231,14 +229,14 @@ impl fmt::Display for BuildError {
                  its handler derives\n  {source}\n\
                  hint: make the declared type match, or add `override` to the entry"
             ),
-            BuildError::InvalidMountPrefix {
+            BuildError::InvalidPrefix {
                 prefix,
                 reason,
                 source,
             } => write!(
                 f,
-                "error: mount prefix `{prefix}` is not valid\n  {reason}\n  {source}\n\
-                 hint: a mount may contain `{{name}}` captures, but not a catch-all"
+                "error: module prefix `{prefix}` is not valid\n  {reason}\n  {source}\n\
+                 hint: a module prefix may contain `{{name}}` captures, but not a catch-all"
             ),
             BuildError::RouteConflict {
                 path,
@@ -275,7 +273,7 @@ impl fmt::Display for BuildError {
             } => write!(
                 f,
                 "error: route path assertion failed\n  expected `{expected}`\n  actual   `{actual}`\n  {source}\n\
-                 hint: update the `path = \"...\"` assertion or the mount prefix"
+                 hint: update the `path = \"...\"` assertion or the module prefix"
             ),
             BuildError::StateMismatch {
                 operation_id,
@@ -286,16 +284,11 @@ impl fmt::Display for BuildError {
                 f,
                 "error: route `{operation_id}` needs `{expected}`; app was built with `{actual}`\n  {source}"
             ),
-            BuildError::EmptyScope { scope } => write!(
-                f,
-                "error: no route is registered under scope `{scope}`\n\
-                 hint: check the module path, or call `app!` in the crate root that declares routes"
-            ),
             BuildError::EmptyApp => write!(
                 f,
                 "error: the app resolved no routes\n\
-                 hint: `app!` scopes to the calling module; call it in the crate root that declares \
-                 routes, or add `App::scope(..)`"
+                 hint: compose a module tree with `routes!` and root the app with `app!(state, module) \
+                 or `App::include(..)`"
             ),
             BuildError::HandlerBuild {
                 operation_id,

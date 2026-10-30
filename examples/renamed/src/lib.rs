@@ -11,9 +11,10 @@ pub struct AppState;
 pub mod routes {
     use super::*;
 
-    mount!("/renamed");
-
-    routes! { get("/x", x, operation_id = "renamed_x") }
+    routes! {
+        prefix = "/renamed",
+        get("/x", x, operation_id = "renamed_x"),
+    }
 
     #[derive(serde::Serialize, ToSchema, ApiSchema)]
     pub struct Out {
@@ -27,7 +28,7 @@ pub mod routes {
 }
 
 pub fn app() -> rh::App<AppState> {
-    rh::App::new(AppState).scope(module_path!())
+    rh::app!(AppState, routes)
 }
 
 #[cfg(test)]
