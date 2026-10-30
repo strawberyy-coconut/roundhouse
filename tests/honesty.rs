@@ -16,21 +16,6 @@ fn document(app: Built) -> serde_json::Value {
     serde_json::to_value(app.document()).unwrap()
 }
 
-mod undeclared {
-    use super::*;
-
-    mount!("/undeclared");
-
-    routes! {
-        get("/x", x, operation_id = "undeclared_x"),
-    }
-
-    #[handler]
-    pub async fn x() -> impl IntoResponse {
-        "x"
-    }
-}
-
 mod declared {
     use super::*;
 
@@ -198,20 +183,51 @@ mod foreign {
     }
 }
 
-mod duplicate_route {
+// Duplicates inside one table are rejected by `routes!` during expansion (see
+// tests/ui). These modules keep the aggregate check covered: two separate tables can still
+// resolve to the same route, and that is a `try_build` error.
+
+#[derive(Debug)]
+pub struct BlindResponse;
+
+impl IntoResponse for BlindResponse {
+    fn into_response(self) -> Response {
+        "blind".into_response()
+    }
+}
+
+mod blind_response {
     use super::*;
 
-    mount!("/duplicate-route");
+    mount!("/blind-response");
 
-    routes! {
-        get("/x", a, operation_id = "duplicate_route_a"),
-        get("/x", b, operation_id = "duplicate_route_b"),
+    routes! { get("/x", x, operation_id = "blind_response_x") }
+
+    #[handler]
+    pub async fn x() -> BlindResponse {
+        BlindResponse
     }
+}
+
+mod cross_duplicate_route_a {
+    use super::*;
+
+    mount!("/cross-dup");
+
+    routes! { get("/x", a, operation_id = "cross_dup_a") }
 
     #[handler]
     pub async fn a() -> &'static str {
         "a"
     }
+}
+
+mod cross_duplicate_route_b {
+    use super::*;
+
+    mount!("/cross-dup");
+
+    routes! { get("/x", b, operation_id = "cross_dup_b") }
 
     #[handler]
     pub async fn b() -> &'static str {
@@ -219,41 +235,25 @@ mod duplicate_route {
     }
 }
 
-mod normalised_route {
+mod cross_duplicate_operation_a {
     use super::*;
 
-    mount!("/normalised");
+    mount!("/cross-op-a");
 
-    routes! {
-        get("/x/{id}", a, operation_id = "normalised_a"),
-        get("/x/{post_id}", b, operation_id = "normalised_b"),
-    }
+    routes! { get("/", a, operation_id = "shared_operation") }
 
     #[handler]
     pub async fn a() -> &'static str {
         "a"
-    }
-
-    #[handler]
-    pub async fn b() -> &'static str {
-        "b"
     }
 }
 
-mod duplicate_operation {
+mod cross_duplicate_operation_b {
     use super::*;
 
-    mount!("/duplicate-operation");
+    mount!("/cross-op-b");
 
-    routes! {
-        get("/a", a, operation_id = "same"),
-        get("/b", b, operation_id = "same"),
-    }
-
-    #[handler]
-    pub async fn a() -> &'static str {
-        "a"
-    }
+    routes! { get("/", b, operation_id = "shared_operation") }
 
     #[handler]
     pub async fn b() -> &'static str {
@@ -289,16 +289,6 @@ mod default_status {
     pub async fn x() -> StatusCode {
         StatusCode::NO_CONTENT
     }
-}
-
-#[test]
-fn undeclared_success_is_a_build_error() {
-    let error = scoped(concat!(module_path!(), "::undeclared"))
-        .try_build()
-        .err()
-        .expect("impl IntoResponse without responses(..) must fail");
-    assert!(matches!(error, BuildError::UndeclaredSuccess { .. }));
-    assert!(error.to_string().contains("declares no success response"));
 }
 
 #[test]
@@ -461,29 +451,36 @@ fn a_missing_extension_documents_the_problem_it_produces() {
 }
 
 #[test]
-fn duplicate_routes_fail_the_build() {
-    let error = scoped(concat!(module_path!(), "::duplicate_route"))
+fn an_unclassifiable_response_still_needs_a_declaration() {
+    // The macro cannot see inside a hand-written `IntoResponse`, so the aggregate build remains
+    // the place that reports it.
+    let error = scoped(concat!(module_path!(), "::blind_response"))
         .try_build()
         .err()
-        .expect("two GET /x entries must fail");
-    assert!(matches!(error, BuildError::DuplicateRoute { .. }));
+        .expect("a custom response type without a declaration must fail");
+    assert!(matches!(error, BuildError::UndeclaredSuccess { .. }));
 }
 
 #[test]
-fn templates_are_normalised_before_duplicate_comparison() {
-    let error = scoped(concat!(module_path!(), "::normalised_route"))
+fn cross_table_duplicate_routes_fail_the_build() {
+    let error = App::new(State)
+        .scope(concat!(module_path!(), "::cross_duplicate_route_a"))
+        .scope(concat!(module_path!(), "::cross_duplicate_route_b"))
         .try_build()
         .err()
-        .expect("{id} and {post_id} are the same route shape");
+        .expect("two tables resolving to GET /cross-dup/x must fail");
     assert!(matches!(error, BuildError::DuplicateRoute { .. }));
+    assert!(error.to_string().contains("/cross-dup/x"));
 }
 
 #[test]
-fn duplicate_operation_ids_fail_the_build() {
-    let error = scoped(concat!(module_path!(), "::duplicate_operation"))
+fn cross_table_duplicate_operation_ids_fail_the_build() {
+    let error = App::new(State)
+        .scope(concat!(module_path!(), "::cross_duplicate_operation_a"))
+        .scope(concat!(module_path!(), "::cross_duplicate_operation_b"))
         .try_build()
         .err()
-        .expect("two operations cannot share an operationId");
+        .expect("two tables sharing an operationId must fail");
     assert!(matches!(error, BuildError::DuplicateOperationId { .. }));
     assert!(error.to_string().contains("operation_id"));
 }

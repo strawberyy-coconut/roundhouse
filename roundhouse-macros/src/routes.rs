@@ -1,7 +1,8 @@
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, quote_spanned};
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
+use syn::spanned::Spanned;
 use syn::{Attribute, Expr, Ident, LitInt, LitStr, Path, Result, Token, Type};
 
 use crate::util::{
@@ -236,12 +237,167 @@ impl Parse for RoutesInput {
 }
 
 pub fn expand(input: RoutesInput) -> TokenStream {
+    if let Err(error) = validate_entries(&input.entries) {
+        return error.to_compile_error();
+    }
     let mut output = TokenStream::new();
     for entry in input.entries {
         let expanded = expand_entry(entry);
         output.extend(expanded);
     }
     output
+}
+
+/// Table-local checks. These are the checks a single `routes!` invocation can make from the
+/// tokens alone: two entries that resolve to the same method and template, and two entries whose
+/// operation ids collide. Cross-table collisions still need the resolved route table.
+fn validate_entries(entries: &[Entry]) -> Result<()> {
+    use std::collections::HashMap;
+
+    let mut routes: HashMap<(String, String), &Entry> = HashMap::new();
+    let mut explicit_ids: HashMap<String, proc_macro2::Span> = HashMap::new();
+    let mut derived_ids: HashMap<(String, String), &Entry> = HashMap::new();
+
+    for entry in entries {
+        let method = entry.method.to_string();
+        let path = normalise_path(&entry.path.value());
+
+        // `any` and a concrete method on the same template conflict, and two concrete methods
+        // with the same template collide.
+        if let Some(first) = routes.get(&(method.clone(), path.clone())) {
+            return Err(duplicate_route_error(first, entry, &method, &path));
+        }
+        if let Some((first_method, first)) =
+            routes
+                .iter()
+                .find_map(|((existing, existing_path), first)| {
+                    (existing_path == &path
+                        && (existing == "any" || method == "any")
+                        && existing != &method)
+                        .then_some((existing, *first))
+                })
+        {
+            let mut error = syn::Error::new(
+                entry.method.span(),
+                format!(
+                    "route `{method} {path}` conflicts with `{first_method} {path}`; an `any` \
+                     entry covers every method"
+                ),
+            );
+            error.combine(syn::Error::new(
+                first.method.span(),
+                "the conflicting entry",
+            ));
+            return Err(error);
+        }
+        routes.insert((method.clone(), path.clone()), entry);
+
+        match &entry.operation_id {
+            Some(id) => {
+                if let Some(first_span) = explicit_ids.insert(id.value(), id.span()) {
+                    let mut error = syn::Error::new(
+                        id.span(),
+                        format!(
+                            "duplicate operationId `{}` in this routes! table",
+                            id.value()
+                        ),
+                    );
+                    error.combine(syn::Error::new(first_span, "first declared here"));
+                    return Err(error);
+                }
+            }
+            None => {
+                // The derived id is `method + module path + handler`; within one table the module
+                // path is shared, so the method and handler name are enough to detect a collision.
+                let handler = last_segment(&entry.handler);
+                let key = (method.clone(), handler.clone());
+                if let Some(first) = derived_ids.insert(key, entry) {
+                    let mut error = syn::Error::new(
+                        entry.handler.span(),
+                        format!(
+                            "two entries derive the same operationId `{}_{}`",
+                            method.to_ascii_lowercase(),
+                            handler
+                        ),
+                    );
+                    error.combine(syn::Error::new(
+                        first.handler.span(),
+                        "the first entry; set an explicit `operation_id = \"...\"` on one of them",
+                    ));
+                    return Err(error);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn duplicate_route_error(first: &Entry, second: &Entry, method: &str, path: &str) -> syn::Error {
+    let mut error = syn::Error::new(
+        second.method.span(),
+        format!("duplicate route `{method} {path}` in this routes! table"),
+    );
+    error.combine(syn::Error::new(
+        first.method.span(),
+        format!("first declared as `{method} {path}`"),
+    ));
+    error
+}
+
+/// Normalise a template the way the router does: captures collapse to `{}` / `{*}`, escaped
+/// braces are kept, and repeated slashes are collapsed.
+fn normalise_path(path: &str) -> String {
+    let chars: Vec<char> = path.chars().collect();
+    let mut out = String::with_capacity(path.len());
+    let mut index = 0;
+    while index < chars.len() {
+        if index + 1 < chars.len()
+            && ((chars[index] == '{' && chars[index + 1] == '{')
+                || (chars[index] == '}' && chars[index + 1] == '}'))
+        {
+            out.push(chars[index]);
+            index += 2;
+            continue;
+        }
+        if chars[index] == '{' {
+            let start = index + 1;
+            let mut end = start;
+            while end < chars.len() && chars[end] != '}' {
+                end += 1;
+            }
+            if end < chars.len() {
+                if chars[start..end].contains(&'*') {
+                    out.push_str("{*}");
+                } else {
+                    out.push_str("{}");
+                }
+                index = end + 1;
+                continue;
+            }
+        }
+        out.push(chars[index]);
+        index += 1;
+    }
+
+    let mut collapsed = String::with_capacity(out.len());
+    let mut last_slash = false;
+    for ch in out.chars() {
+        if ch == '/' {
+            if !last_slash {
+                collapsed.push('/');
+            }
+            last_slash = true;
+        } else {
+            collapsed.push(ch);
+            last_slash = false;
+        }
+    }
+    if collapsed.is_empty() {
+        "/".to_string()
+    } else {
+        collapsed
+    }
 }
 
 fn method_variant(method: &Ident) -> Result<TokenStream> {
@@ -366,6 +522,32 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let deprecated = entry.deprecated;
     let public = entry.public;
     let response_override = entry.response_override;
+    let declared_success = entry
+        .responses
+        .iter()
+        .any(|(status, _)| *status == 0 || (200..400).contains(status));
+    let no_success_message = LitStr::new(
+        &format!(
+            "roundhouse: `{} {}` has no success response; return a concrete response type or \
+             declare `responses(..)` in the table",
+            method_ident,
+            // `assert!` treats the message as a format string; keep captures literal.
+            entry.path.value().replace('{', "{{").replace('}', "}}")
+        ),
+        entry.path.span(),
+    );
+    // Point the const assertion at the entry's path rather than the whole macro invocation.
+    let success_assert = quote_spanned! { entry.path.span()=>
+        const _: () = {
+            if !#declared_success {
+                if let ::core::option::Option::Some(__statuses) =
+                    <__RoundhouseHandler as #krate::doc::HandlerMeta>::INFERRED_SUCCESS
+                {
+                    assert!(!__statuses.is_empty(), #no_success_message);
+                }
+            }
+        };
+    };
     let responses = entry.responses.iter().map(|(status, body)| {
         let status = proc_macro2::Literal::u16_suffixed(*status);
         match body {
@@ -420,6 +602,8 @@ fn expand_entry(entry: Entry) -> TokenStream {
         #[allow(non_upper_case_globals)]
         const _: () = {
             type __RoundhouseHandler = #marker_type;
+
+            #success_assert
 
             const _: () = {
                 assert!(

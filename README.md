@@ -39,7 +39,7 @@ parameter that `Path<String>` cannot name by itself.
 |---|---|
 | **Declarative routing** | `routes!` tables live beside their handlers; `mount!` declares a subtree's prefix, tags, layers and enforced `security` once. `App::build()` joins everything. |
 | **Single source of truth** | Paths, parameters, bodies, responses and security requirements are derived from the router's own declarations, so the document matches what is enforced. `security = [Bearer]` installs the `Auth<Bearer>` guard, not just the OpenAPI requirement. |
-| **Build-time diagnostics** | Duplicate routes, drifting parameter names, undeclared success responses, state mismatches and auth guards against the wrong state are `BuildError`s. `App::try_build()` never panics. |
+| **Early diagnostics** | Duplicate routes and operation ids, missing success responses and auth/state mismatches are compile errors where the declaration is local. Checks that need the resolved tree — collisions across tables, mount prefixes, the final document — are `BuildError`s, and `App::try_build()` never panics. |
 | **Document as artifact** | The OpenAPI document is always built; `App::openapi(..)` only decides whether it is served. `Built::openapi_json()` lets CI diff it. |
 | **Typed extractors** | `#[handler]` reads `State`, `Path`, `Query`, `Json`, `Form`, `Multipart`, `Auth`, `Option<Auth>` and `Extension` from the signature. |
 | **Schema generation** | `utoipa::ToSchema` owns the wire shape (`rename_all`, `skip`, `flatten`, `tag`, `untagged`, recursion, …); `#[derive(ApiSchema)]` adds the runtime checks. `uuid`, `chrono`, `time`, `jiff` and `decimal` are supported. |
@@ -117,8 +117,12 @@ is the smallest; start there.
 
 ## Usage notes
 
-**Route checks run at build time.** Discovery is link-time, so `cargo check` cannot see a duplicate
-route or state mismatch. Run the same gate in CI without starting a server:
+**Checks run as early as they can.** A single `routes!` table is checked during macro expansion:
+duplicate method+template pairs, duplicate operation ids, an entry with no success response, and
+an entry-level scheme that authenticates against a different state than the handler are compile
+errors. Checks that need the resolved tree — collisions between tables, mount prefixes, state
+against the app, the final document — run at `App::build()`. Keep that gate in CI without starting
+a server:
 
 ```rust
 #[test]

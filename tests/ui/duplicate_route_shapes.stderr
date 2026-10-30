@@ -1,0 +1,11 @@
+error: duplicate route `get /items/{}` in this routes! table
+ --> tests/ui/duplicate_route_shapes.rs:7:5
+  |
+7 |     get("/items/{post_id}", second),
+  |     ^^^
+
+error: first declared as `get /items/{}`
+ --> tests/ui/duplicate_route_shapes.rs:6:5
+  |
+6 |     get("/items/{id}", first),
+  |     ^^^

@@ -9,10 +9,13 @@
 //! - [`Built::document`] and [`Built::openapi_json`] — the OpenAPI 3.1 document;
 //! - [`Built::routes`] — the resolved table, with each declaration's source location.
 //!
-//! Resolution is fallible at build time, not at `cargo check`: the route tables are link-time
-//! records. Use [`App::try_build`] in a test or a check binary so CI can fail without starting a
-//! server. [`App::router`] is the escape hatch that returns a plain `axum::Router<S>` for
-//! embedding in a larger axum application.
+//! A single `routes!` table rejects its own duplicate routes, duplicate operation ids and missing
+//! success responses during expansion, so `cargo check` catches those. Resolution of the whole
+//! tree is still fallible at build time: the records are link-time, and collisions across tables,
+//! mount prefixes, state mismatches and the final document need the aggregate view. Use
+//! [`App::try_build`] in a test or a check binary so CI can fail without starting a server.
+//! [`App::router`] is the escape hatch that returns a plain `axum::Router<S>` for embedding in a
+//! larger axum application.
 //!
 //! ```no_run
 //! # use roundhouse::prelude::*;

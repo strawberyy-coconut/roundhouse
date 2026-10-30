@@ -1,0 +1,11 @@
+error: duplicate operationId `same` in this routes! table
+ --> tests/ui/duplicate_operation_id.rs:7:38
+  |
+7 |     get("/b", second, operation_id = "same"),
+  |                                      ^^^^^^
+
+error: first declared here
+ --> tests/ui/duplicate_operation_id.rs:6:37
+  |
+6 |     get("/a", first, operation_id = "same"),
+  |                                     ^^^^^^

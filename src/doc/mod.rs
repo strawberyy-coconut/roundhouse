@@ -173,6 +173,11 @@ pub trait HandlerMeta: Send + Sync + 'static {
     /// check during extraction, so the request must not be authenticated twice.
     const REQUIRED_AUTH: &'static [&'static str] = &[];
 
+    /// The success statuses the return type guarantees, or `None` when the macro cannot classify
+    /// it (a custom `ApiResponse`). `Some(&[])` means the macro knows there is no success
+    /// response, so a route entry must declare one.
+    const INFERRED_SUCCESS: Option<&'static [u16]> = None;
+
     fn docs(components: &mut Components) -> HandlerDocs;
 
     /// Documentation with the route's validation policy.

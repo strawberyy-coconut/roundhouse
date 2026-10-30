@@ -229,6 +229,21 @@ pub fn mount(input: TokenStream) -> TokenStream {
 ///   and `axum::Form`; the framework's own extractors already validate during extraction and are
 ///   not checked twice. `Result<Extractor, E>` arguments own their rejection and are left alone.
 ///
+/// # Compile-time checks
+///
+/// One invocation is checked during expansion, before the router exists:
+///
+/// - two entries that resolve to the same method and normalised template (`{id}` and `{post_id}`
+///   are the same shape), including an `any` entry against a concrete method;
+/// - two entries with the same `operation_id`, or two entries that would derive the same id from
+///   their method and handler name;
+/// - an entry whose return type the macro can classify as producing no success response, unless
+///   the entry declares one with `responses(..)`.
+///
+/// Checks that need the resolved route table — collisions between separate tables, mount
+/// prefixes, a handler state that disagrees with the app — remain `BuildError`s from
+/// `App::try_build()`.
+///
 /// # Example
 ///
 /// ```ignore

@@ -54,9 +54,10 @@
 //!    half from the handler signature.
 //! 2. **Build.** [`App::build`](router::App::build) joins every declaration in scope into a
 //!    [`Built`]: the `axum::Router`, the resolved route table, and the document.
-//!    Duplicate routes, state mismatches and auth guards whose state does not match the app are
-//!    found here, not by `cargo check`; [`App::try_build`](router::App::try_build) reports them
-//!    without panicking.
+//!    A single table's duplicates, operation ids and missing success responses are rejected by
+//!    the macro during expansion; collisions between tables, state mismatches and auth guards
+//!    whose state does not match the app are found here.
+//!    [`App::try_build`](router::App::try_build) reports the latter without panicking.
 //! 3. **Enforce.** The extractors in [`extract`] enforce the constraints they publish, and
 //!    [`auth`] enforces the security requirements it publishes. Rejections are [`Problem`].
 //!

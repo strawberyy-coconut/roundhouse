@@ -37,6 +37,9 @@ impl fmt::Display for Source {
 #[non_exhaustive]
 pub enum BuildError {
     /// Two table entries resolve to the same method and normalised template.
+    ///
+    /// Entries within one `routes!` table are rejected during expansion; this covers separate
+    /// tables that resolve to the same path.
     DuplicateRoute {
         method: Method,
         path: String,
@@ -44,12 +47,17 @@ pub enum BuildError {
         second: Source,
     },
     /// Two operations would share one `operationId`.
+    ///
+    /// A single table is checked during expansion; this covers ids that collide across tables.
     DuplicateOperationId {
         operation_id: String,
         first: Source,
         second: Source,
     },
     /// An operation derives no 2xx/3xx response and declares none.
+    ///
+    /// A return shape the macro can classify is rejected during expansion; this covers response
+    /// types whose statuses are only known at build time (a hand-written `IntoResponse`).
     UndeclaredSuccess {
         operation_id: String,
         source: Source,

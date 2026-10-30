@@ -189,6 +189,15 @@ pub fn expand(item: ItemFn) -> TokenStream {
         }),
         None => quote!(true),
     };
+    let inferred_success = match inferred_successes(&item.sig.output) {
+        Some(statuses) => {
+            let statuses = statuses
+                .iter()
+                .map(|status| proc_macro2::Literal::u16_suffixed(*status));
+            quote!(::core::option::Option::Some(&[#(#statuses),*]))
+        }
+        None => quote!(::core::option::Option::None),
+    };
     // A handler that declares `State<S>` fixes the router state. For an authenticated route that
     // must equal the scheme's `AuthScheme::State`; `ShimPolicyFor` turns a mismatch into a
     // compile error with a targeted diagnostic. A stateless handler lets the policy provide the
@@ -238,6 +247,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
             const HAS_STATE: bool = #has_state;
             const PATH_NAMES: &'static [&'static str] = #path_names;
             const REQUIRED_AUTH: &'static [&'static str] = &[#(#required_auth),*];
+            const INFERRED_SUCCESS: ::core::option::Option<&'static [u16]> = #inferred_success;
 
             fn docs(
                 components: &mut #krate::utoipa::openapi::schema::Components,
@@ -342,6 +352,60 @@ fn generic_types(ty: &Type) -> Vec<Type> {
             _ => None,
         })
         .collect()
+}
+
+/// The success statuses the return type guarantees, or `None` when the macro cannot classify it
+/// (a custom `ApiResponse` type registers its responses at build time). `Some(&[])` means the
+/// macro knows there is no success response, which is a compile error unless the entry declares
+/// one.
+fn inferred_successes(output: &ReturnType) -> Option<Vec<u16>> {
+    let ReturnType::Type(_, ty) = output else {
+        return Some(vec![204]);
+    };
+    let types = generic_types(ty);
+    if outer_ident(ty).as_deref() == Some("Result") && types.len() == 2 {
+        return ok_successes(&types[0]);
+    }
+    ok_successes(ty)
+}
+
+fn ok_successes(ty: &Type) -> Option<Vec<u16>> {
+    if let Type::Tuple(tuple) = ty {
+        if tuple.elems.is_empty() {
+            return Some(vec![200]);
+        }
+        if tuple.elems.len() >= 2 {
+            let dynamic = tuple
+                .elems
+                .iter()
+                .take(tuple.elems.len() - 1)
+                .any(|element| outer_ident(element).as_deref() == Some("StatusCode"));
+            let body = tuple.elems.last().expect("non-empty tuple");
+            if dynamic {
+                return Some(vec![0]);
+            }
+            return ok_successes(body);
+        }
+    }
+
+    match outer_ident(ty).as_deref() {
+        Some(
+            "Json" | "Attachment" | "File" | "Sse" | "Html" | "String" | "Vec" | "Bytes" | "Body",
+        ) => Some(vec![200]),
+        Some("StatusCode") => Some(vec![0]),
+        Some("Option" | "Infallible") => Some(Vec::new()),
+        _ => {
+            if let Type::Reference(reference) = ty
+                && matches!(outer_ident(&reference.elem).as_deref(), Some("str"))
+            {
+                return Some(vec![200]);
+            }
+            if let Type::ImplTrait(_) = ty {
+                return Some(Vec::new());
+            }
+            None
+        }
+    }
 }
 
 fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenStream>> {
