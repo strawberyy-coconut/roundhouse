@@ -114,6 +114,8 @@ pub struct RouteRecord {
     pub(crate) security: &'static [AuthGuard],
     /// Scheme names the handler itself requires (`Auth<A>`, not `Option<Auth<A>>`).
     pub(crate) required_auth: &'static [&'static str],
+    /// Scheme names the generated shim enforces; the guard layer is skipped for these.
+    pub(crate) shim_auth: &'static [&'static str],
     pub(crate) hidden: bool,
     pub(crate) absolute: bool,
     pub(crate) validate: bool,
@@ -150,6 +152,7 @@ impl RouteRecord {
         tags: &'static [&'static str],
         security: &'static [AuthGuard],
         required_auth: &'static [&'static str],
+        shim_auth: &'static [&'static str],
         hidden: bool,
         absolute: bool,
         validate: bool,
@@ -178,6 +181,7 @@ impl RouteRecord {
             tags,
             security,
             required_auth,
+            shim_auth,
             hidden,
             absolute,
             validate,

@@ -116,6 +116,8 @@ pub mod problem;
 #[doc(hidden)]
 pub mod registry;
 pub mod router;
+#[doc(hidden)]
+pub mod shim;
 
 /// Typed multipart extraction, re-exported from `roundhouse-multipart`.
 #[cfg(feature = "multipart")]

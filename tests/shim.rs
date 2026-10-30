@@ -1,0 +1,379 @@
+//! Route-level policy applied by the generated shim.
+//!
+//! Validation is on by default; `validate = false` opts out. A route's single security scheme is
+//! enforced as an extractor, without a handler argument when the handler does not ask for one.
+//! The handler functions themselves are never rewritten.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use axum::body::Body;
+use axum::http::{Request, StatusCode, header, request::Parts};
+use roundhouse::prelude::*;
+use roundhouse::{App, Built, Problem, SecuritySchemeKind};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Default)]
+pub struct AuthState {
+    pub calls: Arc<AtomicUsize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, ApiSchema)]
+pub struct NewNote {
+    #[schema(min_length = 3)]
+    pub title: String,
+}
+
+#[derive(Debug, Deserialize, PathParams)]
+pub struct ItemPath {
+    #[schema(minimum = 1)]
+    pub id: i64,
+}
+
+#[derive(Debug, Deserialize, QueryParams)]
+pub struct Filter {
+    #[schema(min_length = 2)]
+    pub q: Option<String>,
+}
+
+pub struct Counter;
+
+impl AuthScheme for Counter {
+    type State = AuthState;
+    type Identity = ();
+
+    const NAME: &'static str = "Counter";
+    const KIND: SecuritySchemeKind = SecuritySchemeKind::HttpBearer;
+}
+
+impl Authenticate for Counter {
+    async fn authenticate(parts: &mut Parts, state: &AuthState) -> Result<Self::Identity, Problem> {
+        state.calls.fetch_add(1, Ordering::SeqCst);
+        if parts
+            .headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            == Some("Bearer ok")
+        {
+            Ok(())
+        } else {
+            Err(Problem::new(StatusCode::UNAUTHORIZED, "Unauthorized"))
+        }
+    }
+
+    fn presents_credentials(parts: &Parts) -> bool {
+        parts.headers.contains_key(header::AUTHORIZATION)
+    }
+}
+
+fn scoped(module: &'static str) -> Built {
+    App::new(AuthState::default())
+        .scope(module)
+        .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
+        .build()
+}
+
+fn scoped_with_counter(module: &'static str) -> (Built, Arc<AtomicUsize>) {
+    let state = AuthState::default();
+    let calls = state.calls.clone();
+    let built = App::new(state)
+        .scope(module)
+        .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
+        .build();
+    (built, calls)
+}
+
+fn authed_get(uri: &str) -> Request<Body> {
+    Request::builder()
+        .method(http::Method::GET)
+        .uri(uri)
+        .header(header::AUTHORIZATION, "Bearer ok")
+        .body(Body::empty())
+        .expect("valid request")
+}
+
+async fn problem_json(response: axum::response::Response) -> serde_json::Value {
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body collects");
+    serde_json::from_slice(&bytes).expect("problem is JSON")
+}
+
+mod json_body {
+    use super::*;
+
+    mount!("/json");
+
+    routes! { post("/", create, operation_id = "shim_json_create") }
+
+    #[handler]
+    pub async fn create(axum::Json(body): axum::Json<NewNote>) -> axum::Json<NewNote> {
+        axum::Json(body)
+    }
+}
+
+mod json_opt_out {
+    use super::*;
+
+    mount!("/json-opt-out");
+
+    routes! {
+        post("/", create, operation_id = "shim_json_opt_out_create", validate = false)
+    }
+
+    #[handler]
+    pub async fn create(axum::Json(body): axum::Json<NewNote>) -> axum::Json<NewNote> {
+        axum::Json(body)
+    }
+}
+
+mod owned_json {
+    use super::*;
+
+    mount!("/owned-json");
+
+    routes! { post("/", create, operation_id = "shim_owned_json_create") }
+
+    #[handler]
+    pub async fn create(Json(body): Json<NewNote>) -> Json<NewNote> {
+        Json(body)
+    }
+}
+
+mod path_param {
+    use super::*;
+
+    mount!("/path");
+
+    routes! { get("/{id}", show, operation_id = "shim_path_show") }
+
+    #[handler]
+    pub async fn show(axum::extract::Path(path): axum::extract::Path<ItemPath>) -> String {
+        path.id.to_string()
+    }
+}
+
+mod query_param {
+    use super::*;
+
+    mount!("/query");
+
+    routes! { get("/", list, operation_id = "shim_query_list") }
+
+    #[handler]
+    pub async fn list(axum::extract::Query(filter): axum::extract::Query<Filter>) -> String {
+        filter.q.unwrap_or_default()
+    }
+}
+
+mod auth_with_handler {
+    use super::*;
+
+    mount!("/auth");
+
+    routes! { get("/", whoami, operation_id = "shim_auth_whoami", security = [Counter]) }
+
+    #[handler]
+    pub async fn whoami(_auth: Auth<Counter>) -> &'static str {
+        "ok"
+    }
+}
+
+mod auth_without_handler {
+    use super::*;
+
+    mount!("/auth-open");
+
+    routes! { get("/", open, operation_id = "shim_auth_open", security = [Counter]) }
+
+    #[handler]
+    pub async fn open() -> &'static str {
+        "ok"
+    }
+}
+
+mod auth_with_state {
+    use super::*;
+
+    mount!("/auth-state");
+
+    routes! { get("/", calls, operation_id = "shim_auth_calls", security = [Counter]) }
+
+    #[handler]
+    pub async fn calls(State(state): State<AuthState>, _auth: Auth<Counter>) -> String {
+        state.calls.load(Ordering::SeqCst).to_string()
+    }
+}
+
+mod auth_and_body {
+    use super::*;
+
+    mount!("/auth-body");
+
+    routes! { post("/", create, operation_id = "shim_auth_create", security = [Counter]) }
+
+    #[handler]
+    pub async fn create(_auth: Auth<Counter>, axum::Json(body): axum::Json<NewNote>) -> String {
+        body.title
+    }
+}
+
+mod result_body {
+    use super::*;
+
+    mount!("/result");
+
+    routes! { post("/", create, operation_id = "shim_result_create") }
+
+    #[handler]
+    pub async fn create(
+        body: Result<axum::Json<NewNote>, axum::extract::rejection::JsonRejection>,
+    ) -> Result<axum::Json<NewNote>, axum::extract::rejection::JsonRejection> {
+        body
+    }
+}
+
+#[tokio::test]
+async fn a_foreign_body_is_validated_by_default() {
+    let built = scoped(concat!(module_path!(), "::json_body"));
+    let response = built
+        .oneshot_json(http::Method::POST, "/json", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let problem = problem_json(response).await;
+    assert_eq!(problem["errors"][0]["pointer"], "/title");
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/json", r#"{"title":"abc"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn validate_false_disables_the_shim_check() {
+    let built = scoped(concat!(module_path!(), "::json_opt_out"));
+    let response = built
+        .oneshot_json(http::Method::POST, "/json-opt-out", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn the_frameworks_own_extractor_is_not_validated_twice() {
+    let built = scoped(concat!(module_path!(), "::owned_json"));
+    let response = built
+        .oneshot_json(http::Method::POST, "/owned-json", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_foreign_path_extractor_is_validated() {
+    let built = scoped(concat!(module_path!(), "::path_param"));
+    let response = built.oneshot_get("/path/0").await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = built.oneshot_get("/path/2").await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_foreign_query_extractor_is_validated() {
+    let built = scoped(concat!(module_path!(), "::query_param"));
+    let response = built.oneshot_get("/query?q=a").await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = built.oneshot_get("/query?q=ab").await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_route_scheme_is_enforced_without_a_handler_argument() {
+    let (built, calls) = scoped_with_counter(concat!(module_path!(), "::auth_without_handler"));
+
+    let response = built.oneshot_get("/auth-open").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    let response = built.oneshot(authed_get("/auth-open")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_handler_that_declares_auth_authenticates_once() {
+    let (built, calls) = scoped_with_counter(concat!(module_path!(), "::auth_with_handler"));
+
+    let response = built.oneshot(authed_get("/auth")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "the handler's Auth and the shim's enforcement must not both authenticate"
+    );
+
+    let response = built.oneshot_get("/auth").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_stateful_handler_shares_the_schemes_state() {
+    let (built, calls) = scoped_with_counter(concat!(module_path!(), "::auth_with_state"));
+
+    let response = built.oneshot(authed_get("/auth-state")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn auth_precedes_the_body_and_validation_still_runs() {
+    let (built, _calls) = scoped_with_counter(concat!(module_path!(), "::auth_and_body"));
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/auth-body", r#"{"title":"abc"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let request = Request::builder()
+        .method(http::Method::POST)
+        .uri("/auth-body")
+        .header(header::AUTHORIZATION, "Bearer ok")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"title":"ab"}"#))
+        .expect("valid request");
+    let response = built.oneshot(request).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let request = Request::builder()
+        .method(http::Method::POST)
+        .uri("/auth-body")
+        .header(header::AUTHORIZATION, "Bearer ok")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"title":"abc"}"#))
+        .expect("valid request");
+    let response = built.oneshot(request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_result_typed_body_owns_its_rejection_and_is_not_validated() {
+    let built = scoped(concat!(module_path!(), "::result_body"));
+    let response = built
+        .oneshot_json(http::Method::POST, "/result", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[test]
+fn the_document_publishes_the_route_scheme() {
+    let built = scoped(concat!(module_path!(), "::auth_without_handler"));
+    let document = serde_json::to_value(built.document()).unwrap();
+    assert_eq!(
+        document["paths"]["/auth-open"]["get"]["security"][0]["Counter"],
+        serde_json::json!([])
+    );
+    assert!(
+        document["components"]["securitySchemes"]["Counter"].is_object(),
+        "{document}"
+    );
+}

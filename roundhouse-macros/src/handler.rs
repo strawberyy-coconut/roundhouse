@@ -131,8 +131,69 @@ pub fn expand(item: ItemFn) -> TokenStream {
     };
     let has_state = state_type.is_some();
 
+    // The shim that routes! registers instead of the handler itself. It has the handler's own
+    // extractors, plus the policy's auth extractor and a ValidationContext. The handler function
+    // above is untouched, so direct calls still behave exactly as written.
+    let mut shim_params = Vec::new();
+    let mut shim_idents = Vec::new();
+    let mut shim_checks = Vec::new();
+    // The auth extractor goes just before the body argument, so a handler that also takes
+    // `Auth<A>` runs first and leaves the `Authenticated` marker. The shim's `AuthEnforce` then
+    // sees it and skips a second authentication.
+    let mut auth_positioned = false;
+    for (index, argument) in item.sig.inputs.iter().enumerate() {
+        let FnArg::Typed(argument) = argument else {
+            continue;
+        };
+        if !auth_positioned && !is_parts_arg(&argument.ty) {
+            shim_params.push(quote!(__rh_auth: P::Auth));
+            auth_positioned = true;
+        }
+        let ident = format_ident!("__rh_arg_{index}");
+        let ty = &argument.ty;
+        shim_params.push(quote!(#ident: #ty));
+        shim_checks.push(quote! {
+            if let ::core::result::Result::Err(__rh_problem) = {
+                use #krate::shim::ValidateArg as _;
+                (&#ident).validate_arg(&__rh_ctx.config)
+            } {
+                return #krate::axum::response::IntoResponse::into_response(__rh_problem);
+            }
+        });
+        shim_idents.push(ident);
+    }
+    if !auth_positioned {
+        shim_params.push(quote!(__rh_auth: P::Auth));
+    }
+    let shim_call = if item.sig.asyncness.is_some() {
+        quote!(#name(#(#shim_idents),*).await)
+    } else {
+        quote!(#name(#(#shim_idents),*))
+    };
+
     quote! {
         #item
+
+        impl #marker_type {
+            /// The generated route entry point. `routes!` instantiates the policy.
+            #[doc(hidden)]
+            #[allow(dead_code, clippy::too_many_arguments)]
+            #vis async fn __roundhouse_shim<P>(
+                __rh_ctx: #krate::shim::ValidationContext,
+                __rh_state: #krate::axum::extract::State<P::State>,
+                #(#shim_params),*
+            ) -> #krate::axum::response::Response
+            where
+                P: #krate::shim::ShimPolicy,
+            {
+                let _ = (&__rh_auth, &__rh_state);
+                if P::VALIDATE && !__rh_ctx.skip {
+                    #(#shim_checks)*
+                }
+                let __rh_response = #shim_call;
+                #krate::axum::response::IntoResponse::into_response(__rh_response)
+            }
+        }
 
         #[doc(hidden)]
         #[allow(non_camel_case_types)]
@@ -186,6 +247,36 @@ fn result_ok_type(ty: &Type) -> Option<Type> {
         return None;
     }
     generic_types(ty).into_iter().next()
+}
+
+/// Whether this argument is a parts extractor. The injected auth extractor is inserted before the
+/// first argument that is not one, so it always precedes the body. An unknown extractor is
+/// treated as a body: that is the conservative choice, and ordering among parts does not matter.
+fn is_parts_arg(ty: &Type) -> bool {
+    let ty = result_ok_type(ty).unwrap_or_else(|| ty.clone());
+    let ty = if outer_ident(&ty).as_deref() == Some("Option") {
+        single_generic(&ty).unwrap_or(ty)
+    } else {
+        ty
+    };
+    matches!(
+        outer_ident(&ty).as_deref(),
+        Some(
+            "State"
+                | "Path"
+                | "Query"
+                | "Extension"
+                | "Auth"
+                | "HeaderMap"
+                | "Method"
+                | "Uri"
+                | "OriginalUri"
+                | "MatchedPath"
+                | "Parts"
+                | "ConnectInfo"
+                | "TypedHeader"
+        )
+    )
 }
 
 fn generic_types(ty: &Type) -> Vec<Type> {

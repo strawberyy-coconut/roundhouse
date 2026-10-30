@@ -298,6 +298,51 @@ fn expand_entry(entry: Entry) -> TokenStream {
     let assert_path = option_lit(&entry.assert_path);
     let handler = &entry.handler;
     let marker_type = marker_type(handler);
+    // Validation is on by default. The policy is chosen here, at the route entry, and the shim
+    // (generated beside the handler) applies it without changing the handler's signature.
+    //
+    // One scheme is enforced by the shim, which authenticates as part of extraction. Several
+    // schemes stay on the guard layer (they form one AND requirement); the shim only validates.
+    let single_scheme = match entry.security.as_slice() {
+        [scheme] => Some(scheme),
+        _ => None,
+    };
+    // The state the router provides to the shim. With one scheme, the shim needs the scheme's
+    // state even when the handler itself is stateless.
+    let shim_state = match single_scheme {
+        Some(scheme) => quote!(<#scheme as #krate::auth::AuthScheme>::State),
+        None => quote!(<#marker_type as #krate::doc::HandlerMeta>::State),
+    };
+    let policy = match (single_scheme, entry.validate) {
+        (Some(scheme), true) => quote!(#krate::shim::AuthedValidated::<#scheme>),
+        (Some(scheme), false) => quote!(#krate::shim::Authed::<#scheme>),
+        (None, true) => quote!(#krate::shim::Validated::<#shim_state>),
+        (None, false) => quote!(#krate::shim::Plain::<#shim_state>),
+    };
+    let state = match single_scheme {
+        Some(_) => quote!(
+            || ::core::option::Option::Some(
+                ::core::any::TypeId::of::<#shim_state>(),
+            )
+        ),
+        None => quote!(|| #krate::doc::handler_state::<#marker_type>()),
+    };
+    let state_name = match single_scheme {
+        Some(_) => quote!(|| ::core::any::type_name::<#shim_state>()),
+        None => quote!(
+            || ::core::any::type_name::<
+                <#marker_type as #krate::doc::HandlerMeta>::State,
+            >()
+        ),
+    };
+    // Through an alias so a missing `#[handler]` reports one "type not found" error rather than
+    // also interpreting the marker as a module path.
+    let route_handler = quote!(__RoundhouseHandler::__roundhouse_shim::<#policy>);
+    // The router skips the guard layer for a scheme the shim already enforces.
+    let shim_auth = match single_scheme {
+        Some(scheme) => quote!(&[<#scheme as #krate::auth::AuthScheme>::NAME]),
+        None => quote!(&[]),
+    };
     let operation_id = option_lit(&entry.operation_id);
     let handler_name = LitStr::new(&last_segment(handler), entry.path.span());
     // `assert!` treats its message as a format string. Escape the template's braces so a capture
@@ -374,6 +419,8 @@ fn expand_entry(entry: Entry) -> TokenStream {
         #(#attrs)*
         #[allow(non_upper_case_globals)]
         const _: () = {
+            type __RoundhouseHandler = #marker_type;
+
             const _: () = {
                 assert!(
                     #krate::prefix::path_names_match(
@@ -387,9 +434,8 @@ fn expand_entry(entry: Entry) -> TokenStream {
             fn __roundhouse_route()
                 -> ::std::boxed::Box<dyn ::core::any::Any + ::core::marker::Send + ::core::marker::Sync>
             {
-                let method_router: #krate::axum::routing::MethodRouter<
-                    <#marker_type as #krate::doc::HandlerMeta>::State,
-                > = #krate::axum::routing::#method_ident(#handler);
+                let method_router: #krate::axum::routing::MethodRouter<#shim_state> =
+                    #krate::axum::routing::#method_ident(#route_handler);
                 ::std::boxed::Box::new(method_router)
             }
 
@@ -419,6 +465,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     #tags,
                     #security,
                     #required_auth,
+                    #shim_auth,
                     #hidden,
                     #absolute,
                     #validate,
@@ -426,10 +473,8 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     #public,
                     #response_override,
                     __roundhouse_responses,
-                    || #krate::doc::handler_state::<#marker_type>(),
-                    || ::core::any::type_name::<
-                        <#marker_type as #krate::doc::HandlerMeta>::State,
-                    >(),
+                    #state,
+                    #state_name,
                     __roundhouse_route,
                     #layer_value,
                     <#marker_type as #krate::doc::HandlerMeta>::docs,

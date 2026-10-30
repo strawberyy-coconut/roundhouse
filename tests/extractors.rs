@@ -39,6 +39,22 @@ mod axum_alias {
     }
 }
 
+mod axum_alias_unvalidated {
+    use super::*;
+    use axum::Json;
+
+    mount!("/axum-alias-unvalidated");
+
+    routes! {
+        post("/", create, operation_id = "axum_alias_unvalidated_create", validate = false)
+    }
+
+    #[handler]
+    pub async fn create(Json(_body): Json<Contact>) -> StatusCode {
+        StatusCode::CREATED
+    }
+}
+
 mod roundhouse_alias {
     use super::*;
     use roundhouse::Json as Payload;
@@ -84,11 +100,25 @@ fn axum_json_is_not_documented_as_the_validating_extractor() {
 }
 
 #[tokio::test]
-async fn axum_json_accepts_a_body_that_violates_the_roundhouse_constraint() {
+async fn axum_json_is_validated_by_default() {
     let built = app(concat!(module_path!(), "::axum_alias"));
-    // The document no longer claims `minLength`; this is the behavior that motivated the marker.
+    // The route entry validates by default, so the shim enforces the constraint even though the
+    // handler uses axum's extractor.
     let response = built
         .oneshot_json(http::Method::POST, "/axum-alias", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn validate_false_opts_a_route_out() {
+    let built = app(concat!(module_path!(), "::axum_alias_unvalidated"));
+    let response = built
+        .oneshot_json(
+            http::Method::POST,
+            "/axum-alias-unvalidated",
+            r#"{"title":"ab"}"#,
+        )
         .await;
     assert_eq!(response.status(), StatusCode::CREATED);
 }

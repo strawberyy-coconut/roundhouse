@@ -1416,9 +1416,10 @@ where
     }
     // Apply guards last so they wrap route layers: a layer that short-circuits must not be able
     // to answer before the scheme is checked. A handler that already takes `Auth<A>` performs the
-    // same check during extraction, so skip that guard instead of authenticating twice.
+    // same check during extraction, and a route-entry `security = [A]` is enforced by the
+    // generated shim, so skip those guards instead of authenticating twice.
     for guard in &route.auth {
-        if record.required_auth.contains(&guard.name) {
+        if record.required_auth.contains(&guard.name) || record.shim_auth.contains(&guard.name) {
             continue;
         }
         method_router = (guard.apply)(method_router, state);

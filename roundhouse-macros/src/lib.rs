@@ -197,9 +197,11 @@ pub fn mount(input: TokenStream) -> TokenStream {
 /// - `operation_id = "..."` — an explicit operation id. When omitted, an id is derived from the
 ///   method, module path and handler name. Explicit ids must be unique within a document.
 /// - `tags = ["tag", ...]` — operation tags, appended to the tags inherited from `mount!`.
-/// - `security = [Scheme, ...]` — scheme types installed as an `Auth<Scheme>` guard on this
-///   entry, appended to the guards inherited from `mount!`. As with `mount!`, entries are types
-///   (`Bearer`), not strings.
+/// - `security = [Scheme, ...]` — scheme types enforced on this entry, appended to the guards
+///   inherited from `mount!`. One scheme is enforced by the generated handler shim as an
+///   extractor; several form one AND requirement on the guard layer. As with `mount!`, entries
+///   are types (`Bearer`), not strings. A handler that already takes `Auth<A>` is not
+///   authenticated a second time.
 /// - `responses(status, status = Type, ...)` — declare responses that the handler's return type
 ///   cannot express. A bare status documents an empty response; `status = Type` documents a JSON
 ///   body of `Type`. Declarations add to or refine the inferred responses.
@@ -221,6 +223,11 @@ pub fn mount(input: TokenStream) -> TokenStream {
 /// - `validate = false` — parse the request as usual but skip `#[schema(..)]` constraint
 ///   validation for this route. Malformed bodies are still rejected. The document records
 ///   `x-roundhouse-validation: false`.
+///
+///   Validation is on by default. The route's generated shim checks every argument whose type
+///   publishes constraints, including `axum::Json`, `axum::extract::Path`, `axum::extract::Query`
+///   and `axum::Form`; the framework's own extractors already validate during extraction and are
+///   not checked twice. `Result<Extractor, E>` arguments own their rejection and are left alone.
 ///
 /// # Example
 ///
@@ -255,6 +262,12 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// belongs in the `routes!` table. It leaves the function untouched and appends a hidden marker
 /// type implementing `roundhouse::doc::HandlerMeta`, which supplies the state type, path capture
 /// names, request documentation and inferred responses.
+///
+/// It also emits a hidden shim beside the marker. `routes!` registers the shim instead of the
+/// function, so route-entry policy (`validate`, `security`) is applied without changing the
+/// handler's signature: the shim validates the arguments the route asked it to and, for a
+/// `security = [Scheme]` entry, enforces the scheme before the body is read. A handler called
+/// directly still behaves exactly as written.
 ///
 /// # Extractors
 ///

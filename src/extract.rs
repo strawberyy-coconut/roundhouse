@@ -17,6 +17,12 @@
 //! Schema engine behind the `schema-engine` feature, or none at all. Bodies are validated after
 //! deserialization, so a violation carries a JSON Pointer into the request body.
 //!
+//! Validation is also a route policy. Every `routes!` entry is validated by default; the route's
+//! generated shim runs the same checks for `axum`'s extractors (`axum::Json`, `Path`, `Query`,
+//! `Form`), so a handler can stay on axum's types and still be enforced. `validate = false` opts
+//! out. The framework's own extractors above validate during extraction and are not checked
+//! twice.
+//!
 //! [`Extension`] is re-exported from axum; it is stateless, so a handler that only takes
 //! `Extension<Arc<T>>` works with unit app state. [`Sse`](crate::Sse) and [`File`](crate::File)
 //! live alongside the other response helpers.

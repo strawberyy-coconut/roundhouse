@@ -43,9 +43,9 @@ parameter that `Path<String>` cannot name by itself.
 | **Document as artifact** | The OpenAPI document is always built; `App::openapi(..)` only decides whether it is served. `Built::openapi_json()` lets CI diff it. |
 | **Typed extractors** | `#[handler]` reads `State`, `Path`, `Query`, `Json`, `Form`, `Multipart`, `Auth`, `Option<Auth>` and `Extension` from the signature. |
 | **Schema generation** | `utoipa::ToSchema` owns the wire shape (`rename_all`, `skip`, `flatten`, `tag`, `untagged`, recursion, …); `#[derive(ApiSchema)]` adds the runtime checks. `uuid`, `chrono`, `time`, `jiff` and `decimal` are supported. |
-| **Validation** | `min_length`, `pattern`, numeric bounds, `min_items`, `unique_items`, `format` and `validate_with` are emitted into the schema *and* enforced, returning RFC 9457 problem details with JSON Pointers. |
+| **Validation** | `min_length`, `pattern`, numeric bounds, `min_items`, `unique_items`, `format` and `validate_with` are emitted into the schema *and* enforced, returning RFC 9457 problem details with JSON Pointers. Entries validate by default, including handlers that use `axum`'s own extractors; `validate = false` opts out. |
 | **Errors** | `Problem` is the default error body; `#[derive(ApiError)]` / `#[derive(ApiResponse)]` generate `IntoResponse` plus the documented responses. |
-| **Auth** | `Auth<A>` extracts an identity, `Auth<A, Scopes>` requires an `Authorize` implementation, and `mount!(security = [A])` installs the guard for a whole subtree. Schemes, 401/403 and `WWW-Authenticate` are documented automatically. |
+| **Auth** | `Auth<A>` extracts an identity, `Auth<A, Scopes>` requires an `Authorize` implementation, and `security = [A]` on an entry or mount installs the check for that route or subtree. A handler that already takes `Auth<A>` is not authenticated twice. Schemes, 401/403 and `WWW-Authenticate` are documented automatically. |
 | **Files & streams** | Opt-in `multipart` for `Multipart<F>`, `FilePart` and `TempFile`; plus `Attachment<T>`, `File` and SSE. |
 | **Optional schema engine** | `schema-engine` validates requests and responses against the emitted JSON Schema (2020-12). |
 | **Tooling** | `App::docs()` serves Swagger UI, `Built::openapi_30()` produces a 3.0.3 document, and merged routers are flagged so an incomplete spec can't slip through. |
@@ -137,15 +137,31 @@ std::fs::write("target/openapi.json", built.openapi_json())?;
 `Built::document()` returns the `OpenApi` value and `Built::routes()` the resolved table with source
 locations.
 
-**Mount-level auth is enforced.** `security` takes scheme types, not names; the same declaration
-installs the guard and publishes the requirement:
+**Validation is a route policy.** Entries validate by default. The route's generated shim checks
+every argument whose type publishes constraints — including `axum::Json`, `axum::extract::Path`,
+`axum::extract::Query` and `axum::Form`, so a handler does not have to switch to a roundhouse
+extractor to be checked:
+
+```rust
+routes! {
+    post("/notes", create, validate = false), // opt out for this operation
+}
+```
+
+`Result<Extractor, E>` arguments own their rejection and are not validated by the shim. A handler
+called directly in a test still behaves exactly as written.
+
+**Auth is enforced where it is declared.** `security` takes scheme types, not names; the same
+declaration installs the check and publishes the requirement. An entry with one scheme is enforced
+by the handler shim (before the body is read); a mount installs a guard for its whole subtree:
 
 ```rust
 mount!("/admin", security = [Bearer]);
 ```
 
-Scopes stay on the handler (`Auth<Bearer, ReadPosts>`). A handler under the mount that already
-takes `Auth<Bearer>` is not authenticated twice.
+Scopes stay on the handler (`Auth<Bearer, ReadPosts>`). A handler that already takes
+`Auth<Bearer>` is not authenticated twice: the successful extraction marks the request and the
+shim's check is a no-op.
 
 **Auth backends are yours.** The schemes in `examples/auth` are a reference, not a supported backend.
 Use a maintained library (`jsonwebtoken`, `openidconnect`, `tower-sessions`) or an authenticating
