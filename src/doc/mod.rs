@@ -960,13 +960,8 @@ impl<T: QueryParams> QueryParams for Option<T> {
     }
 }
 
-pub fn stored_query_params_for<T: ?Sized>(components: &mut Components) -> Vec<Param> {
-    let key = std::any::type_name::<T>();
-    inventory::iter::<crate::registry::QueryDocRecord>
-        .into_iter()
-        .find(|record| (record.type_key)() == key)
-        .map(|record| (record.params)(components))
-        .unwrap_or_default()
+pub fn stored_query_params_for<T: QueryParams + ?Sized>(components: &mut Components) -> Vec<Param> {
+    <T as QueryParams>::params(components)
 }
 
 pub fn json_response_for<T>(components: &mut Components, status: u16) -> Vec<ResponseDoc>

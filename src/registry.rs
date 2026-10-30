@@ -283,24 +283,6 @@ inventory::collect!(RouteRecord);
 inventory::collect!(MountRecord);
 inventory::collect!(ResponseRecord);
 
-/// Query parameters documented by `#[derive(QueryParams)]`.
-pub struct QueryDocRecord {
-    pub(crate) type_key: fn() -> &'static str,
-    pub(crate) params: fn(&mut Components) -> Vec<crate::doc::Param>,
-}
-
-impl QueryDocRecord {
-    #[doc(hidden)]
-    pub const fn __new(
-        type_key: fn() -> &'static str,
-        params: fn(&mut Components) -> Vec<crate::doc::Param>,
-    ) -> Self {
-        Self { type_key, params }
-    }
-}
-
-inventory::collect!(QueryDocRecord);
-
 /// Type names used by the schema engine to find the component for a Rust type.
 pub struct ComponentTypeRecord {
     pub(crate) type_id: fn() -> TypeId,
