@@ -4,6 +4,7 @@ use syn::{Data, DeriveInput, Fields, LitStr, Result, Type};
 
 use crate::serde_shape::{
     SerdeContainer, container as serde_container, field as serde_field, field_name,
+    variant_name as serde_variant_name,
 };
 
 use super::attrs::{Constraints, schema_attrs};
@@ -138,6 +139,11 @@ fn enum_parts(
     let mut validation_arms = Vec::new();
 
     for (variant_index, variant) in data.variants.iter().enumerate() {
+        // `rename_all` on a variant renames that variant's fields; on the enum it renames the
+        // variants themselves. serde also lets the enum set a fallback with
+        // `rename_all_fields`. None of these leak into sibling variants.
+        let variant_container = serde_container(&variant.attrs)?;
+        let variant_field_rule = variant_container.rename_all.or(container.rename_all_fields);
         for field in variant.fields.iter() {
             let ty = &field.ty;
             register_calls.push(register_expr(ty));
@@ -147,7 +153,7 @@ fn enum_parts(
                     continue;
                 }
                 let field_schema = schema_attrs(&field.attrs)?;
-                let property_name = field_name(field, &field_serde, container.rename_all)?;
+                let property_name = field_name(field, &field_serde, variant_field_rule)?;
                 if !field_serde.flatten {
                     push_schema_patches(
                         &mut patches,
@@ -223,13 +229,9 @@ fn variant_validation(
     let krate = crate::util::krate();
     let variant_ident = &variant.ident;
     let variant_serde = serde_field(&variant.attrs)?;
-    let variant_name = match &variant_serde.rename {
-        Some(name) => name.clone(),
-        None => container
-            .rename_all
-            .map(|rule| rule.apply(&variant.ident.to_string()))
-            .unwrap_or_else(|| variant.ident.to_string()),
-    };
+    let variant_name = serde_variant_name(variant, &variant_serde, container.rename_all);
+    let variant_container = serde_container(&variant.attrs)?;
+    let variant_field_rule = variant_container.rename_all.or(container.rename_all_fields);
 
     let (pointer_base, pointer_setup) = if container.untagged {
         (quote!(pointer), quote!())
@@ -274,7 +276,7 @@ fn variant_validation(
                 if field_serde.hidden() {
                     continue;
                 }
-                let property_name = field_name(field, &field_serde, container.rename_all)?;
+                let property_name = field_name(field, &field_serde, variant_field_rule)?;
                 let ty = &field.ty;
                 validations.push(field_validation(
                     variant_index * 100 + field_index,

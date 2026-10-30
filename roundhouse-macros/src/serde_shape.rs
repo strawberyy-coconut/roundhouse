@@ -9,6 +9,8 @@ use syn::{Expr, LitStr, Result};
 #[derive(Default, Clone)]
 pub(crate) struct SerdeContainer {
     pub(crate) rename_all: Option<RenameRule>,
+    /// `#[serde(rename_all_fields = "...")]`: the default field rule for struct variants.
+    pub(crate) rename_all_fields: Option<RenameRule>,
     pub(crate) tag: Option<String>,
     pub(crate) content: Option<String>,
     pub(crate) untagged: bool,
@@ -73,66 +75,72 @@ impl RenameRule {
         })
     }
 
-    pub(crate) fn apply(self, name: &str) -> String {
-        let words = split_words(name);
+    /// serde renames struct fields with slightly different rules than enum variants. In
+    /// particular, `lowercase` and `snake_case` are identities for a field; they are not for a
+    /// variant. Keep the two algorithms separate so a document cannot drift from the derive.
+    pub(crate) fn apply_to_field(self, field: &str) -> String {
         match self {
-            RenameRule::Lower => words.join("").to_lowercase(),
-            RenameRule::Upper => words.join("").to_uppercase(),
-            RenameRule::Snake => words.join("_").to_lowercase(),
-            RenameRule::ScreamingSnake => words.join("_").to_uppercase(),
-            RenameRule::Kebab => words.join("-").to_lowercase(),
-            RenameRule::ScreamingKebab => words.join("-").to_uppercase(),
-            RenameRule::Pascal => words
-                .iter()
-                .map(|word| capitalize(word))
-                .collect::<String>(),
-            RenameRule::Camel => words
-                .iter()
-                .enumerate()
-                .map(|(index, word)| {
-                    if index == 0 {
-                        word.to_lowercase()
+            RenameRule::Lower | RenameRule::Snake => field.to_owned(),
+            RenameRule::Upper => field.to_ascii_uppercase(),
+            RenameRule::Pascal => {
+                let mut pascal = String::new();
+                let mut capitalize = true;
+                for ch in field.chars() {
+                    if ch == '_' {
+                        capitalize = true;
+                    } else if capitalize {
+                        pascal.push(ch.to_ascii_uppercase());
+                        capitalize = false;
                     } else {
-                        capitalize(word)
+                        pascal.push(ch);
                     }
-                })
-                .collect::<String>(),
-        }
-    }
-}
-
-fn split_words(name: &str) -> Vec<String> {
-    let mut words: Vec<String> = Vec::new();
-    let mut current = String::new();
-    let mut previous_lower = false;
-    for ch in name.chars() {
-        if ch == '_' || ch == '-' || ch == ' ' {
-            if !current.is_empty() {
-                words.push(std::mem::take(&mut current));
+                }
+                pascal
             }
-            previous_lower = false;
-            continue;
+            RenameRule::Camel => {
+                let pascal = RenameRule::Pascal.apply_to_field(field);
+                match pascal.len() {
+                    0 => pascal,
+                    _ => pascal[..1].to_ascii_lowercase() + pascal.get(1..).unwrap_or_default(),
+                }
+            }
+            RenameRule::ScreamingSnake => field.to_ascii_uppercase(),
+            RenameRule::Kebab => field.replace('_', "-"),
+            RenameRule::ScreamingKebab => RenameRule::ScreamingSnake
+                .apply_to_field(field)
+                .replace('_', "-"),
         }
-        if ch.is_uppercase() && previous_lower && !current.is_empty() {
-            words.push(std::mem::take(&mut current));
-        }
-        previous_lower = ch.is_lowercase() || ch.is_ascii_digit();
-        current.push(ch);
     }
-    if !current.is_empty() {
-        words.push(current);
-    }
-    if words.is_empty() {
-        words.push(name.to_string());
-    }
-    words
-}
 
-fn capitalize(word: &str) -> String {
-    let mut chars = word.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
-        None => String::new(),
+    pub(crate) fn apply_to_variant(self, variant: &str) -> String {
+        match self {
+            RenameRule::Lower => variant.to_ascii_lowercase(),
+            RenameRule::Upper => variant.to_ascii_uppercase(),
+            RenameRule::Camel => match variant.len() {
+                0 => String::new(),
+                _ => variant[..1].to_ascii_lowercase() + variant.get(1..).unwrap_or_default(),
+            },
+            RenameRule::Pascal => variant.to_owned(),
+            RenameRule::Snake => {
+                let mut snake = String::new();
+                for (index, ch) in variant.char_indices() {
+                    if index > 0 && ch.is_uppercase() {
+                        snake.push('_');
+                    }
+                    snake.push(ch.to_ascii_lowercase());
+                }
+                snake
+            }
+            RenameRule::ScreamingSnake => RenameRule::Snake
+                .apply_to_variant(variant)
+                .to_ascii_uppercase(),
+            RenameRule::Kebab => RenameRule::Snake
+                .apply_to_variant(variant)
+                .replace('_', "-"),
+            RenameRule::ScreamingKebab => RenameRule::ScreamingSnake
+                .apply_to_variant(variant)
+                .replace('_', "-"),
+        }
     }
 }
 
@@ -146,6 +154,9 @@ pub(crate) fn container(attrs: &[syn::Attribute]) -> Result<SerdeContainer> {
             if meta.path.is_ident("rename_all") {
                 let value: LitStr = meta.value()?.parse()?;
                 container.rename_all = Some(RenameRule::parse(&value.value())?);
+            } else if meta.path.is_ident("rename_all_fields") {
+                let value: LitStr = meta.value()?.parse()?;
+                container.rename_all_fields = Some(RenameRule::parse(&value.value())?);
             } else if meta.path.is_ident("tag") {
                 let value: LitStr = meta.value()?.parse()?;
                 container.tag = Some(value.value());
@@ -220,6 +231,22 @@ pub(crate) fn field_name(
     let raw = ident.to_string();
     let raw = raw.strip_prefix("r#").unwrap_or(&raw);
     Ok(rule
-        .map(|rule| rule.apply(raw))
+        .map(|rule| rule.apply_to_field(raw))
         .unwrap_or_else(|| raw.to_string()))
+}
+
+/// Resolve an enum variant's wire name. A variant-level `rename` wins, then the container's
+/// `rename_all` rule, then the Rust identifier.
+pub(crate) fn variant_name(
+    variant: &syn::Variant,
+    serde: &SerdeField,
+    rule: Option<RenameRule>,
+) -> String {
+    if let Some(rename) = &serde.rename {
+        return rename.clone();
+    }
+    let raw = variant.ident.to_string();
+    let raw = raw.strip_prefix("r#").unwrap_or(&raw);
+    rule.map(|rule| rule.apply_to_variant(raw))
+        .unwrap_or_else(|| raw.to_string())
 }
