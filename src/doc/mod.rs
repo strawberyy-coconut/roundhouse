@@ -128,8 +128,12 @@ pub struct HandlerDocs {
     pub optional_auth: Vec<crate::auth::AuthDoc>,
     pub schemes: Vec<crate::auth::SchemeDoc>,
     /// A body extractor the framework can see syntactically but cannot verify at runtime
-    /// (`axum::Json`, `axum::Form`, `axum::extract::Multipart`).
+    /// (`axum::Json`, `axum::Form`, `axum::extract::Multipart`). A route that validates the body
+    /// through its shim clears this before the document is checked.
     pub unverified: bool,
+    /// A response type the document cannot describe (`axum::Json<T>`, `axum::Html<T>` returned
+    /// directly rather than through a derived response).
+    pub unverified_response: bool,
     /// An extractor whose documented contribution the macro cannot infer (a custom `Tenant`,
     /// a bare `HeaderMap`, a typed header, ...).
     pub unverified_extractor: bool,
@@ -170,6 +174,15 @@ pub trait HandlerMeta: Send + Sync + 'static {
     const REQUIRED_AUTH: &'static [&'static str] = &[];
 
     fn docs(components: &mut Components) -> HandlerDocs;
+
+    /// Documentation with the route's validation policy.
+    ///
+    /// The generated implementation clears the body marker when the route's shim validated the
+    /// body, so `strict()` does not reject a body the router enforces. A hand-written
+    /// implementation can ignore the flag.
+    fn docs_with(components: &mut Components, _validate: bool) -> HandlerDocs {
+        Self::docs(components)
+    }
 }
 
 pub fn handler_state<M: HandlerMeta>() -> Option<TypeId> {

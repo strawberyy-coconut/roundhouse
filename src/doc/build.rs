@@ -97,7 +97,7 @@ pub fn build_with_observations(
             continue;
         };
 
-        let mut docs = (route.record.docs)(&mut components);
+        let mut docs = (route.record.docs)(&mut components, route.record.validate);
         if let Some(custom) = route.record.doc {
             custom(&mut docs);
         }
@@ -127,6 +127,22 @@ pub fn build_with_observations(
                 format!(
                     "operation `{}` takes a body extractor the document cannot verify; it is \
                      marked `x-roundhouse-unverified-body`",
+                    route.operation_id
+                ),
+            ));
+        }
+        if docs.unverified_response {
+            if strict {
+                return Err(BuildError::UnverifiedResponse {
+                    operation_id: route.operation_id.clone(),
+                    source: route.record.source_ref(),
+                });
+            }
+            diagnostics.push(Diagnostic::new(
+                route.record.source_ref(),
+                format!(
+                    "operation `{}` returns a response type the document cannot verify; it is \
+                     marked `x-roundhouse-unverified-response`",
                     route.operation_id
                 ),
             ));
@@ -198,6 +214,7 @@ fn operation(
     )>,
 ) -> Result<utoipa::openapi::path::Operation, BuildError> {
     let unverified = docs.unverified;
+    let unverified_response = docs.unverified_response;
     let unverified_extractor = docs.unverified_extractor;
     let mut docs = docs;
     for layer in &route.layer_docs {
@@ -459,6 +476,9 @@ fn operation(
     let mut extensions = ExtensionsBuilder::new();
     if unverified {
         extensions = extensions.add("x-roundhouse-unverified-body", true);
+    }
+    if unverified_response {
+        extensions = extensions.add("x-roundhouse-unverified-response", true);
     }
     if unverified_extractor {
         extensions = extensions.add("x-roundhouse-unverified-extractor", true);

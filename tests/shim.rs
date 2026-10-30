@@ -218,6 +218,49 @@ mod auth_and_body {
     }
 }
 
+mod strict_validated {
+    use super::*;
+
+    mount!("/strict-validated");
+
+    routes! { post("/", create, operation_id = "shim_strict_validated") }
+
+    #[handler]
+    pub async fn create(axum::Json(_body): axum::Json<NewNote>) -> StatusCode {
+        StatusCode::CREATED
+    }
+}
+
+mod strict_unvalidated {
+    use super::*;
+
+    mount!("/strict-unvalidated");
+
+    routes! {
+        post("/", create, operation_id = "shim_strict_unvalidated", validate = false)
+    }
+
+    #[handler]
+    pub async fn create(axum::Json(_body): axum::Json<NewNote>) -> StatusCode {
+        StatusCode::CREATED
+    }
+}
+
+mod strict_response {
+    use super::*;
+
+    mount!("/strict-response");
+
+    routes! { get("/", read, operation_id = "shim_strict_response") }
+
+    #[handler]
+    pub async fn read() -> axum::Json<NewNote> {
+        axum::Json(NewNote {
+            title: "abc".to_string(),
+        })
+    }
+}
+
 mod result_body {
     use super::*;
 
@@ -231,6 +274,38 @@ mod result_body {
     ) -> Result<axum::Json<NewNote>, axum::extract::rejection::JsonRejection> {
         body
     }
+}
+
+#[test]
+fn the_body_probe_recognises_a_foreign_json_body() {
+    fn assert_api<T: roundhouse::doc::ApiSchema>() {}
+    assert_api::<NewNote>();
+
+    use roundhouse::shim::{BodyProbe, ProbeBody};
+    assert!(
+        (&BodyProbe::<axum::Json<NewNote>>::new()).probe_body(),
+        "the probe resolves at the concrete type"
+    );
+    assert!(
+        !(&BodyProbe::<axum::Json<NotASchema>>::new()).probe_body(),
+        "a body without ApiSchema cannot be validated"
+    );
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct NotASchema {
+    pub value: String,
+}
+
+#[test]
+fn a_validated_body_is_not_marked_unverified() {
+    let built = scoped(concat!(module_path!(), "::json_body"));
+    let document = serde_json::to_value(built.document()).unwrap();
+    let operation = &document["paths"]["/json"]["post"];
+    assert!(
+        operation.get("x-roundhouse-unverified-body").is_none(),
+        "{operation}"
+    );
 }
 
 #[tokio::test]
@@ -362,6 +437,55 @@ async fn a_result_typed_body_owns_its_rejection_and_is_not_validated() {
         .oneshot_json(http::Method::POST, "/result", r#"{"title":"ab"}"#)
         .await;
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[test]
+fn the_opt_out_route_keeps_the_body_marker() {
+    let built = scoped(concat!(module_path!(), "::json_opt_out"));
+    let document = serde_json::to_value(built.document()).unwrap();
+    let operation = &document["paths"]["/json-opt-out"]["post"];
+    assert_eq!(operation["x-roundhouse-unverified-body"], true);
+    assert_eq!(operation["x-roundhouse-validation"], false);
+}
+
+#[test]
+fn strict_accepts_a_body_the_shim_validates() {
+    App::new(AuthState::default())
+        .scope(concat!(module_path!(), "::strict_validated"))
+        .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
+        .strict()
+        .try_build()
+        .expect("a validated foreign body is no longer unverified");
+}
+
+#[test]
+fn strict_rejects_an_opted_out_foreign_body() {
+    let error = App::new(AuthState::default())
+        .scope(concat!(module_path!(), "::strict_unvalidated"))
+        .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
+        .strict()
+        .try_build()
+        .err()
+        .expect("an opted-out foreign body is still unverified");
+    assert!(matches!(
+        error,
+        roundhouse::BuildError::UnverifiedBody { .. }
+    ));
+}
+
+#[test]
+fn strict_rejects_a_foreign_response() {
+    let error = App::new(AuthState::default())
+        .scope(concat!(module_path!(), "::strict_response"))
+        .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
+        .strict()
+        .try_build()
+        .err()
+        .expect("a foreign response is still unverified");
+    assert!(matches!(
+        error,
+        roundhouse::BuildError::UnverifiedResponse { .. }
+    ));
 }
 
 #[test]

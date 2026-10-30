@@ -205,3 +205,71 @@ impl<T> ValidateArg for &T {
         Ok(())
     }
 }
+
+/// Type-level probe used by `#[handler]` to decide whether a body the shim validated is still
+/// "unverified".
+///
+/// The probe must be invoked at the handler's concrete argument type (with [`ProbeBody`] in
+/// scope), not from inside a generic helper: method resolution happens before monomorphization,
+/// so a generic wrapper would always pick the fallback.
+pub struct BodyProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> BodyProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for BodyProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeBody {
+    fn probe_body(self) -> bool;
+}
+
+impl<T> ProbeBody for &BodyProbe<crate::extract::Json<T>> {
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+impl<T> ProbeBody for &BodyProbe<crate::extract::Form<T>> {
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<axum::Json<T>> {
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<axum::Form<T>> {
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+// A raw body has no constraints to enforce; it is already an honest shape.
+impl ProbeBody for &BodyProbe<bytes::Bytes> {
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+impl ProbeBody for &BodyProbe<axum::body::Body> {
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+// Unknown extractors, `Result<Extractor, E>` bodies and multipart stay unverified.
+impl<T> ProbeBody for &&BodyProbe<T> {
+    fn probe_body(self) -> bool {
+        false
+    }
+}

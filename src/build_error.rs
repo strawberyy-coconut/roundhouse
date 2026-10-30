@@ -59,6 +59,11 @@ pub enum BuildError {
         operation_id: String,
         source: Source,
     },
+    /// A response type the document cannot describe (`axum::Json`, `axum::Html`).
+    UnverifiedResponse {
+        operation_id: String,
+        source: Source,
+    },
     /// The same security scheme name is registered with two different kinds.
     SchemeKindConflict {
         name: String,
@@ -174,6 +179,14 @@ impl fmt::Display for BuildError {
                 f,
                 "error: operation `{operation_id}` takes a body extractor the document cannot verify\n  {source}\n\
                  hint: use `roundhouse::Json`, `Form` or `Multipart`, or drop `App::strict()`"
+            ),
+            BuildError::UnverifiedResponse {
+                operation_id,
+                source,
+            } => write!(
+                f,
+                "error: operation `{operation_id}` returns a response type the document cannot verify\n  {source}\n\
+                 hint: return a concrete response type or declare `responses(..)` in the table"
             ),
             BuildError::SchemeKindConflict {
                 name,

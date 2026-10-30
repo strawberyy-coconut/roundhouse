@@ -85,17 +85,22 @@ mod body_alias {
 }
 
 #[test]
-fn axum_json_is_not_documented_as_the_validating_extractor() {
+fn axum_json_is_validated_and_documented() {
     let built = app(concat!(module_path!(), "::axum_alias"));
     let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/axum-alias"]["post"];
 
-    assert_eq!(operation["x-roundhouse-unverified-body"], true);
     assert!(
-        !serde_json::to_string(&operation["requestBody"])
-            .unwrap()
-            .contains("minLength"),
-        "axum::Json does not enforce the constraint, so the document must not promise it"
+        operation.get("x-roundhouse-unverified-body").is_none(),
+        "the route's shim validated the body, so it is verified: {operation}"
+    );
+    assert_eq!(
+        operation["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/Contact"
+    );
+    assert_eq!(
+        document["components"]["schemas"]["Contact"]["properties"]["title"]["minLength"],
+        3
     );
 }
 
@@ -151,7 +156,10 @@ fn a_json_extractor_aliased_as_body_is_not_documented_as_octet_stream() {
     let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/body-alias"]["post"];
 
-    assert_eq!(operation["x-roundhouse-unverified-body"], true);
+    assert!(
+        operation.get("x-roundhouse-unverified-body").is_none(),
+        "the route's shim validated the body, so it is verified: {operation}"
+    );
     let body = operation["requestBody"].to_string();
     assert!(
         !body.contains("application/octet-stream"),

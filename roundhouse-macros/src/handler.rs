@@ -23,6 +23,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
     let mut statements: Vec<TokenStream> = Vec::new();
     let mut required_auth: Vec<TokenStream> = Vec::new();
     let mut body_count = 0usize;
+    let mut body_type: Option<Type> = None;
 
     for argument in &item.sig.inputs {
         let FnArg::Typed(argument) = argument else {
@@ -87,6 +88,17 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 }
                 _ => {}
             }
+        }
+
+        // Remember the body type so `docs_with` can clear the unverified-body marker when the
+        // route's shim validates it. A `Result<Extractor, E>` owns its rejection and is never
+        // cleared; `Option<Json<T>>` is unwrapped so the probe sees `Json<T>`.
+        if !handled && body_type.is_none() && !is_parts_arg(&ty) {
+            body_type = Some(if outer_ident(&ty).as_deref() == Some("Option") {
+                single_generic(&ty).unwrap_or_else(|| ty.clone())
+            } else {
+                ty.clone()
+            });
         }
 
         // Everything else is decided by the resolved type. This is what keeps an alias or a
@@ -170,6 +182,13 @@ pub fn expand(item: ItemFn) -> TokenStream {
     } else {
         quote!(#name(#(#shim_idents),*))
     };
+    let body_validated = match &body_type {
+        Some(ty) => quote!({
+            use #krate::shim::ProbeBody as _;
+            (&#krate::shim::BodyProbe::<#ty>::new()).probe_body()
+        }),
+        None => quote!(true),
+    };
 
     quote! {
         #item
@@ -210,6 +229,17 @@ pub fn expand(item: ItemFn) -> TokenStream {
             ) -> #krate::doc::HandlerDocs {
                 let mut docs = #krate::doc::HandlerDocs::default();
                 #(#statements)*
+                docs
+            }
+
+            fn docs_with(
+                components: &mut #krate::utoipa::openapi::schema::Components,
+                validate: bool,
+            ) -> #krate::doc::HandlerDocs {
+                let mut docs = <Self as #krate::doc::HandlerMeta>::docs(components);
+                if validate && #body_validated {
+                    docs.unverified = false;
+                }
                 docs
             }
         }
@@ -382,7 +412,7 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
                         "OK",
                     ));
                 }
-                docs.unverified = true;
+                docs.unverified_response = true;
             }])
         }
         Some("Json") => {
@@ -409,7 +439,7 @@ fn ok_statements(ty: &Type, status: u16) -> syn::Result<Vec<TokenStream>> {
             docs.responses.push(#krate::attachment::sse_response(#status_lit));
         }]),
         Some("Html") if !is_wrapper_type(ty) => Ok(vec![quote! {
-            docs.unverified = true;
+            docs.unverified_response = true;
             docs.responses.push(#krate::doc::ResponseDoc::new(#status_lit, "OK"));
         }]),
         Some("Html") => {

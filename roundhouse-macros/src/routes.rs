@@ -477,7 +477,7 @@ fn expand_entry(entry: Entry) -> TokenStream {
                     #state_name,
                     __roundhouse_route,
                     #layer_value,
-                    <#marker_type as #krate::doc::HandlerMeta>::docs,
+                    <#marker_type as #krate::doc::HandlerMeta>::docs_with,
                     #doc_value,
                 )
             }

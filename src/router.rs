@@ -1482,7 +1482,7 @@ pub struct ResolvedRoute {
 impl ResolvedRoute {
     pub fn docs(&self) -> HandlerDocs {
         let mut components = utoipa::openapi::schema::Components::new();
-        (self.record.docs)(&mut components)
+        (self.record.docs)(&mut components, self.record.validate)
     }
 }
 

@@ -209,7 +209,7 @@ fn a_foreign_utoipa_type_is_documented_but_still_unverified() {
         true
     );
     assert_eq!(
-        document["paths"]["/foreign-schema/response"]["get"]["x-roundhouse-unverified-body"],
+        document["paths"]["/foreign-schema/response"]["get"]["x-roundhouse-unverified-response"],
         true
     );
 }

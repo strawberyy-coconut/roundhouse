@@ -127,7 +127,7 @@ pub struct RouteRecord {
     pub(crate) state_name: fn() -> &'static str,
     pub(crate) handler: fn() -> Box<dyn Any + Send + Sync>,
     pub(crate) layer: Option<RouteLayer>,
-    pub(crate) docs: fn(&mut Components) -> HandlerDocs,
+    pub(crate) docs: fn(&mut Components, bool) -> HandlerDocs,
     /// A `doc = |docs| ..` hook from the table entry. It runs after the handler's inferred
     /// documentation and before the document checks, so hand-written parameters still pass
     /// through the capture and conflict validation.
@@ -164,7 +164,7 @@ impl RouteRecord {
         state_name: fn() -> &'static str,
         handler: fn() -> Box<dyn Any + Send + Sync>,
         layer: Option<RouteLayer>,
-        docs: fn(&mut Components) -> HandlerDocs,
+        docs: fn(&mut Components, bool) -> HandlerDocs,
         doc: Option<fn(&mut HandlerDocs)>,
     ) -> Self {
         Self {
