@@ -198,14 +198,25 @@ fn parse_responses(input: ParseStream<'_>) -> Result<Vec<(u16, Option<Type>)>> {
 
 pub struct RoutesInput {
     entries: Vec<Entry>,
+    spreads: Vec<syn::Path>,
 }
 
 impl Parse for RoutesInput {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let mut entries = Vec::new();
+        let mut spreads = Vec::new();
 
         while !input.is_empty() {
             let attrs = Attribute::parse_outer(input)?;
+
+            if input.peek(Token![...]) {
+                input.parse::<Token![...]>()?;
+                spreads.push(input.parse::<syn::Path>()?);
+                if input.peek(Token![,]) {
+                    input.parse::<Token![,]>()?;
+                }
+                continue;
+            }
 
             if input.peek(LitStr) {
                 // Grouped form: "/{id}" => { get(show), patch(update) }
@@ -232,7 +243,7 @@ impl Parse for RoutesInput {
             }
         }
 
-        Ok(Self { entries })
+        Ok(Self { entries, spreads })
     }
 }
 
@@ -240,11 +251,22 @@ pub fn expand(input: RoutesInput) -> TokenStream {
     if let Err(error) = validate_entries(&input.entries) {
         return error.to_compile_error();
     }
+    let krate = crate::util::krate();
     let mut output = TokenStream::new();
     for entry in input.entries {
         let expanded = expand_entry(entry);
         output.extend(expanded);
     }
+    let spreads = &input.spreads;
+    output.extend(quote! {
+        /// The explicit fragment this `routes!` table contributes.
+        #[doc(hidden)]
+        pub fn __roundhouse_fragment() -> #krate::Fragment {
+            let mut __fragment = #krate::Fragment::new(module_path!());
+            #( __fragment = __fragment.include(#spreads::__roundhouse_fragment()); )*
+            __fragment
+        }
+    });
     output
 }
 

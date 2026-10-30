@@ -143,7 +143,9 @@ pub use multipart::TempFile;
 pub use multipart::{FilePart, Multipart, MultipartForm};
 pub use problem::Problem;
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
-pub use router::{App, Built, DocumentRejections, MergeRecord, MountHandle, ResolvedRoute, Scope};
+pub use router::{
+    App, Built, DocumentRejections, Fragment, MergeRecord, MountHandle, ResolvedRoute, Scope,
+};
 pub use utoipa::{PartialSchema, ToSchema};
 
 pub use axum;
@@ -168,6 +170,9 @@ pub use roundhouse_macros::{
 macro_rules! app {
     ($state:expr) => {
         $crate::App::new($state).scope(env!("CARGO_CRATE_NAME"))
+    };
+    ($state:expr, fragment) => {
+        $crate::App::new($state).fragment(__roundhouse_fragment())
     };
 }
 

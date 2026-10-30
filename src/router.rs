@@ -77,6 +77,29 @@ impl MountHandle {
     }
 }
 
+/// An explicit group of route modules, produced by `routes!` spreads.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Fragment {
+    modules: Vec<&'static str>,
+}
+
+impl Fragment {
+    pub fn new(module: &'static str) -> Self {
+        Self {
+            modules: vec![module],
+        }
+    }
+
+    pub fn include(mut self, other: Self) -> Self {
+        self.modules.extend(other.modules);
+        self
+    }
+
+    pub fn modules(&self) -> &[&'static str] {
+        &self.modules
+    }
+}
+
 /// A module scope for [`App::scope`], [`App::include`] and [`App::mount`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Scope(&'static str);
@@ -221,6 +244,12 @@ where
     /// Accepts a `mount!` handle (`other_crate::routes::MOUNT`) as well as a string module path.
     pub fn scope(mut self, scope: impl Into<Scope>) -> Self {
         self.scopes.push(scope.into().module_path());
+        self
+    }
+
+    /// Select routes through an explicit [`Fragment`] instead of crate-name discovery.
+    pub fn fragment(mut self, fragment: Fragment) -> Self {
+        self.scopes.extend(fragment.modules);
         self
     }
 
