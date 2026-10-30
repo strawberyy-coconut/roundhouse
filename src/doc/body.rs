@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use utoipa::openapi::schema::Components;
 
-use super::{ApiSchema, BodyDoc, ResponseDoc, schema};
+use super::{ApiSchema, BodyDoc, schema};
+#[cfg(feature = "multipart")]
+use super::ResponseDoc;
 
 /// Register the schemas and build the response for a JSON body.
 pub fn json_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {

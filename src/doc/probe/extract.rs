@@ -5,9 +5,11 @@ use utoipa::openapi::schema::{Components, Schema};
 
 use super::super::{
     ApiSchema, HandlerDocs, PathNames, QueryParams, binary_body, extension_failures, form_body,
-    form_failures, json_failures, multipart_body, multipart_failures, path_failures, path_params,
-    query_failures, stored_query_params_for,
+    form_failures, json_failures, path_failures, path_params, query_failures,
+    stored_query_params_for,
 };
+#[cfg(feature = "multipart")]
+use super::super::{multipart_body, multipart_failures};
 
 /// Probe used by the handler macro to document a foreign `axum::Json<T>` from utoipa.
 ///
