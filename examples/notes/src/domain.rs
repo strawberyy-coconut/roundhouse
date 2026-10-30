@@ -12,7 +12,7 @@ pub struct Note {
 }
 
 /// The writable half of a note.
-#[derive(Debug, Deserialize, ToSchema, ApiSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema, ApiSchema)]
 pub struct NewNote {
     #[schema(min_length = 1, max_length = 200)]
     pub title: String,

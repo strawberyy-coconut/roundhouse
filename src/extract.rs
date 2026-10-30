@@ -1,10 +1,10 @@
-//! Axum extractors with the framework's rejection contract.
+//! Axum extractors with an optional `Problem` rejection.
 //!
-//! [`Strict<T>`] wraps any axum extractor and converts its rejection into the canonical
-//! [`Problem`]; the inner type stays axum's. The named wrappers below are compatibility
-//! extractors: `Json`, `Form`, `Path` and `Query` also validate during extraction, while
-//! `Extension` only maps the rejection. New code can use `Strict<axum::Json<T>>` and let the
-//! route policy validate. `#[handler]` recognises both forms by type:
+//! `Json`, `Form`, `Path` and `Extension` are re-exported from axum; `Query` is the one custom
+//! parser (`serde_html_form`, so repeated keys work). Wrap any extractor in [`Strict<T>`] to
+//! convert its rejection into the canonical [`Problem`] while keeping the inner type axum's.
+//! Validation is the route policy's job, not the extractor's. `#[handler]` recognises both forms
+//! by type:
 //!
 //! ```ignore
 //! #[handler]
@@ -26,7 +26,7 @@
 //! out. The framework's own extractors above validate during extraction and are not checked
 //! twice.
 //!
-//! [`Extension`] wraps axum's stateless extension extractor, so a handler that only takes
+//! [`Extension`] is axum's stateless extension extractor, so a handler that only takes
 //! `Extension<Arc<T>>` works with unit app state. [`Sse`](crate::Sse) and [`File`](crate::File)
 //! live alongside the other response helpers.
 
@@ -36,14 +36,16 @@ use axum::extract::{FromRequest, FromRequestParts, OptionalFromRequest, Optional
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use std::sync::Arc;
 
-use crate::doc::ApiSchema;
 use crate::problem::Problem;
+
 use crate::validate::ValidationErrors;
+pub use axum::Form;
+pub use axum::Json;
+pub use axum::extract::{Extension, Path};
 
 /// Request extension inserted by a route entry with `validate = false`.
 #[derive(Debug, Clone, Copy)]
@@ -231,97 +233,6 @@ where
     }
 }
 
-/// JSON extractor and response with `Problem`-shaped rejections and constraint validation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Json<T>(pub T);
-
-impl<T> Json<T> {
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
-impl<T> Deref for Json<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for Json<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
-
-impl<T> From<T> for Json<T> {
-    fn from(value: T) -> Self {
-        Self(value)
-    }
-}
-
-impl<T: Serialize> IntoResponse for Json<T> {
-    fn into_response(self) -> Response {
-        axum::Json(self.0).into_response()
-    }
-}
-
-impl<T, S> FromRequest<S> for Json<T>
-where
-    T: DeserializeOwned + ApiSchema + Send + 'static,
-    S: Send + Sync,
-{
-    type Rejection = Problem;
-
-    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Self::Rejection> {
-        let skip = req.extensions().get::<SkipValidation>().is_some();
-        let config = validation_config(req.extensions());
-        if skip || config.mode == Validation::Off {
-            let Strict(value) =
-                <Strict<axum::Json<T>> as FromRequest<S>>::from_request(req, state).await?;
-            return Ok(Self(value.0));
-        }
-
-        // The engine executes the emitted schema. With no compiled validator for this type (or
-        // with the feature disabled) the value is parsed directly and only the custom hooks run.
-        let engine = req
-            .extensions()
-            .get::<Arc<roundhouse_schema::engine::SchemaEngine>>()
-            .cloned();
-        let value = match engine {
-            Some(engine) => {
-                let Strict(value) =
-                    <Strict<axum::Json<serde_json::Value>> as FromRequest<S>>::from_request(
-                        req, state,
-                    )
-                    .await?;
-                if let Some(result) = engine.validate::<T>(&value.0) {
-                    result.map_err(|errors| problem_from_validation(errors, config.status))?;
-                }
-                serde_json::from_value::<T>(value.0).map_err(|error| {
-                    Problem::from_rejection(
-                        StatusCode::BAD_REQUEST,
-                        "Bad Request",
-                        error.to_string(),
-                    )
-                })?
-            }
-            None => {
-                <Strict<axum::Json<T>> as FromRequest<S>>::from_request(req, state)
-                    .await?
-                    .0
-                    .0
-            }
-        };
-        // `validate_with` is not expressible in JSON Schema; it runs after the engine and
-        // contributes the same Problem shape.
-        value
-            .validate()
-            .map_err(|errors| problem_from_validation(errors, config.status))?;
-        Ok(Self(value))
-    }
-}
-
 fn rejection_problem(status: StatusCode, detail: String) -> Problem {
     // A malformed body is malformed input: the document promises 400, so the runtime uses 400
     // even where axum's own rejection defaults to 422.
@@ -335,108 +246,6 @@ fn rejection_problem(status: StatusCode, detail: String) -> Problem {
         status.canonical_reason().unwrap_or("Bad Request"),
         detail,
     )
-}
-
-/// An `axum::extract::Extension` with a `Problem` rejection.
-///
-/// axum's rejection is a bare `500` that is not a `Problem`; this wrapper keeps the "one parser"
-/// promise and lets the document describe the failure honestly.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Extension<T>(pub T);
-
-impl<T> Extension<T> {
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
-impl<T> Deref for Extension<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for Extension<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
-
-impl<T, S> FromRequestParts<S> for Extension<T>
-where
-    T: Clone + Send + Sync + 'static,
-    S: Send + Sync,
-{
-    type Rejection = Problem;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let Strict(value) =
-            <Strict<axum::extract::Extension<T>> as FromRequestParts<S>>::from_request_parts(
-                parts, state,
-            )
-            .await?;
-        Ok(Self(value.0))
-    }
-}
-
-/// Path extractor with `Problem`-shaped rejections and constraint validation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Path<T>(pub T);
-
-impl<T> Path<T> {
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
-impl<T> Deref for Path<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for Path<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
-
-impl<T, S> FromRequestParts<S> for Path<T>
-where
-    T: DeserializeOwned + crate::doc::PathValidate + crate::doc::PartsValue + Send + 'static,
-    S: Send + Sync,
-{
-    type Rejection = Problem;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let skip = parts.extensions.get::<SkipValidation>().is_some();
-        let config = validation_config(&parts.extensions);
-        let engine = parts
-            .extensions
-            .get::<Arc<roundhouse_schema::engine::SchemaEngine>>()
-            .cloned();
-        let value =
-            <axum::extract::Path<T> as FromRequestParts<S>>::from_request_parts(parts, state)
-                .await
-                .map_err(|rejection| {
-                    rejection_problem(rejection.status(), rejection.body_text())
-                })?;
-        if !skip && config.mode != Validation::Off {
-            if let Some(engine) = engine {
-                let value = crate::doc::PartsValue::parts_value(&value.0);
-                if let Some(result) = engine.validate_parts::<T>(&value) {
-                    result.map_err(|errors| problem_from_validation(errors, config.status))?;
-                }
-            }
-            value
-                .0
-                .validate()
-                .map_err(|errors| problem_from_validation(errors, config.status))?;
-        }
-        Ok(Self(value.0))
-    }
 }
 
 /// Query extractor with `Problem`-shaped rejections and constraint validation.
@@ -494,62 +303,6 @@ where
                 .map_err(|errors| problem_from_validation(errors, config.status))?;
         }
         Ok(Self(value))
-    }
-}
-
-/// Form extractor with `Problem`-shaped rejections and constraint validation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Form<T>(pub T);
-
-impl<T> Form<T> {
-    pub fn into_inner(self) -> T {
-        self.0
-    }
-}
-
-impl<T> Deref for Form<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for Form<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
-
-impl<T, S> FromRequest<S> for Form<T>
-where
-    T: DeserializeOwned + ApiSchema + Send + serde::Serialize + 'static,
-    S: Send + Sync,
-{
-    type Rejection = Problem;
-
-    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Self::Rejection> {
-        let skip = req.extensions().get::<SkipValidation>().is_some();
-        let config = validation_config(req.extensions());
-        let engine = req
-            .extensions()
-            .get::<Arc<roundhouse_schema::engine::SchemaEngine>>()
-            .cloned();
-        let value = <axum::Form<T> as FromRequest<S>>::from_request(req, state)
-            .await
-            .map_err(|rejection| rejection_problem(rejection.status(), rejection.body_text()))?;
-        if !skip && config.mode != Validation::Off {
-            if let Some(engine) = engine {
-                let value = serde_json::to_value(&value.0).unwrap_or(serde_json::Value::Null);
-                if let Some(result) = engine.validate::<T>(&value) {
-                    result.map_err(|errors| problem_from_validation(errors, config.status))?;
-                }
-            }
-            value
-                .0
-                .validate()
-                .map_err(|errors| problem_from_validation(errors, config.status))?;
-        }
-        Ok(Self(value.0))
     }
 }
 

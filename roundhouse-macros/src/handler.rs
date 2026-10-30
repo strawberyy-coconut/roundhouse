@@ -112,6 +112,11 @@ pub fn expand(item: ItemFn) -> TokenStream {
                     .probe_extractor(components, &mut docs, #add_failures);
             }
             {
+                use #krate::doc::ProbeJsonBody as _;
+                (&&#krate::doc::JsonBodyProbe::<#ty>::new())
+                    .probe_json_body(components, &mut docs);
+            }
+            {
                 use #krate::doc::ProbeForeignBody as _;
                 (&&#krate::doc::ForeignBodyProbe::<#ty>::new())
                     .probe_foreign_body(components, &mut docs);

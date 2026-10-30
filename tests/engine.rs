@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone)]
 pub struct State;
 
-#[derive(Debug, Deserialize, ToSchema, ApiSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema, ApiSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Note {
     #[schema(min_length = 1, max_length = 5)]
@@ -36,13 +36,13 @@ fn check_value(value: &String) -> Result<(), ValidationErrors> {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema, ApiSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema, ApiSchema)]
 pub struct Checked {
     #[roundhouse(validate_with = check_value)]
     pub value: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema, ApiSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema, ApiSchema)]
 pub struct Link {
     #[schema(format = "url")]
     pub url: String,
@@ -99,12 +99,14 @@ mod schema_mode {
     }
 
     #[handler]
-    pub async fn create(Json(note): Json<Note>) -> Json<NoteOut> {
+    pub async fn create(Strict(axum::Json(note)): Strict<axum::Json<Note>>) -> Json<NoteOut> {
         Json(NoteOut { ok: note.views > 0 })
     }
 
     #[handler]
-    pub async fn create_bulk(Json(notes): Json<Vec<Note>>) -> Json<NoteOut> {
+    pub async fn create_bulk(
+        Strict(axum::Json(notes)): Strict<axum::Json<Vec<Note>>>,
+    ) -> Json<NoteOut> {
         Json(NoteOut {
             ok: !notes.is_empty(),
         })

@@ -151,7 +151,11 @@ mod extension {
     routes! { get("/x", x, operation_id = "extension_x") }
 
     #[handler]
-    pub async fn x(_value: Extension<std::sync::Arc<usize>>) -> String {
+    pub async fn x(
+        Strict(axum::extract::Extension(_value)): Strict<
+            axum::extract::Extension<std::sync::Arc<usize>>,
+        >,
+    ) -> String {
         "x".to_string()
     }
 }

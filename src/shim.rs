@@ -241,24 +241,6 @@ where
     }
 }
 
-impl<T> ValidateArg for crate::extract::Json<T> {
-    fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
-        Ok(())
-    }
-}
-
-impl<T> ValidateArg for crate::extract::Form<T> {
-    fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
-        Ok(())
-    }
-}
-
-impl<T> ValidateArg for crate::extract::Path<T> {
-    fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
-        Ok(())
-    }
-}
-
 // `roundhouse::Query` still parses and validates during extraction; the shim leaves it alone.
 impl<T> ValidateArg for crate::extract::Query<T> {
     fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
@@ -309,52 +291,28 @@ pub trait ProbeBody {
     fn probe_body(self) -> bool;
 }
 
-impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<crate::extract::Json<T>> {
+impl<T: crate::doc::ApiSchema + serde::Serialize> ProbeBody for &BodyProbe<axum::Json<T>> {
     fn probe_body(self) -> bool {
         true
     }
 }
 
-impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<crate::extract::Form<T>> {
+impl<T: crate::doc::ApiSchema + serde::Serialize> ProbeBody for &BodyProbe<axum::Form<T>> {
     fn probe_body(self) -> bool {
         true
     }
 }
 
-impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<axum::Json<T>> {
-    fn probe_body(self) -> bool {
-        true
-    }
-}
-
-impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<axum::Form<T>> {
-    fn probe_body(self) -> bool {
-        true
-    }
-}
-
-impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<crate::extract::Strict<axum::Json<T>>> {
-    fn probe_body(self) -> bool {
-        true
-    }
-}
-
-impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<crate::extract::Strict<axum::Form<T>>> {
-    fn probe_body(self) -> bool {
-        true
-    }
-}
-
-impl<T: crate::doc::ApiSchema> ProbeBody
-    for &BodyProbe<crate::extract::Strict<crate::extract::Json<T>>>
+impl<T: crate::doc::ApiSchema + serde::Serialize> ProbeBody
+    for &BodyProbe<crate::extract::Strict<axum::Json<T>>>
 {
     fn probe_body(self) -> bool {
         true
     }
 }
 
-impl<T: crate::doc::ApiSchema> ProbeBody
-    for &BodyProbe<crate::extract::Strict<crate::extract::Form<T>>>
+impl<T: crate::doc::ApiSchema + serde::Serialize> ProbeBody
+    for &BodyProbe<crate::extract::Strict<axum::Form<T>>>
 {
     fn probe_body(self) -> bool {
         true

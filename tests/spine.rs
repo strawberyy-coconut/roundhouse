@@ -74,7 +74,7 @@ mod notes {
     #[handler]
     pub async fn create(
         State(state): State<TestState>,
-        Json(body): Json<NewNote>,
+        Strict(axum::Json(body)): Strict<axum::Json<NewNote>>,
     ) -> Result<Json<Note>, AppError> {
         Ok(Json(state.create(body.title)))
     }

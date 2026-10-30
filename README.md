@@ -41,7 +41,7 @@ parameter that `Path<String>` cannot name by itself.
 | **Single source of truth** | Paths, parameters, bodies, responses and security requirements are derived from the router's own declarations, so the document matches what is enforced. `security = [Bearer]` installs the `Auth<Bearer>` guard, not just the OpenAPI requirement. |
 | **Early diagnostics** | Duplicate routes and operation ids, missing success responses and auth/state mismatches are compile errors where the declaration is local. Checks that need the resolved tree — collisions across tables, mount prefixes, the final document — are `BuildError`s, and `App::try_build()` never panics. |
 | **Document as artifact** | The OpenAPI document is always built; `App::openapi(..)` only decides whether it is served. `Built::openapi_json()` lets CI diff it. |
-| **Typed extractors** | `#[handler]` reads `State`, `Path`, `Query`, `Json`, `Form`, `Multipart`, `Auth`, `Option<Auth>` and `Extension` from the signature. `Strict<axum::Json<T>>` wraps any axum extractor and maps its rejection to a `Problem`, so the inner type stays axum's. |
+| **Typed extractors** | `#[handler]` reads `State`, `Path`, `Query`, `Json`, `Form`, `Multipart`, `Auth`, `Option<Auth>` and `Extension` from the signature. `Json`, `Form`, `Path` and `Extension` are axum's; `Query` is the repeated-key parser. Wrap in `Strict<…>` for a `Problem` rejection. |
 | **Schema generation** | `utoipa::ToSchema` owns the wire shape (`rename_all`, `skip`, `flatten`, `tag`, `untagged`, recursion, …); `#[derive(ApiSchema)]` adds the runtime checks. `uuid`, `chrono`, `time`, `jiff` and `decimal` are supported. |
 | **Validation** | `min_length`, `pattern`, numeric bounds, `min_items`, `unique_items`, `format` and `validate_with` are emitted into the schema *and* enforced, returning RFC 9457 problem details with JSON Pointers. Entries validate by default, including handlers that use `axum`'s own extractors; `validate = false` opts out. |
 | **Errors** | `Problem` is the default error body; `#[derive(ApiError)]` / `#[derive(ApiResponse)]` generate `IntoResponse` plus the documented responses. |
@@ -155,9 +155,10 @@ routes! {
 `Result<Extractor, E>` arguments own their rejection and are not validated by the shim. A handler
 called directly in a test still behaves exactly as written.
 
-`Strict<T>` is the generic form: `Strict<axum::Json<T>>` is a pure axum extractor with the
-framework's rejection contract. The named `Json`, `Form`, `Path`, `Query` and `Extension` types
-remain as compatibility extractors; `Query` keeps its repeated-key parser.
+`Json`, `Form`, `Path` and `Extension` are axum's extractors. Wrap one in `Strict<…>` when you need
+the framework's `Problem` rejection (otherwise axum's own rejection, including its `422`, is
+returned); `Query` is the one roundhouse parser, because axum's `serde_urlencoded` cannot represent
+the repeated keys the document promises.
 
 The enforcer is the emitted JSON Schema, compiled once by `App::build()`; the `schema-engine`
 feature (and `Validation::Schema`) is on by default. A handler mounted directly on a plain axum

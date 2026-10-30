@@ -296,35 +296,6 @@ pub trait ProbeExtractor {
 }
 
 // `roundhouse::Json` validates constraints and is the type the document can promise.
-impl<T: ApiSchema + 'static> ProbeExtractor for &ExtractProbe<crate::extract::Json<T>> {
-    fn probe_extractor(
-        self,
-        components: &mut Components,
-        docs: &mut HandlerDocs,
-        add_failures: bool,
-    ) {
-        docs.body = Some(json_body::<T>(components));
-        docs.body_type = Some(|| TypeId::of::<T>());
-        if add_failures {
-            docs.failures.extend(json_failures());
-        }
-    }
-}
-
-impl<T: ApiSchema + 'static> ProbeExtractor for &ExtractProbe<crate::extract::Form<T>> {
-    fn probe_extractor(
-        self,
-        components: &mut Components,
-        docs: &mut HandlerDocs,
-        add_failures: bool,
-    ) {
-        docs.body = Some(form_body::<T>(components));
-        docs.body_type = Some(|| TypeId::of::<T>());
-        if add_failures {
-            docs.failures.extend(form_failures());
-        }
-    }
-}
 
 #[cfg(feature = "multipart")]
 impl<T: crate::multipart::MultipartForm + 'static> ProbeExtractor
@@ -349,21 +320,6 @@ impl<T: crate::multipart::MultipartForm + 'static> ProbeExtractor
     }
 }
 
-impl<T: PathNames + 'static> ProbeExtractor for &ExtractProbe<crate::extract::Path<T>> {
-    fn probe_extractor(
-        self,
-        _components: &mut Components,
-        docs: &mut HandlerDocs,
-        add_failures: bool,
-    ) {
-        docs.params.extend(path_params::<T>());
-        docs.path_schema = Some(<T as PathNames>::scalar_schema);
-        if add_failures {
-            docs.failures.extend(path_failures());
-        }
-    }
-}
-
 impl<T: QueryParams> ProbeExtractor for &ExtractProbe<crate::extract::Query<T>> {
     fn probe_extractor(
         self,
@@ -374,21 +330,6 @@ impl<T: QueryParams> ProbeExtractor for &ExtractProbe<crate::extract::Query<T>> 
         docs.params.extend(stored_query_params_for::<T>(components));
         if add_failures {
             docs.failures.extend(query_failures());
-        }
-    }
-}
-
-impl<T: Clone + Send + Sync + 'static> ProbeExtractor
-    for &ExtractProbe<crate::extract::Extension<T>>
-{
-    fn probe_extractor(
-        self,
-        _components: &mut Components,
-        docs: &mut HandlerDocs,
-        add_failures: bool,
-    ) {
-        if add_failures {
-            docs.failures.extend(extension_failures());
         }
     }
 }
@@ -428,6 +369,46 @@ impl<T> ProbeExtractor for &ExtractProbe<axum::Json<T>> {
     }
 }
 
+/// A probe for a JSON body whose type has an `ApiSchema` (including composite bodies such as
+/// `Vec<T>` that have no component of their own).
+pub struct JsonBodyProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> JsonBodyProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for JsonBodyProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeJsonBody {
+    fn probe_json_body(self, components: &mut Components, docs: &mut HandlerDocs);
+}
+
+impl<T: ApiSchema + 'static> ProbeJsonBody for &&JsonBodyProbe<axum::Json<T>> {
+    fn probe_json_body(self, components: &mut Components, docs: &mut HandlerDocs) {
+        docs.body = Some(json_body::<T>(components));
+        docs.body_type = Some(|| TypeId::of::<T>());
+    }
+}
+
+impl<T: ApiSchema + 'static> ProbeJsonBody
+    for &&JsonBodyProbe<crate::extract::Strict<axum::Json<T>>>
+{
+    fn probe_json_body(self, components: &mut Components, docs: &mut HandlerDocs) {
+        docs.body = Some(json_body::<T>(components));
+        docs.body_type = Some(|| TypeId::of::<T>());
+    }
+}
+
+impl<T> ProbeJsonBody for &&&JsonBodyProbe<T> {
+    fn probe_json_body(self, _components: &mut Components, _docs: &mut HandlerDocs) {}
+}
+
 /// A probe for the path/query types an operation uses.
 ///
 /// The engine compiles the schema for each parts type once. The handler macro invokes this at the
@@ -449,12 +430,6 @@ impl<T> Default for PartsProbe<T> {
 
 pub trait ProbeParts {
     fn probe_parts(self, components: &mut Components, docs: &mut HandlerDocs);
-}
-
-impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<crate::extract::Path<T>> {
-    fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
-        docs.parts.push(PartsDoc::new::<T>());
-    }
 }
 
 impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<axum::extract::Path<T>> {
@@ -530,19 +505,25 @@ impl<T: utoipa::ToSchema> ProbeForeignBody for &&ForeignBodyProbe<axum::Json<T>>
     fn probe_foreign_body(self, components: &mut Components, docs: &mut HandlerDocs) {
         use utoipa::ToSchema;
         let name = T::name().into_owned();
-        let mut referenced = Vec::new();
-        <T as ToSchema>::schemas(&mut referenced);
-        for (component, schema) in referenced {
-            components.schemas.insert(component, schema);
+        // `ApiSchema::register` already inserted this type (with its schema patches, such as
+        // `url` → `uri` and `uniqueItems`). Do not overwrite it with the raw `ToSchema` output.
+        if !components.schemas.contains_key(&name) {
+            let mut referenced = Vec::new();
+            <T as ToSchema>::schemas(&mut referenced);
+            for (component, schema) in referenced {
+                components.schemas.insert(component, schema);
+            }
+            components.schemas.insert(name.clone(), T::schema());
         }
-        components.schemas.insert(name.clone(), T::schema());
-        docs.body = Some(BodyDoc {
-            content_type: "application/json".to_string(),
-            schema: utoipa::openapi::Ref::from_schema_name(name).into(),
-            encoding: BTreeMap::new(),
-            required: true,
-            description: None,
-        });
+        if docs.body.is_none() {
+            docs.body = Some(BodyDoc {
+                content_type: "application/json".to_string(),
+                schema: utoipa::openapi::Ref::from_schema_name(name).into(),
+                encoding: BTreeMap::new(),
+                required: true,
+                description: None,
+            });
+        }
     }
 }
 
@@ -615,26 +596,29 @@ impl<T> ProbeExtractor for &ExtractProbe<Option<T>> {
     }
 }
 
-impl<T> ProbeExtractor for &ExtractProbe<axum::extract::Path<T>> {
+impl<T: PathNames + 'static> ProbeExtractor for &ExtractProbe<axum::extract::Path<T>> {
     fn probe_extractor(
         self,
         _components: &mut Components,
         docs: &mut HandlerDocs,
         add_failures: bool,
     ) {
+        docs.params.extend(path_params::<T>());
+        docs.path_schema = Some(<T as PathNames>::scalar_schema);
         if add_failures {
             docs.failures.extend(path_failures());
         }
     }
 }
 
-impl<T> ProbeExtractor for &ExtractProbe<axum::extract::Query<T>> {
+impl<T: QueryParams> ProbeExtractor for &ExtractProbe<axum::extract::Query<T>> {
     fn probe_extractor(
         self,
-        _components: &mut Components,
+        components: &mut Components,
         docs: &mut HandlerDocs,
         add_failures: bool,
     ) {
+        docs.params.extend(stored_query_params_for::<T>(components));
         if add_failures {
             docs.failures.extend(query_failures());
         }

@@ -16,7 +16,9 @@ routes! {
 }
 
 #[handler]
-pub async fn create(Json(profile): Json<Profile>) -> Result<Json<Profile>, ApiError> {
+pub async fn create(
+    Strict(axum::Json(profile)): Strict<axum::Json<Profile>>,
+) -> Result<Json<Profile>, ApiError> {
     if profile.username == "root" {
         return Err(ApiError::UsernameReserved {
             username: profile.username,
@@ -28,6 +30,6 @@ pub async fn create(Json(profile): Json<Profile>) -> Result<Json<Profile>, ApiEr
 /// The same extractor, with `validate = false` on the table entry. This still deserializes and
 /// still rejects malformed JSON; it only skips the `#[schema(..)]` constraint checks.
 #[handler]
-pub async fn unchecked(Json(profile): Json<Profile>) -> Json<Profile> {
+pub async fn unchecked(Strict(axum::Json(profile)): Strict<axum::Json<Profile>>) -> Json<Profile> {
     Json(profile)
 }
