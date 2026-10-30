@@ -57,6 +57,25 @@ pub trait ShimPolicy: 'static {
     const VALIDATE: bool;
 }
 
+/// A policy whose state is exactly a stateful handler's `State<S>`.
+///
+/// A stateless handler can use any scheme state; a handler that declares `State<S>` pins it, and
+/// a scheme whose `AuthScheme::State` differs is a compile error rather than a startup one.
+#[diagnostic::on_unimplemented(
+    message = "the route's security scheme does not authenticate against the handler's state",
+    label = "the scheme's `AuthScheme::State` must equal the handler's `State<T>`",
+    note = "use a scheme whose `State` is the handler's state, add `State<Scheme::State>` to the \
+            handler, or move `security` to a `mount!`"
+)]
+pub trait ShimPolicyFor<S: Clone + Send + Sync + 'static>: ShimPolicy<State = S> {}
+
+impl<S, P> ShimPolicyFor<S> for P
+where
+    S: Clone + Send + Sync + 'static,
+    P: ShimPolicy<State = S>,
+{
+}
+
 /// No validation, no auth: the `validate = false` route with no security requirement.
 pub struct Plain<S>(std::marker::PhantomData<S>);
 

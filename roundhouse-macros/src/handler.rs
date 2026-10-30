@@ -189,6 +189,21 @@ pub fn expand(item: ItemFn) -> TokenStream {
         }),
         None => quote!(true),
     };
+    // A handler that declares `State<S>` fixes the router state. For an authenticated route that
+    // must equal the scheme's `AuthScheme::State`; `ShimPolicyFor` turns a mismatch into a
+    // compile error with a targeted diagnostic. A stateless handler lets the policy provide the
+    // state instead, so it can sit under any scheme.
+    let (state_param, policy_bound) = if has_state {
+        (
+            quote!(__rh_state: #krate::axum::extract::State<#state_ty>),
+            quote!(P: #krate::shim::ShimPolicyFor<#state_ty>),
+        )
+    } else {
+        (
+            quote!(__rh_state: #krate::axum::extract::State<P::State>),
+            quote!(P: #krate::shim::ShimPolicy),
+        )
+    };
 
     quote! {
         #item
@@ -199,11 +214,11 @@ pub fn expand(item: ItemFn) -> TokenStream {
             #[allow(dead_code, clippy::too_many_arguments)]
             #vis async fn __roundhouse_shim<P>(
                 __rh_ctx: #krate::shim::ValidationContext,
-                __rh_state: #krate::axum::extract::State<P::State>,
+                #state_param,
                 #(#shim_params),*
             ) -> #krate::axum::response::Response
             where
-                P: #krate::shim::ShimPolicy,
+                #policy_bound,
             {
                 let _ = (&__rh_auth, &__rh_state);
                 if P::VALIDATE && !__rh_ctx.skip {
