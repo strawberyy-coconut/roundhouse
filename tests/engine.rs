@@ -1,4 +1,4 @@
-//! Schema execution, the opt-in engine, and the conformance checks behind §7.7.
+//! Schema execution and the conformance checks behind §7.7.
 
 #![cfg(feature = "schema-engine")]
 
@@ -128,7 +128,7 @@ async fn schema_mode_rejects_a_constraint_violation_with_a_pointer() {
         .to_bytes();
     let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(value["errors"][0]["pointer"], "/title");
-    assert_eq!(value["errors"][0]["code"], "minLength");
+    assert_eq!(value["errors"][0]["code"], "min_length");
 }
 
 #[tokio::test]
@@ -255,56 +255,50 @@ fn url_is_emitted_as_uri_and_enforced() {
 }
 
 #[test]
-fn generated_checks_and_the_engine_agree_on_verdicts_and_pointers() {
+fn the_engine_reports_stable_codes_and_pointers() {
     let validator = engine::compile::<Note>().expect("the emitted schema is valid");
 
     let fixtures = [
-        ("valid", r#"{"title":"ok","views":1,"slug":"a-b"}"#),
-        ("empty title", r#"{"title":"","views":1,"slug":"a-b"}"#),
+        (
+            "empty title",
+            r#"{"title":"","views":1,"slug":"a-b"}"#,
+            "/title",
+            "min_length",
+        ),
         (
             "long title",
             r#"{"title":"too long","views":1,"slug":"a-b"}"#,
+            "/title",
+            "max_length",
         ),
-        ("bad slug", r#"{"title":"ok","views":1,"slug":"A B"}"#),
+        (
+            "bad slug",
+            r#"{"title":"ok","views":1,"slug":"A B"}"#,
+            "/slug",
+            "pattern",
+        ),
         (
             "negative views",
             r#"{"title":"ok","views":-1,"slug":"a-b"}"#,
+            "/views",
+            "minimum",
         ),
     ];
 
-    for (name, fixture) in fixtures {
+    for (name, fixture, pointer, code) in fixtures {
         let value: serde_json::Value = serde_json::from_str(fixture).unwrap();
-        let engine_errors = match engine::validate_with(&validator, &value) {
-            Ok(()) => Vec::new(),
-            Err(errors) => errors.into_vec(),
-        };
-
-        let typed: Note = serde_json::from_str(fixture).unwrap_or_else(|_| Note {
-            title: String::new(),
-            views: 0,
-            slug: String::new(),
-        });
-        let generated_errors = match typed.validate() {
-            Ok(()) => Vec::new(),
-            Err(errors) => errors.into_vec(),
-        };
-
-        assert_eq!(
-            generated_errors.is_empty(),
-            engine_errors.is_empty(),
-            "verdict parity failed for fixture `{name}`"
-        );
-        let mut generated_pointers: Vec<_> = generated_errors
-            .iter()
-            .map(|error| &error.pointer)
-            .collect();
-        let mut engine_pointers: Vec<_> =
-            engine_errors.iter().map(|error| &error.pointer).collect();
-        generated_pointers.sort();
-        engine_pointers.sort();
-        assert_eq!(
-            generated_pointers, engine_pointers,
-            "pointer parity failed for fixture `{name}`"
+        let errors = engine::validate_with(&validator, &value)
+            .expect_err(name)
+            .into_vec();
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.pointer == pointer && error.code == code),
+            "fixture `{name}` did not report {code} at {pointer}: {errors:?}"
         );
     }
+
+    let valid: serde_json::Value =
+        serde_json::from_str(r#"{"title":"ok","views":1,"slug":"a-b"}"#).unwrap();
+    assert!(engine::validate_with(&validator, &valid).is_ok());
 }

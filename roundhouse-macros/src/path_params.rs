@@ -30,6 +30,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let mut names = Vec::new();
     let mut params = Vec::new();
     let mut validations = Vec::new();
+    let mut value_inserts = Vec::new();
 
     for (index, field) in fields.named.iter().enumerate() {
         let Some(field_ident) = &field.ident else {
@@ -71,6 +72,13 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             quote!(pointer),
         ));
         names.push(name_lit.clone());
+        value_inserts.push(quote! {
+            map.insert(
+                #name_lit.to_string(),
+                #krate::serde_json::to_value(&self.#field_ident)
+                    .unwrap_or(#krate::serde_json::Value::Null),
+            );
+        });
         params.push(quote! {
             #krate::doc::Param::new(
                 #name_lit,
@@ -96,6 +104,24 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 errors: &mut #krate::validate::ValidationErrors,
             ) {
                 #(#validations)*
+            }
+        }
+
+        impl #krate::doc::PartsSchema for #ident {
+            fn parts_schema(
+                _components: &mut #krate::utoipa::openapi::schema::Components,
+            ) -> #krate::utoipa::openapi::RefOr<#krate::utoipa::openapi::schema::Schema> {
+                #krate::doc::schema::object_from_params(
+                    <Self as #krate::doc::PathNames>::params(),
+                )
+            }
+        }
+
+        impl #krate::doc::PartsValue for #ident {
+            fn parts_value(&self) -> #krate::serde_json::Value {
+                let mut map = #krate::serde_json::Map::new();
+                #(#value_inserts)*
+                #krate::serde_json::Value::Object(map)
             }
         }
     })

@@ -30,6 +30,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
     let mut params = Vec::new();
     let mut validations = Vec::new();
+    let mut value_inserts = Vec::new();
     for (index, field) in fields.named.iter().enumerate() {
         let Some(field_ident) = &field.ident else {
             continue;
@@ -48,6 +49,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 params.extend(<#ty as #krate::doc::QueryParams>::params(components));
             });
             validations.push(flatten_validation(field_ident, ty));
+            value_inserts.push(flatten_value(field_ident, ty));
             continue;
         }
 
@@ -64,6 +66,13 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             false,
             quote!(pointer),
         ));
+        value_inserts.push(quote! {
+            map.insert(
+                #name_lit.to_string(),
+                #krate::serde_json::to_value(&self.#field_ident)
+                    .unwrap_or(#krate::serde_json::Value::Null),
+            );
+        });
         let array = is_vec(ty).is_some()
             || is_option(ty)
                 .as_ref()
@@ -116,6 +125,24 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
         }
 
+        impl #krate::doc::PartsSchema for #ident {
+            fn parts_schema(
+                components: &mut #krate::utoipa::openapi::schema::Components,
+            ) -> #krate::utoipa::openapi::RefOr<#krate::utoipa::openapi::schema::Schema> {
+                #krate::doc::schema::object_from_params(
+                    <Self as #krate::doc::QueryParams>::params(components),
+                )
+            }
+        }
+
+        impl #krate::doc::PartsValue for #ident {
+            fn parts_value(&self) -> #krate::serde_json::Value {
+                let mut map = #krate::serde_json::Map::new();
+                #(#value_inserts)*
+                #krate::serde_json::Value::Object(map)
+            }
+        }
+
         #krate::inventory::submit! {
             #krate::registry::QueryDocRecord::__new(
                 || ::core::any::type_name::<#ident>(),
@@ -123,6 +150,29 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             )
         }
     })
+}
+
+fn flatten_value(field_ident: &syn::Ident, ty: &syn::Type) -> TokenStream {
+    let krate = crate::util::krate();
+    if is_option(ty).is_some() {
+        quote! {
+            if let ::core::option::Option::Some(value) = &self.#field_ident {
+                if let #krate::serde_json::Value::Object(inner) =
+                    #krate::doc::PartsValue::parts_value(value)
+                {
+                    map.extend(inner);
+                }
+            }
+        }
+    } else {
+        quote! {
+            if let #krate::serde_json::Value::Object(inner) =
+                #krate::doc::PartsValue::parts_value(&self.#field_ident)
+            {
+                map.extend(inner);
+            }
+        }
+    }
 }
 
 fn flatten_validation(field_ident: &syn::Ident, ty: &syn::Type) -> TokenStream {

@@ -63,6 +63,9 @@ async fn collect(response: axum::response::Response) -> (StatusCode, Option<Stri
 #[tokio::test]
 async fn discovered_and_hand_written_routers_agree() {
     let discovered = discovered();
+    // Constraint validation is installed by App::build(). The hand-written router below calls the
+    // same handlers directly and therefore has no engine, so invalid-body behavior is covered by
+    // examples/validation instead of being compared here.
     let requests = [
         (http::Method::GET, "/healthz", None),
         (http::Method::GET, "/notes", None),
@@ -75,7 +78,6 @@ async fn discovered_and_hand_written_routers_agree() {
         (http::Method::GET, "/notes/99", None),
         (http::Method::PUT, "/notes", None),
         (http::Method::GET, "/missing", None),
-        (http::Method::POST, "/notes", Some(r#"{"title":""}"#)),
     ];
 
     let hand = hand_written(state());

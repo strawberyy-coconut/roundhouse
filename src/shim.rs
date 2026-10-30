@@ -18,12 +18,22 @@ use axum::http::request::Parts;
 use crate::extract::{SkipValidation, ValidationConfig};
 use crate::problem::Problem;
 
+impl ValidationContext {
+    /// Whether validation should run for this request: the route did not opt out and the app
+    /// did not disable the engine.
+    pub fn enabled(&self) -> bool {
+        !self.skip && self.config.mode != crate::extract::Validation::Off
+    }
+}
+
 /// The app-wide validation settings, read from the request.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub struct ValidationContext {
     pub config: ValidationConfig,
     /// Set by a `validate = false` route or an ancestor that opted out.
     pub skip: bool,
+    /// The compiled document, when the app enables schema execution.
+    pub engine: Option<std::sync::Arc<roundhouse_schema::engine::SchemaEngine>>,
 }
 
 impl<S> FromRequestParts<S> for ValidationContext
@@ -39,7 +49,15 @@ where
             .copied()
             .unwrap_or_default();
         let skip = parts.extensions.get::<SkipValidation>().is_some();
-        Ok(Self { config, skip })
+        let engine = parts
+            .extensions
+            .get::<std::sync::Arc<roundhouse_schema::engine::SchemaEngine>>()
+            .cloned();
+        Ok(Self {
+            config,
+            skip,
+            engine,
+        })
     }
 }
 
@@ -125,83 +143,119 @@ impl<A: crate::auth::Authenticate> ShimPolicy for AuthedValidated<A> {
 /// extractors are deliberately no-ops because they validate during extraction.
 #[allow(clippy::result_large_err)]
 pub trait ValidateArg {
-    fn validate_arg(&self, config: &ValidationConfig) -> Result<(), Problem>;
+    fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem>;
 }
 
 fn validation_problem(
     errors: crate::validate::ValidationErrors,
-    config: &ValidationConfig,
+    context: &ValidationContext,
 ) -> Problem {
-    crate::extract::validation_problem(errors, config.status)
+    crate::extract::validation_problem(errors, context.config.status)
 }
 
-// `axum::Json` parses but does not enforce the constraints in `T`'s schema.
+// `axum::Json` parses but does not execute the schema; the route's shim does.
 impl<T> ValidateArg for axum::Json<T>
 where
-    T: crate::doc::ApiSchema,
+    T: crate::doc::ApiSchema + serde::Serialize + 'static,
 {
-    fn validate_arg(&self, config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
+        if let Some(engine) = &context.engine {
+            let value = serde_json::to_value(&self.0).map_err(|error| {
+                Problem::from_rejection(
+                    axum::http::StatusCode::BAD_REQUEST,
+                    "Bad Request",
+                    error.to_string(),
+                )
+            })?;
+            if let Some(result) = engine.validate::<T>(&value) {
+                result.map_err(|errors| validation_problem(errors, context))?;
+            }
+        }
         self.0
             .validate()
-            .map_err(|errors| validation_problem(errors, config))
+            .map_err(|errors| validation_problem(errors, context))
     }
 }
 
 impl<T> ValidateArg for axum::Form<T>
 where
-    T: crate::doc::ApiSchema,
+    T: crate::doc::ApiSchema + serde::Serialize + 'static,
 {
-    fn validate_arg(&self, config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
+        if let Some(engine) = &context.engine {
+            let value = serde_json::to_value(&self.0).map_err(|error| {
+                Problem::from_rejection(
+                    axum::http::StatusCode::BAD_REQUEST,
+                    "Bad Request",
+                    error.to_string(),
+                )
+            })?;
+            if let Some(result) = engine.validate::<T>(&value) {
+                result.map_err(|errors| validation_problem(errors, context))?;
+            }
+        }
         self.0
             .validate()
-            .map_err(|errors| validation_problem(errors, config))
+            .map_err(|errors| validation_problem(errors, context))
     }
 }
 
 impl<T> ValidateArg for axum::extract::Path<T>
 where
-    T: crate::doc::PathValidate,
+    T: crate::doc::PathValidate + crate::doc::PartsValue + 'static,
 {
-    fn validate_arg(&self, config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
+        if let Some(engine) = &context.engine {
+            let value = crate::doc::PartsValue::parts_value(&self.0);
+            if let Some(result) = engine.validate_parts::<T>(&value) {
+                result.map_err(|errors| validation_problem(errors, context))?;
+            }
+        }
         self.0
             .validate()
-            .map_err(|errors| validation_problem(errors, config))
+            .map_err(|errors| validation_problem(errors, context))
     }
 }
 
 impl<T> ValidateArg for axum::extract::Query<T>
 where
-    T: crate::doc::QueryParams,
+    T: crate::doc::QueryParams + crate::doc::PartsValue + 'static,
 {
-    fn validate_arg(&self, config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
+        if let Some(engine) = &context.engine {
+            let value = crate::doc::PartsValue::parts_value(&self.0);
+            if let Some(result) = engine.validate_parts::<T>(&value) {
+                result.map_err(|errors| validation_problem(errors, context))?;
+            }
+        }
         self.0
             .validate()
-            .map_err(|errors| validation_problem(errors, config))
+            .map_err(|errors| validation_problem(errors, context))
     }
 }
 
 // The framework's own extractors already validate during extraction; validating again would
 // produce a second, identical pass.
 impl<T> ValidateArg for crate::extract::Json<T> {
-    fn validate_arg(&self, _config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
         Ok(())
     }
 }
 
 impl<T> ValidateArg for crate::extract::Form<T> {
-    fn validate_arg(&self, _config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
         Ok(())
     }
 }
 
 impl<T> ValidateArg for crate::extract::Path<T> {
-    fn validate_arg(&self, _config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
         Ok(())
     }
 }
 
 impl<T> ValidateArg for crate::extract::Query<T> {
-    fn validate_arg(&self, _config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
         Ok(())
     }
 }
@@ -210,9 +264,9 @@ impl<T> ValidateArg for Option<T>
 where
     T: ValidateArg,
 {
-    fn validate_arg(&self, config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
         match self {
-            Some(value) => value.validate_arg(config),
+            Some(value) => value.validate_arg(context),
             Option::None => Ok(()),
         }
     }
@@ -220,7 +274,7 @@ where
 
 /// The fallback: an extractor with no documented constraints, or one the framework cannot see.
 impl<T> ValidateArg for &T {
-    fn validate_arg(&self, _config: &ValidationConfig) -> Result<(), Problem> {
+    fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
         Ok(())
     }
 }

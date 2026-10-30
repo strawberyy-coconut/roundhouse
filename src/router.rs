@@ -212,7 +212,7 @@ where
             #[cfg(feature = "multipart")]
             max_parts: None,
             strict: false,
-            validation: crate::extract::Validation::Generated,
+            validation: crate::extract::Validation::default(),
         }
     }
 
@@ -385,7 +385,7 @@ where
         self
     }
 
-    /// Choose the enforcer: generated checks (default), the emitted JSON Schema, or none.
+    /// Choose the enforcer: the emitted JSON Schema (default) or none.
     pub fn validation(mut self, mode: crate::extract::Validation) -> Self {
         self.validation = mode;
         self
@@ -456,6 +456,7 @@ where
             .map(|info| info())
             .unwrap_or_else(|| Info::new("API", "0.1.0"));
         let mut bodies = Vec::new();
+        let mut parts = Vec::new();
         let mut built_document = doc::build::build_with_observations(
             info.into_utoipa(),
             &resolved,
@@ -463,6 +464,7 @@ where
             self.strict,
             &mut diagnostics,
             &mut bodies,
+            &mut parts,
         )?;
         if !self.merges.is_empty() {
             let extensions = utoipa::openapi::extensions::ExtensionsBuilder::new()
@@ -495,10 +497,11 @@ where
                 .into_iter()
                 .map(|record| ((record.type_id)(), (record.name)()));
             Some(Arc::new(
-                roundhouse_schema::engine::SchemaEngine::from_components_and_bodies(
+                roundhouse_schema::engine::SchemaEngine::from_components_bodies_and_parts(
                     &components,
                     types,
                     bodies,
+                    parts,
                 )
                 .map_err(|error| BuildError::SchemaCompilation {
                     message: error.to_string(),

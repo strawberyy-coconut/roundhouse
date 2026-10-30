@@ -47,7 +47,7 @@ parameter that `Path<String>` cannot name by itself.
 | **Errors** | `Problem` is the default error body; `#[derive(ApiError)]` / `#[derive(ApiResponse)]` generate `IntoResponse` plus the documented responses. |
 | **Auth** | `Auth<A>` extracts an identity, `Auth<A, Scopes>` requires an `Authorize` implementation, and `security = [A]` on an entry or mount installs the check for that route or subtree. A handler that already takes `Auth<A>` is not authenticated twice. Schemes, 401/403 and `WWW-Authenticate` are documented automatically. |
 | **Files & streams** | Opt-in `multipart` for `Multipart<F>`, `FilePart` and `TempFile`; plus `Attachment<T>`, `File` and SSE. |
-| **Optional schema engine** | `schema-engine` validates requests and responses against the emitted JSON Schema (2020-12). |
+| **Schema engine (default)** | Requests and responses are validated by executing the emitted JSON Schema (2020-12). Constraints have one source and one enforcer; `validate_with` remains the explicit custom hook. |
 | **Tooling** | `App::docs()` serves Swagger UI, `Built::openapi_30()` produces a 3.0.3 document, and merged routers are flagged so an incomplete spec can't slip through. |
 
 ## Install
@@ -58,13 +58,13 @@ cargo add axum
 cargo add serde --features derive
 ```
 
-Requires Rust 1.88 (MSRV). Default features include the macros; everything else is opt-in:
+Requires Rust 1.88 (MSRV). Default features include the macros and the schema engine; everything else is opt-in:
 
 | Feature | Enables |
 |---|---|
 | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 | `multipart-tempfile` | `TempFile` (implies `multipart`) |
-| `schema-engine` | `Validation::Schema` and `App::validate_responses()` |
+| `schema-engine` | Execute the emitted JSON Schema (default); disabling it leaves validation off unless requested |
 | `uuid`, `chrono`, `time`, `jiff`, `decimal` | `ToSchema`/`ApiSchema` support for those types |
 
 `ToSchema` is re-exported by `roundhouse::prelude` (and as `roundhouse::utoipa::ToSchema`), so a
@@ -154,6 +154,11 @@ routes! {
 
 `Result<Extractor, E>` arguments own their rejection and are not validated by the shim. A handler
 called directly in a test still behaves exactly as written.
+
+The enforcer is the emitted JSON Schema, compiled once by `App::build()`; the `schema-engine`
+feature (and `Validation::Schema`) is on by default. A handler mounted directly on a plain axum
+router, outside `App`, has no engine and therefore no constraint checks — build through `App` (or
+`App::router()`) to get them, or call `.validation(Validation::Off)` to make the absence explicit.
 
 **Auth is enforced where it is declared.** `security` takes scheme types, not names; the same
 declaration installs the check and publishes the requirement. An entry with one scheme is enforced

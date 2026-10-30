@@ -14,7 +14,7 @@ pub mod validate;
 
 #[cfg(feature = "schema-engine")]
 pub use jsonschema;
-pub use schema::{ApiSchema, PathNames, PathValidate};
+pub use schema::{ApiSchema, PartsSchema, PartsValue, PathNames, PathValidate};
 pub use utoipa;
 pub use validate::{ValidationError, ValidationErrors, pointer};
 

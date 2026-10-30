@@ -82,13 +82,13 @@
 //!
 //! ## Feature flags
 //!
-//! The default build includes the macros. Everything else is opt-in:
+//! The default build includes the macros and the schema engine. Everything else is opt-in:
 //!
 //! | Feature | Enables |
 //! |---|---|
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
-//! | `schema-engine` | `Validation::Schema` and `App::validate_responses()` |
+//! | `schema-engine` | Execute the emitted JSON Schema for request and response validation (default) |
 //! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | `ToSchema`/`ApiSchema` support for those types |
 //!
 //! `ToSchema` is re-exported by [`prelude`], so the usual `use roundhouse::prelude::*;` makes the

@@ -18,17 +18,19 @@ use crate::validate::ValidationErrors;
 /// the same declaration, so the document cannot drift from the wire format.
 ///
 /// `#[derive(ApiSchema)]` pairs with `utoipa::ToSchema`: utoipa owns the wire shape and component
-/// name, while this trait adds constraint validation and the registration hook.
+/// name, while this trait adds the registration hook and the hand-written `validate_with` pass.
+/// Declarative constraints are enforced by executing `ToSchema`'s schema, not by generated checks.
 pub trait ApiSchema {
     fn schema() -> RefOr<Schema>;
 
     /// Register this type (and anything it references) under its component name.
     fn register(_components: &mut Components) {}
 
-    /// Validate with a JSON Pointer base. Implementations append `/field` segments.
+    /// Run the `validate_with` hooks, with a JSON Pointer base. Constraint checks come from the
+    /// emitted schema; this method only carries custom logic.
     fn validate_at(&self, _pointer: &str, _errors: &mut ValidationErrors) {}
 
-    /// Validate this value, returning every violation at once.
+    /// Run the `validate_with` hooks for this value.
     fn validate(&self) -> Result<(), ValidationErrors> {
         let mut errors = ValidationErrors::new();
         self.validate_at("", &mut errors);
@@ -40,7 +42,8 @@ pub trait ApiSchema {
     }
 }
 
-/// Constraint validation for `Path<T>` extractors.
+/// Custom validation hooks for `Path<T>` extractors. Declarative constraints are enforced by the
+/// emitted parameter schema.
 pub trait PathValidate {
     fn validate_at(&self, _pointer: &str, _errors: &mut ValidationErrors) {}
 
@@ -52,6 +55,124 @@ pub trait PathValidate {
         } else {
             Err(errors)
         }
+    }
+}
+
+/// A path or query type's declarative schema.
+///
+/// The derives build this from the same parameter table they publish, so the schema the engine
+/// executes is the schema the document shows. Body types use `ToSchema` instead.
+pub trait PartsSchema {
+    fn parts_schema(components: &mut Components) -> RefOr<Schema>;
+}
+
+/// A path or query value as JSON, for the schema engine.
+///
+/// The derive implements this field by field, so a parts type does not need to derive `Serialize`
+/// itself. Scalar `Path<T>` types use the implementations below.
+pub trait PartsValue {
+    fn parts_value(&self) -> serde_json::Value;
+}
+
+/// Build the object schema for a parts type from its documented parameters.
+pub fn object_from_params(params: Vec<crate::Param>) -> RefOr<Schema> {
+    let mut builder = ObjectBuilder::new().schema_type(Type::Object);
+    for param in params {
+        if param.required {
+            builder = builder.required(param.name.clone());
+        }
+        builder = builder.property(param.name, param.schema);
+    }
+    builder.into()
+}
+
+macro_rules! parts_value_via_serde {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl PartsValue for $ty {
+                fn parts_value(&self) -> serde_json::Value {
+                    serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+                }
+            }
+        )*
+    };
+}
+
+parts_value_via_serde!(
+    bool, char, String, u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64
+);
+
+impl<K, V> PartsValue for std::collections::HashMap<K, V>
+where
+    K: serde::Serialize + Eq + std::hash::Hash,
+    V: serde::Serialize,
+{
+    fn parts_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+impl<K, V> PartsValue for std::collections::BTreeMap<K, V>
+where
+    K: serde::Serialize + Ord,
+    V: serde::Serialize,
+{
+    fn parts_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+impl PartsValue for serde_json::Value {
+    fn parts_value(&self) -> serde_json::Value {
+        self.clone()
+    }
+}
+
+impl<T> PartsValue for Vec<T>
+where
+    T: serde::Serialize,
+{
+    fn parts_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+#[cfg(feature = "uuid")]
+impl PartsValue for uuid::Uuid {
+    fn parts_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+#[cfg(feature = "chrono")]
+impl<Tz> PartsValue for chrono::DateTime<Tz>
+where
+    Tz: chrono::TimeZone,
+    chrono::DateTime<Tz>: serde::Serialize,
+{
+    fn parts_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+#[cfg(feature = "time")]
+impl PartsValue for time::OffsetDateTime {
+    fn parts_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+#[cfg(feature = "decimal")]
+impl PartsValue for rust_decimal::Decimal {
+    fn parts_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+#[cfg(feature = "jiff")]
+impl PartsValue for jiff::Timestamp {
+    fn parts_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 }
 

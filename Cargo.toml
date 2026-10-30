@@ -27,13 +27,13 @@ keywords = ["axum", "openapi", "web", "framework", "router"]
 categories = ["web-programming::http-server"]
 
 [features]
-default = ["macros"]
+default = ["macros", "schema-engine"]
 macros = ["dep:roundhouse-macros"]
 # Typed multipart extraction, plus axum's multipart body support.
 multipart = ["dep:roundhouse-multipart", "axum/multipart"]
 # `TempFile` parts, streamed to an already-unlinked temporary file.
 multipart-tempfile = ["multipart", "roundhouse-multipart/multipart-tempfile"]
-# Execute the emitted JSON Schema (`Validation::Schema`, `validate_responses()`).
+# Execute the emitted JSON Schema for request/response validation (default).
 schema-engine = ["roundhouse-schema/schema-engine"]
 uuid = ["roundhouse-schema/uuid"]
 chrono = ["roundhouse-schema/chrono"]

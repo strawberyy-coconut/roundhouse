@@ -116,6 +116,10 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 (&&#krate::doc::ForeignBodyProbe::<#ty>::new())
                     .probe_foreign_body(components, &mut docs);
             }
+            {
+                use #krate::doc::ProbeParts as _;
+                (&&#krate::doc::PartsProbe::<#ty>::new()).probe_parts(components, &mut docs);
+            }
         });
     }
 
@@ -167,7 +171,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
         shim_checks.push(quote! {
             if let ::core::result::Result::Err(__rh_problem) = {
                 use #krate::shim::ValidateArg as _;
-                (&#ident).validate_arg(&__rh_ctx.config)
+                (&#ident).validate_arg(&__rh_ctx)
             } {
                 return #krate::axum::response::IntoResponse::into_response(__rh_problem);
             }
@@ -230,7 +234,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 #policy_bound,
             {
                 let _ = (&__rh_auth, &__rh_state);
-                if P::VALIDATE && !__rh_ctx.skip {
+                if P::VALIDATE && __rh_ctx.enabled() {
                     #(#shim_checks)*
                 }
                 let __rh_response = #shim_call;

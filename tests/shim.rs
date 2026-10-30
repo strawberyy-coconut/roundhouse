@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header, request::Parts};
 use roundhouse::prelude::*;
-use roundhouse::{App, Built, Problem, SecuritySchemeKind};
+use roundhouse::{App, Built, Problem, SecuritySchemeKind, Validation};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default)]
@@ -329,6 +329,19 @@ async fn validate_false_disables_the_shim_check() {
     let built = scoped(concat!(module_path!(), "::json_opt_out"));
     let response = built
         .oneshot_json(http::Method::POST, "/json-opt-out", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn app_level_off_disables_the_shim() {
+    let built = App::new(AuthState::default())
+        .scope(concat!(module_path!(), "::json_body"))
+        .validation(Validation::Off)
+        .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
+        .build();
+    let response = built
+        .oneshot_json(http::Method::POST, "/json", r#"{"title":"ab"}"#)
         .await;
     assert_eq!(response.status(), StatusCode::OK);
 }

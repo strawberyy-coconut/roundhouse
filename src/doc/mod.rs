@@ -35,7 +35,9 @@ use std::collections::BTreeMap;
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::{Components, Schema};
 
-pub use roundhouse_schema::{ApiSchema, Param, ParamIn, PathNames, PathValidate};
+pub use roundhouse_schema::{
+    ApiSchema, Param, ParamIn, PartsSchema, PartsValue, PathNames, PathValidate,
+};
 pub use utoipa;
 
 /// A documented request body.
@@ -117,10 +119,28 @@ impl ResponseDoc {
     }
 }
 
+/// A path or query type whose parameter schema the engine should compile.
+#[derive(Clone, Copy)]
+pub struct PartsDoc {
+    pub type_id: fn() -> TypeId,
+    pub schema: fn(&mut Components) -> RefOr<Schema>,
+}
+
+impl PartsDoc {
+    pub fn new<T: PartsSchema + 'static>() -> Self {
+        Self {
+            type_id: || TypeId::of::<T>(),
+            schema: <T as PartsSchema>::parts_schema,
+        }
+    }
+}
+
 /// The documentation half a `#[handler]` attribute derives from the signature.
 #[derive(Clone, Default)]
 pub struct HandlerDocs {
     pub params: Vec<Param>,
+    /// Path and query types the engine should compile for this operation.
+    pub parts: Vec<PartsDoc>,
     pub body: Option<BodyDoc>,
     pub failures: Vec<ResponseDoc>,
     pub responses: Vec<ResponseDoc>,
@@ -406,6 +426,57 @@ impl<T> ProbeExtractor for &ExtractProbe<axum::Json<T>> {
     ) {
         docs.unverified = true;
     }
+}
+
+/// A probe for the path/query types an operation uses.
+///
+/// The engine compiles the schema for each parts type once. The handler macro invokes this at the
+/// concrete argument type, so a scalar `Path<T>` without a `PartsSchema` impl simply contributes
+/// nothing.
+pub struct PartsProbe<T>(std::marker::PhantomData<T>);
+
+impl<T> PartsProbe<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T> Default for PartsProbe<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeParts {
+    fn probe_parts(self, components: &mut Components, docs: &mut HandlerDocs);
+}
+
+impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<crate::extract::Path<T>> {
+    fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
+        docs.parts.push(PartsDoc::new::<T>());
+    }
+}
+
+impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<axum::extract::Path<T>> {
+    fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
+        docs.parts.push(PartsDoc::new::<T>());
+    }
+}
+
+impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<crate::extract::Query<T>> {
+    fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
+        docs.parts.push(PartsDoc::new::<T>());
+    }
+}
+
+impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<axum::extract::Query<T>> {
+    fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
+        docs.parts.push(PartsDoc::new::<T>());
+    }
+}
+
+impl<T> ProbeParts for &&&PartsProbe<T> {
+    fn probe_parts(self, _components: &mut Components, _docs: &mut HandlerDocs) {}
 }
 
 /// A second, narrower probe for a foreign JSON body that has a utoipa schema.
@@ -740,6 +811,8 @@ pub fn path_params<T: PathNames>() -> Vec<Param> {
 pub trait QueryParams {
     fn params(components: &mut Components) -> Vec<Param>;
 
+    /// Run the custom `validate_with` hooks; declarative constraints come from the parameter
+    /// schema.
     fn validate_at(&self, _pointer: &str, _errors: &mut crate::validate::ValidationErrors) {}
 
     fn validate(&self) -> Result<(), crate::validate::ValidationErrors> {

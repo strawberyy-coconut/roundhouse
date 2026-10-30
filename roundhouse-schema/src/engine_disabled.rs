@@ -52,8 +52,34 @@ impl SchemaEngine {
         Err(feature_error())
     }
 
+    pub fn from_components_bodies_and_parts(
+        _components: &utoipa::openapi::schema::Components,
+        _types: impl IntoIterator<Item = (std::any::TypeId, String)>,
+        _bodies: impl IntoIterator<
+            Item = (
+                std::any::TypeId,
+                utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+            ),
+        >,
+        _parts: impl IntoIterator<
+            Item = (
+                std::any::TypeId,
+                utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+            ),
+        >,
+    ) -> Result<Self, SchemaError> {
+        Err(feature_error())
+    }
+
     /// Validate a value against the compiled type. `None` means the type was not documented.
     pub fn validate<T: 'static>(&self, _value: &Value) -> Option<Result<(), ValidationErrors>> {
+        None
+    }
+
+    pub fn validate_parts<T: 'static>(
+        &self,
+        _value: &Value,
+    ) -> Option<Result<(), ValidationErrors>> {
         None
     }
 

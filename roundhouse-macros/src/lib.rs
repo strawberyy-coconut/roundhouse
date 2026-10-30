@@ -394,8 +394,11 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// - `#[roundhouse(validate_with = path)]` — a function `fn(&T) -> Result<(), ValidationErrors>`
 ///   run in addition to the declared constraints. Its errors keep the field's JSON Pointer.
 ///
-/// Constraints are published **and** enforced. `#[schema(skip_validation)]` was removed on
-/// purpose: opt out for a whole route with `validate = false` in `routes!` instead.
+/// Constraints are published **and** enforced: the emitted schema is compiled and executed by the
+/// `schema-engine` feature, so there is one declarative source rather than a second generated
+/// check. `validate_with` is the exception — it is Rust code, not expressible in JSON Schema, and
+/// runs after the engine. `#[schema(skip_validation)]` was removed on purpose: opt out for a
+/// whole route with `validate = false` in `routes!` instead.
 ///
 /// # Example
 ///

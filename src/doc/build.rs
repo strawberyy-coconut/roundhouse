@@ -27,6 +27,7 @@ pub fn build_with_options(
 ) -> Result<OpenApi, BuildError> {
     let mut diagnostics = Vec::new();
     let mut bodies = Vec::new();
+    let mut parts = Vec::new();
     build_with_observations(
         info,
         routes,
@@ -34,6 +35,7 @@ pub fn build_with_options(
         strict,
         &mut diagnostics,
         &mut bodies,
+        &mut parts,
     )
 }
 
@@ -46,6 +48,7 @@ pub fn build_with_diagnostics(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<OpenApi, BuildError> {
     let mut bodies = Vec::new();
+    let mut parts = Vec::new();
     build_with_observations(
         info,
         routes,
@@ -53,6 +56,7 @@ pub fn build_with_diagnostics(
         strict,
         diagnostics,
         &mut bodies,
+        &mut parts,
     )
 }
 
@@ -65,6 +69,10 @@ pub fn build_with_observations(
     strict: bool,
     diagnostics: &mut Vec<Diagnostic>,
     bodies: &mut Vec<(
+        std::any::TypeId,
+        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+    )>,
+    parts: &mut Vec<(
         std::any::TypeId,
         utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
     )>,
@@ -170,6 +178,7 @@ pub fn build_with_observations(
             strict,
             diagnostics,
             bodies,
+            parts,
         )?;
         paths.add_path_operation(&route.path, vec![http_method], operation);
     }
@@ -209,6 +218,10 @@ fn operation(
     strict: bool,
     diagnostics: &mut Vec<Diagnostic>,
     bodies: &mut Vec<(
+        std::any::TypeId,
+        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+    )>,
+    parts: &mut Vec<(
         std::any::TypeId,
         utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
     )>,
@@ -456,6 +469,9 @@ fn operation(
 
     if !tags.is_empty() {
         builder = builder.tags(Some(tags));
+    }
+    for part in &docs.parts {
+        parts.push(((part.type_id)(), (part.schema)(components)));
     }
     if let Some(body) = docs.body {
         if let Some(body_type) = docs.body_type {
