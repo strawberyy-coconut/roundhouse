@@ -9,7 +9,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     if !input.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(
             &input.generics,
-            "PathParams does not support generic structs in v0.1",
+            "PathParams does not support generic structs in v0.2",
         ));
     }
     let ident = input.ident;

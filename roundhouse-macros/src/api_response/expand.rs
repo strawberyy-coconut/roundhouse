@@ -26,7 +26,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
     if !input.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(
             &input.generics,
-            "ApiResponse/ApiError do not support generic enums in v0.1",
+            "ApiResponse/ApiError do not support generic enums in v0.2",
         ));
     }
     let ident = input.ident.clone();

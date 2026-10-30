@@ -10,7 +10,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! roundhouse = "0.1"
+//! roundhouse = "0.2"
 //! axum = "0.8"
 //! serde = { version = "1", features = ["derive"] }
 //! ```
