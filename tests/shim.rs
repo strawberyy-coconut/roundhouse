@@ -24,6 +24,13 @@ pub struct NewNote {
     pub title: String,
 }
 
+/// Deliberately not `Serialize`: the raw JSON layer validates it from the request bytes.
+#[derive(Debug, Deserialize, ToSchema, ApiSchema)]
+pub struct RawNote {
+    #[schema(min_length = 3)]
+    pub title: String,
+}
+
 #[derive(Debug, Deserialize, PathParams)]
 pub struct ItemPath {
     #[schema(minimum = 1)]
@@ -261,6 +268,34 @@ mod strict_response {
     }
 }
 
+mod raw_json {
+    use super::*;
+
+    mount!("/raw-json");
+
+    routes! { post("/", create, operation_id = "shim_raw_json_create") }
+
+    #[handler]
+    pub async fn create(axum::Json(_body): axum::Json<RawNote>) -> StatusCode {
+        StatusCode::NO_CONTENT
+    }
+}
+
+mod raw_json_opt_out {
+    use super::*;
+
+    mount!("/raw-json-opt-out");
+
+    routes! {
+        post("/", create, operation_id = "shim_raw_json_opt_out", validate = false)
+    }
+
+    #[handler]
+    pub async fn create(axum::Json(_body): axum::Json<RawNote>) -> StatusCode {
+        StatusCode::NO_CONTENT
+    }
+}
+
 mod strict_json {
     use super::*;
 
@@ -334,6 +369,42 @@ fn a_validated_body_is_not_marked_unverified() {
         operation.get("x-roundhouse-unverified-body").is_none(),
         "{operation}"
     );
+}
+
+#[tokio::test]
+async fn the_raw_layer_validates_a_body_without_serialize() {
+    let built = scoped(concat!(module_path!(), "::raw_json"));
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/raw-json", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let problem = problem_json(response).await;
+    assert_eq!(problem["errors"][0]["pointer"], "/title");
+    assert_eq!(problem["errors"][0]["code"], "min_length");
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/raw-json", "{not json")
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/raw-json", r#"{"title":"abc"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn validate_false_skips_the_raw_layer() {
+    let built = scoped(concat!(module_path!(), "::raw_json_opt_out"));
+    let response = built
+        .oneshot_json(http::Method::POST, "/raw-json-opt-out", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]

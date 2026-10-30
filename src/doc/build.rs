@@ -28,6 +28,7 @@ pub fn build_with_options(
     let mut diagnostics = Vec::new();
     let mut bodies = Vec::new();
     let mut parts = Vec::new();
+    let mut route_bodies = std::collections::BTreeMap::new();
     build_with_observations(
         info,
         routes,
@@ -36,6 +37,7 @@ pub fn build_with_options(
         &mut diagnostics,
         &mut bodies,
         &mut parts,
+        &mut route_bodies,
     )
 }
 
@@ -49,6 +51,7 @@ pub fn build_with_diagnostics(
 ) -> Result<OpenApi, BuildError> {
     let mut bodies = Vec::new();
     let mut parts = Vec::new();
+    let mut route_bodies = std::collections::BTreeMap::new();
     build_with_observations(
         info,
         routes,
@@ -57,11 +60,13 @@ pub fn build_with_diagnostics(
         diagnostics,
         &mut bodies,
         &mut parts,
+        &mut route_bodies,
     )
 }
 
 /// Build the document and collect every documented request body's inline schema, keyed by the
 /// Rust type, so schema mode can enforce composite bodies (`Vec<T>`, `Option<T>`, maps, tuples).
+#[allow(clippy::too_many_arguments)]
 pub fn build_with_observations(
     info: impl Into<Info>,
     routes: &[ResolvedRoute],
@@ -76,6 +81,7 @@ pub fn build_with_observations(
         std::any::TypeId,
         utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
     )>,
+    route_bodies: &mut std::collections::BTreeMap<String, (std::any::TypeId, String)>,
 ) -> Result<OpenApi, BuildError> {
     let info = info.into();
     let mut components = utoipa::openapi::schema::Components::new();
@@ -179,6 +185,7 @@ pub fn build_with_observations(
             diagnostics,
             bodies,
             parts,
+            route_bodies,
         )?;
         paths.add_path_operation(&route.path, vec![http_method], operation);
     }
@@ -225,6 +232,7 @@ fn operation(
         std::any::TypeId,
         utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
     )>,
+    route_bodies: &mut std::collections::BTreeMap<String, (std::any::TypeId, String)>,
 ) -> Result<utoipa::openapi::path::Operation, BuildError> {
     let unverified = docs.unverified;
     let unverified_response = docs.unverified_response;
@@ -475,7 +483,12 @@ fn operation(
     }
     if let Some(body) = docs.body {
         if let Some(body_type) = docs.body_type {
-            bodies.push((body_type(), body.schema.clone()));
+            let type_id = body_type();
+            route_bodies.insert(
+                route.operation_id.clone(),
+                (type_id, body.content_type.clone()),
+            );
+            bodies.push((type_id, body.schema.clone()));
         }
         builder = builder.request_body(Some(build_body(body)));
     }

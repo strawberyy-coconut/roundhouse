@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
-use syn::{FnArg, ItemFn, ReturnType, Token, Type};
+use syn::{FnArg, Ident, ItemFn, ReturnType, Token, Type};
 
 use crate::util::{outer_ident, single_generic};
 
@@ -24,6 +24,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
     let mut required_auth: Vec<TokenStream> = Vec::new();
     let mut body_count = 0usize;
     let mut body_type: Option<Type> = None;
+    let mut body_meta: Option<TokenStream> = None;
 
     for argument in &item.sig.inputs {
         let FnArg::Typed(argument) = argument else {
@@ -100,6 +101,16 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 ty.clone()
             });
         }
+        if body_meta.is_none()
+            && let Some((kind, payload)) = body_meta_for(&argument.ty)
+        {
+            body_meta = Some(quote! {
+                #krate::doc::BodyMeta {
+                    kind: #krate::doc::BodyKind::#kind,
+                    type_id: || ::core::any::TypeId::of::<#payload>(),
+                }
+            });
+        }
 
         // Everything else is decided by the resolved type. This is what keeps an alias or a
         // re-export (`use axum::Json;`, `use roundhouse::Json as Body;`) from claiming the
@@ -111,7 +122,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 (&#krate::doc::ExtractProbe::<#ty>::new())
                     .probe_extractor(components, &mut docs, #add_failures);
             }
-            {
+            if !#handled {
                 use #krate::doc::ProbeJsonBody as _;
                 (&&#krate::doc::JsonBodyProbe::<#ty>::new())
                     .probe_json_body(components, &mut docs);
@@ -121,7 +132,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 (&&#krate::doc::ForeignBodyProbe::<#ty>::new())
                     .probe_foreign_body(components, &mut docs);
             }
-            {
+            if !#handled {
                 use #krate::doc::ProbeParts as _;
                 (&&#krate::doc::PartsProbe::<#ty>::new()).probe_parts(components, &mut docs);
             }
@@ -198,6 +209,10 @@ pub fn expand(item: ItemFn) -> TokenStream {
         }),
         None => quote!(true),
     };
+    let body_expression = match &body_meta {
+        Some(meta) => quote!(::core::option::Option::Some(#meta)),
+        None => quote!(::core::option::Option::None),
+    };
     let inferred_success = match inferred_successes(&item.sig.output) {
         Some(statuses) => {
             let statuses = statuses
@@ -258,6 +273,10 @@ pub fn expand(item: ItemFn) -> TokenStream {
             const REQUIRED_AUTH: &'static [&'static str] = &[#(#required_auth),*];
             const INFERRED_SUCCESS: ::core::option::Option<&'static [u16]> = #inferred_success;
 
+            fn body() -> ::core::option::Option<#krate::doc::BodyMeta> {
+                #body_expression
+            }
+
             fn docs(
                 components: &mut #krate::utoipa::openapi::schema::Components,
             ) -> #krate::doc::HandlerDocs {
@@ -311,6 +330,33 @@ fn result_ok_type(ty: &Type) -> Option<Type> {
         return None;
     }
     generic_types(ty).into_iter().next()
+}
+
+/// Classify the body argument for the route's raw JSON validator.
+///
+/// `Result<Extractor, E>` owns its rejection, so it has no automatic body validation. `Json` is
+/// the only kind the router validates before extraction; form and multipart stay in the shim.
+fn body_meta_for(ty: &Type) -> Option<(Ident, Type)> {
+    if result_ok_type(ty).is_some() {
+        return None;
+    }
+    let ty = if outer_ident(ty).as_deref() == Some("Option") {
+        single_generic(ty)?
+    } else {
+        ty.clone()
+    };
+    let ty = if outer_ident(&ty).as_deref() == Some("Strict") {
+        single_generic(&ty)?
+    } else {
+        ty
+    };
+    match outer_ident(&ty).as_deref() {
+        Some("Json") => single_generic(&ty).map(|inner| (format_ident!("Json"), inner)),
+        Some("Form") => single_generic(&ty).map(|inner| (format_ident!("Form"), inner)),
+        Some("Multipart") => single_generic(&ty).map(|inner| (format_ident!("Multipart"), inner)),
+        Some("Bytes" | "Body") => Some((format_ident!("Raw"), ty.clone())),
+        _ => None,
+    }
 }
 
 /// Whether this argument is a parts extractor. The injected auth extractor is inserted before the

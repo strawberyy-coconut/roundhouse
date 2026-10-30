@@ -76,6 +76,14 @@ impl SchemaEngine {
         None
     }
 
+    pub fn validate_type(
+        &self,
+        _type_id: std::any::TypeId,
+        _value: &Value,
+    ) -> Option<Result<(), ValidationErrors>> {
+        None
+    }
+
     pub fn validate_parts<T: 'static>(
         &self,
         _value: &Value,

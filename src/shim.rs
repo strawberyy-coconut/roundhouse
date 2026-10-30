@@ -192,10 +192,13 @@ where
 // `axum::Json` parses but does not execute the schema; the route's shim does.
 impl<T> ValidateArg for axum::Json<T>
 where
-    T: crate::doc::ApiSchema + serde::Serialize + 'static,
+    T: crate::doc::ApiSchema + 'static,
 {
     fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
-        validate_body(&self.0, context)
+        // The raw JSON layer already executed the schema; only the custom hooks remain.
+        self.0
+            .validate()
+            .map_err(|errors| validation_problem(errors, context))
     }
 }
 
@@ -291,7 +294,7 @@ pub trait ProbeBody {
     fn probe_body(self) -> bool;
 }
 
-impl<T: crate::doc::ApiSchema + serde::Serialize> ProbeBody for &BodyProbe<axum::Json<T>> {
+impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<axum::Json<T>> {
     fn probe_body(self) -> bool {
         true
     }

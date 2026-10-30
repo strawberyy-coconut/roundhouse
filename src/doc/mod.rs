@@ -119,6 +119,22 @@ impl ResponseDoc {
     }
 }
 
+/// How a handler reads the request body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodyKind {
+    Json,
+    Form,
+    Multipart,
+    Raw,
+}
+
+/// The body a handler takes, as metadata for the request validator.
+#[derive(Debug, Clone, Copy)]
+pub struct BodyMeta {
+    pub kind: BodyKind,
+    pub type_id: fn() -> TypeId,
+}
+
 /// A path or query type whose parameter schema the engine should compile.
 #[derive(Clone, Copy)]
 pub struct PartsDoc {
@@ -197,6 +213,12 @@ pub trait HandlerMeta: Send + Sync + 'static {
     /// it (a custom `ApiResponse`). `Some(&[])` means the macro knows there is no success
     /// response, so a route entry must declare one.
     const INFERRED_SUCCESS: Option<&'static [u16]> = None;
+
+    /// The body the handler takes, if it has one. The router installs the raw JSON validator from
+    /// this; `Result<Extractor, E>` bodies own their rejection and report `None`.
+    fn body() -> Option<BodyMeta> {
+        None
+    }
 
     fn docs(components: &mut Components) -> HandlerDocs;
 

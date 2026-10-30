@@ -3,8 +3,9 @@
 //! `Json`, `Form`, `Path` and `Extension` are re-exported from axum; `Query` is the one custom
 //! parser (`serde_html_form`, so repeated keys work). Wrap any extractor in [`Strict<T>`] to
 //! convert its rejection into the canonical [`Problem`] while keeping the inner type axum's.
-//! Validation is the route policy's job, not the extractor's. `#[handler]` recognises both forms
-//! by type:
+//! Validation is the route policy's job, not the extractor's: JSON bodies are checked from the raw
+//! bytes before extraction, and parts are checked by the generated shim. `#[handler]` recognises
+//! both forms by type:
 //!
 //! ```ignore
 //! #[handler]

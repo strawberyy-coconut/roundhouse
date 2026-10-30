@@ -457,6 +457,7 @@ where
             .unwrap_or_else(|| Info::new("API", "0.1.0"));
         let mut bodies = Vec::new();
         let mut parts = Vec::new();
+        let mut route_bodies = BTreeMap::new();
         let mut built_document = doc::build::build_with_observations(
             info.into_utoipa(),
             &resolved,
@@ -465,6 +466,7 @@ where
             &mut diagnostics,
             &mut bodies,
             &mut parts,
+            &mut route_bodies,
         )?;
         if !self.merges.is_empty() {
             let extensions = utoipa::openapi::extensions::ExtensionsBuilder::new()
@@ -520,7 +522,7 @@ where
             })
             .collect();
 
-        let mut router = self.assemble(&resolved)?;
+        let mut router = self.assemble(&resolved, schema_engine.as_ref(), &route_bodies)?;
 
         for merged in &self.merges {
             router = merge_router(router, merged.router.clone(), merged.source)?;
@@ -730,7 +732,12 @@ where
         )
     }
 
-    fn assemble(&self, resolved: &[ResolvedRoute]) -> Result<Router<()>, BuildError> {
+    fn assemble(
+        &self,
+        resolved: &[ResolvedRoute],
+        engine: Option<&Arc<roundhouse_schema::engine::SchemaEngine>>,
+        route_bodies: &BTreeMap<String, (TypeId, String)>,
+    ) -> Result<Router<()>, BuildError> {
         let roots = self.roots(resolved);
 
         let mut mounts_by_module: BTreeMap<&'static str, &'static MountRecord> = BTreeMap::new();
@@ -748,7 +755,8 @@ where
         let mut absolute: Vec<(&'static RouteRecord, MethodRouter<()>)> = Vec::new();
 
         for route in resolved {
-            let method_router = build_method_router::<S>(route, &self.state)?;
+            let method_router =
+                build_method_router::<S>(route, &self.state, engine, self.max_body, route_bodies)?;
             if route.record.absolute {
                 absolute.push((route.record, method_router));
             } else {
@@ -1375,7 +1383,13 @@ fn apply_mount_layer(router: Router<()>, layer: MountLayer) -> Router<()> {
     layer(router)
 }
 
-fn build_method_router<S>(route: &ResolvedRoute, state: &S) -> Result<MethodRouter<()>, BuildError>
+fn build_method_router<S>(
+    route: &ResolvedRoute,
+    state: &S,
+    engine: Option<&Arc<roundhouse_schema::engine::SchemaEngine>>,
+    max_body: Option<usize>,
+    route_bodies: &BTreeMap<String, (TypeId, String)>,
+) -> Result<MethodRouter<()>, BuildError>
 where
     S: Clone + Send + Sync + 'static,
 {
@@ -1417,6 +1431,25 @@ where
     if !record.validate {
         method_router = method_router.layer(axum::middleware::from_fn(skip_validation));
     }
+    if record.validate
+        && let Some(engine) = engine
+        && let Some(type_id) = route_bodies
+            .get(&route.operation_id)
+            .filter(|(_, content_type)| {
+                content_type == "application/json" || content_type.ends_with("+json")
+            })
+            .map(|(type_id, _)| *type_id)
+            .or_else(|| {
+                (record.body)()
+                    .filter(|meta| meta.kind == crate::doc::BodyKind::Json)
+                    .map(|meta| (meta.type_id)())
+            })
+    {
+        method_router = method_router.layer(axum::middleware::from_fn_with_state(
+            (engine.clone(), type_id, max_body),
+            validate_json_body,
+        ));
+    }
     if let Some(layer) = record.layer {
         method_router = layer(method_router);
     }
@@ -1431,6 +1464,81 @@ where
         method_router = (guard.apply)(method_router, state);
     }
     Ok(method_router)
+}
+
+/// Validate the raw JSON body against the operation's schema before any extractor runs.
+///
+/// This is what makes plain `axum::Json<T>` validated without a `Serialize` bound: the engine sees
+/// the same bytes the client sent, and the request is rebuilt for the extractor. Malformed JSON is
+/// also turned into a `Problem` here, so the body rejection stays one shape.
+async fn validate_json_body(
+    axum::extract::State((engine, type_id, max_body)): axum::extract::State<(
+        Arc<roundhouse_schema::engine::SchemaEngine>,
+        TypeId,
+        Option<usize>,
+    )>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let config = request
+        .extensions()
+        .get::<crate::extract::ValidationConfig>()
+        .copied()
+        .unwrap_or_default();
+    if config.mode == crate::extract::Validation::Off
+        || request
+            .extensions()
+            .get::<crate::extract::SkipValidation>()
+            .is_some()
+    {
+        return next.run(request).await;
+    }
+
+    let is_json = request
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            let value = value.split(';').next().unwrap_or(value).trim();
+            value == "application/json" || value.ends_with("+json")
+        });
+    if !is_json {
+        return next.run(request).await;
+    }
+
+    let (parts, body) = request.into_parts();
+    let limit = max_body.unwrap_or(2 * 1024 * 1024);
+    let bytes = match axum::body::to_bytes(body, limit).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return Problem::from_rejection(
+                axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+                "Payload Too Large",
+                format!("request body exceeds {limit} bytes"),
+            )
+            .into_response();
+        }
+    };
+    let value = match serde_json::from_slice::<serde_json::Value>(&bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            return Problem::from_rejection(
+                axum::http::StatusCode::BAD_REQUEST,
+                "Bad Request",
+                error.to_string(),
+            )
+            .into_response();
+        }
+    };
+    if let Some(Err(errors)) = engine.validate_type(type_id, &value) {
+        return Problem::from_validation_with_status(errors, config.status).into_response();
+    }
+
+    next.run(axum::http::Request::from_parts(
+        parts,
+        axum::body::Body::from(bytes),
+    ))
+    .await
 }
 
 async fn skip_validation(

@@ -141,10 +141,9 @@ std::fs::write("target/openapi.json", built.openapi_json())?;
 `Built::document()` returns the `OpenApi` value and `Built::routes()` the resolved table with source
 locations.
 
-**Validation is a route policy.** Entries validate by default. The route's generated shim checks
-every argument whose type publishes constraints — including `axum::Json`, `axum::extract::Path`,
-`axum::extract::Query` and `axum::Form`, so a handler does not have to switch to a roundhouse
-extractor to be checked:
+**Validation is a route policy.** Entries validate by default. A JSON body is validated from the
+raw request bytes before extraction, so the request type does not need `Serialize`; path, query and
+form values are validated by the route's shim. Every path executes the same emitted schema:
 
 ```rust
 routes! {
@@ -152,13 +151,15 @@ routes! {
 }
 ```
 
-`Result<Extractor, E>` arguments own their rejection and are not validated by the shim. A handler
-called directly in a test still behaves exactly as written.
+`Result<Extractor, E>` arguments own their rejection and are not validated automatically. A
+handler called directly in a test still behaves exactly as written. Malformed JSON is a `Problem`
+before axum sees it; `Strict<…>` still maps the remaining axum rejections (path/query/extension,
+and a post-validation deserialization failure) to the same shape.
 
 `Json`, `Form`, `Path` and `Extension` are axum's extractors. Wrap one in `Strict<…>` when you need
-the framework's `Problem` rejection (otherwise axum's own rejection, including its `422`, is
-returned); `Query` is the one roundhouse parser, because axum's `serde_urlencoded` cannot represent
-the repeated keys the document promises.
+the framework's `Problem` rejection for the paths the raw layer does not cover; `Query` is the one
+roundhouse parser, because axum's `serde_urlencoded` cannot represent the repeated keys the document
+promises.
 
 The enforcer is the emitted JSON Schema, compiled once by `App::build()`; the `schema-engine`
 feature (and `Validation::Schema`) is on by default. A handler mounted directly on a plain axum

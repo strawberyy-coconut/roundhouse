@@ -119,6 +119,18 @@ impl SchemaEngine {
     }
 
     /// Validate a path/query value against its compiled type.
+    /// Validate a value against a type identified at runtime. Used by the request layer, which
+    /// sees the document's `TypeId` rather than a generic parameter.
+    pub fn validate_type(
+        &self,
+        type_id: TypeId,
+        value: &Value,
+    ) -> Option<Result<(), ValidationErrors>> {
+        self.bodies
+            .get(&type_id)
+            .map(|validator| validate_with(validator, value))
+    }
+
     pub fn validate_parts<T: 'static>(
         &self,
         value: &Value,
