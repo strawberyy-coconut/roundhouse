@@ -298,6 +298,8 @@ pub fn routes(input: TokenStream) -> TokenStream {
 ///   request body at most once; a second body extractor is a compile error.
 /// - `Auth<A>` and `Option<Auth<A, Scopes>>` — document the security scheme, required or optional
 ///   authentication, and the 401/403 responses.
+/// - `Strict<axum::Json<T>>`, `Strict<Path<T>>`, … — a pure axum extractor with the framework's
+///   `Problem` rejection; documentation comes from the inner type.
 /// - `Extension<T>` and other extractors — documented when the extractor participates in the
 ///   framework's probing protocol. An extractor the macro cannot inspect is marked as unverified;
 ///   a strict build rejects it rather than pretending to know its parameters.

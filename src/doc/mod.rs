@@ -475,6 +475,30 @@ impl<T: PartsSchema + 'static> ProbeParts for &&PartsProbe<axum::extract::Query<
     }
 }
 
+impl<T: PartsSchema + 'static> ProbeParts
+    for &&PartsProbe<crate::extract::Strict<axum::extract::Path<T>>>
+{
+    fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
+        docs.parts.push(PartsDoc::new::<T>());
+    }
+}
+
+impl<T: PartsSchema + 'static> ProbeParts
+    for &&PartsProbe<crate::extract::Strict<axum::extract::Query<T>>>
+{
+    fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
+        docs.parts.push(PartsDoc::new::<T>());
+    }
+}
+
+impl<T: PartsSchema + 'static> ProbeParts
+    for &&PartsProbe<crate::extract::Strict<crate::extract::Query<T>>>
+{
+    fn probe_parts(self, _components: &mut Components, docs: &mut HandlerDocs) {
+        docs.parts.push(PartsDoc::new::<T>());
+    }
+}
+
 impl<T> ProbeParts for &&&PartsProbe<T> {
     fn probe_parts(self, _components: &mut Components, _docs: &mut HandlerDocs) {}
 }
@@ -519,6 +543,14 @@ impl<T: utoipa::ToSchema> ProbeForeignBody for &&ForeignBodyProbe<axum::Json<T>>
             required: true,
             description: None,
         });
+    }
+}
+
+impl<T: utoipa::ToSchema> ProbeForeignBody
+    for &&ForeignBodyProbe<crate::extract::Strict<axum::Json<T>>>
+{
+    fn probe_foreign_body(self, components: &mut Components, docs: &mut HandlerDocs) {
+        (&&ForeignBodyProbe::<axum::Json<T>>::new()).probe_foreign_body(components, docs);
     }
 }
 
@@ -633,6 +665,86 @@ impl ProbeExtractor for &ExtractProbe<axum::extract::Multipart> {
 }
 
 // Anything else is an extractor the macro cannot reason about. Mark it instead of guessing.
+impl<T> ProbeExtractor for &ExtractProbe<crate::extract::Strict<axum::Json<T>>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        // The body itself is registered by `ForeignBodyProbe` when `T: ToSchema`.
+        docs.unverified = true;
+        if add_failures {
+            docs.failures.extend(json_failures());
+        }
+    }
+}
+
+impl<T: ApiSchema + 'static> ProbeExtractor
+    for &ExtractProbe<crate::extract::Strict<axum::Form<T>>>
+{
+    fn probe_extractor(
+        self,
+        components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        docs.body = Some(form_body::<T>(components));
+        docs.body_type = Some(|| TypeId::of::<T>());
+        docs.unverified = true;
+        if add_failures {
+            docs.failures.extend(form_failures());
+        }
+    }
+}
+
+impl<T: PathNames + 'static> ProbeExtractor
+    for &ExtractProbe<crate::extract::Strict<axum::extract::Path<T>>>
+{
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        docs.params.extend(path_params::<T>());
+        docs.path_schema = Some(<T as PathNames>::scalar_schema);
+        if add_failures {
+            docs.failures.extend(path_failures());
+        }
+    }
+}
+
+impl<T: QueryParams> ProbeExtractor
+    for &ExtractProbe<crate::extract::Strict<axum::extract::Query<T>>>
+{
+    fn probe_extractor(
+        self,
+        components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        docs.params.extend(stored_query_params_for::<T>(components));
+        if add_failures {
+            docs.failures.extend(query_failures());
+        }
+    }
+}
+
+impl<T> ProbeExtractor for &ExtractProbe<crate::extract::Strict<axum::extract::Extension<T>>> {
+    fn probe_extractor(
+        self,
+        _components: &mut Components,
+        docs: &mut HandlerDocs,
+        add_failures: bool,
+    ) {
+        docs.unverified_extractor = true;
+        if add_failures {
+            docs.failures.extend(extension_failures());
+        }
+    }
+}
+
 impl<T> ProbeExtractor for &&ExtractProbe<T> {
     fn probe_extractor(
         self,

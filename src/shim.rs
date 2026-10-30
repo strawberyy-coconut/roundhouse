@@ -153,27 +153,49 @@ fn validation_problem(
     crate::extract::validation_problem(errors, context.config.status)
 }
 
+#[allow(clippy::result_large_err)]
+fn validate_body<T>(value: &T, context: &ValidationContext) -> Result<(), Problem>
+where
+    T: crate::doc::ApiSchema + serde::Serialize + 'static,
+{
+    if let Some(engine) = &context.engine {
+        let value = serde_json::to_value(value).map_err(|error| {
+            Problem::from_rejection(
+                axum::http::StatusCode::BAD_REQUEST,
+                "Bad Request",
+                error.to_string(),
+            )
+        })?;
+        if let Some(result) = engine.validate::<T>(&value) {
+            result.map_err(|errors| validation_problem(errors, context))?;
+        }
+    }
+    value
+        .validate()
+        .map_err(|errors| validation_problem(errors, context))
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_parts<T>(value: &T, context: &ValidationContext) -> Result<(), Problem>
+where
+    T: crate::doc::PartsValue + 'static,
+{
+    if let Some(engine) = &context.engine {
+        let value = crate::doc::PartsValue::parts_value(value);
+        if let Some(result) = engine.validate_parts::<T>(&value) {
+            result.map_err(|errors| validation_problem(errors, context))?;
+        }
+    }
+    Ok(())
+}
+
 // `axum::Json` parses but does not execute the schema; the route's shim does.
 impl<T> ValidateArg for axum::Json<T>
 where
     T: crate::doc::ApiSchema + serde::Serialize + 'static,
 {
     fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
-        if let Some(engine) = &context.engine {
-            let value = serde_json::to_value(&self.0).map_err(|error| {
-                Problem::from_rejection(
-                    axum::http::StatusCode::BAD_REQUEST,
-                    "Bad Request",
-                    error.to_string(),
-                )
-            })?;
-            if let Some(result) = engine.validate::<T>(&value) {
-                result.map_err(|errors| validation_problem(errors, context))?;
-            }
-        }
-        self.0
-            .validate()
-            .map_err(|errors| validation_problem(errors, context))
+        validate_body(&self.0, context)
     }
 }
 
@@ -182,21 +204,7 @@ where
     T: crate::doc::ApiSchema + serde::Serialize + 'static,
 {
     fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
-        if let Some(engine) = &context.engine {
-            let value = serde_json::to_value(&self.0).map_err(|error| {
-                Problem::from_rejection(
-                    axum::http::StatusCode::BAD_REQUEST,
-                    "Bad Request",
-                    error.to_string(),
-                )
-            })?;
-            if let Some(result) = engine.validate::<T>(&value) {
-                result.map_err(|errors| validation_problem(errors, context))?;
-            }
-        }
-        self.0
-            .validate()
-            .map_err(|errors| validation_problem(errors, context))
+        validate_body(&self.0, context)
     }
 }
 
@@ -205,12 +213,7 @@ where
     T: crate::doc::PathValidate + crate::doc::PartsValue + 'static,
 {
     fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
-        if let Some(engine) = &context.engine {
-            let value = crate::doc::PartsValue::parts_value(&self.0);
-            if let Some(result) = engine.validate_parts::<T>(&value) {
-                result.map_err(|errors| validation_problem(errors, context))?;
-            }
-        }
+        validate_parts(&self.0, context)?;
         self.0
             .validate()
             .map_err(|errors| validation_problem(errors, context))
@@ -222,20 +225,22 @@ where
     T: crate::doc::QueryParams + crate::doc::PartsValue + 'static,
 {
     fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
-        if let Some(engine) = &context.engine {
-            let value = crate::doc::PartsValue::parts_value(&self.0);
-            if let Some(result) = engine.validate_parts::<T>(&value) {
-                result.map_err(|errors| validation_problem(errors, context))?;
-            }
-        }
+        validate_parts(&self.0, context)?;
         self.0
             .validate()
             .map_err(|errors| validation_problem(errors, context))
     }
 }
 
-// The framework's own extractors already validate during extraction; validating again would
-// produce a second, identical pass.
+impl<T> ValidateArg for crate::extract::Strict<T>
+where
+    T: ValidateArg,
+{
+    fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
+        self.0.validate_arg(context)
+    }
+}
+
 impl<T> ValidateArg for crate::extract::Json<T> {
     fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
         Ok(())
@@ -254,6 +259,7 @@ impl<T> ValidateArg for crate::extract::Path<T> {
     }
 }
 
+// `roundhouse::Query` still parses and validates during extraction; the shim leaves it alone.
 impl<T> ValidateArg for crate::extract::Query<T> {
     fn validate_arg(&self, _context: &ValidationContext) -> Result<(), Problem> {
         Ok(())
@@ -303,13 +309,13 @@ pub trait ProbeBody {
     fn probe_body(self) -> bool;
 }
 
-impl<T> ProbeBody for &BodyProbe<crate::extract::Json<T>> {
+impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<crate::extract::Json<T>> {
     fn probe_body(self) -> bool {
         true
     }
 }
 
-impl<T> ProbeBody for &BodyProbe<crate::extract::Form<T>> {
+impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<crate::extract::Form<T>> {
     fn probe_body(self) -> bool {
         true
     }
@@ -322,6 +328,34 @@ impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<axum::Json<T>> {
 }
 
 impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<axum::Form<T>> {
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<crate::extract::Strict<axum::Json<T>>> {
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+impl<T: crate::doc::ApiSchema> ProbeBody for &BodyProbe<crate::extract::Strict<axum::Form<T>>> {
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+impl<T: crate::doc::ApiSchema> ProbeBody
+    for &BodyProbe<crate::extract::Strict<crate::extract::Json<T>>>
+{
+    fn probe_body(self) -> bool {
+        true
+    }
+}
+
+impl<T: crate::doc::ApiSchema> ProbeBody
+    for &BodyProbe<crate::extract::Strict<crate::extract::Form<T>>>
+{
     fn probe_body(self) -> bool {
         true
     }

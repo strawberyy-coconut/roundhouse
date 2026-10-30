@@ -261,6 +261,34 @@ mod strict_response {
     }
 }
 
+mod strict_json {
+    use super::*;
+
+    mount!("/strict-json");
+
+    routes! { post("/", create, operation_id = "shim_strict_json_create") }
+
+    #[handler]
+    pub async fn create(Strict(axum::Json(_body)): Strict<axum::Json<NewNote>>) -> StatusCode {
+        StatusCode::NO_CONTENT
+    }
+}
+
+mod strict_path {
+    use super::*;
+
+    mount!("/strict-path");
+
+    routes! { get("/{id}", show, operation_id = "shim_strict_path_show") }
+
+    #[handler]
+    pub async fn show(
+        Strict(axum::extract::Path(path)): Strict<axum::extract::Path<ItemPath>>,
+    ) -> String {
+        path.id.to_string()
+    }
+}
+
 mod result_body {
     use super::*;
 
@@ -302,6 +330,56 @@ fn a_validated_body_is_not_marked_unverified() {
     let built = scoped(concat!(module_path!(), "::json_body"));
     let document = serde_json::to_value(built.document()).unwrap();
     let operation = &document["paths"]["/json"]["post"];
+    assert!(
+        operation.get("x-roundhouse-unverified-body").is_none(),
+        "{operation}"
+    );
+}
+
+#[tokio::test]
+async fn a_strict_axum_extractor_keeps_axum_and_adds_the_problem_rejection() {
+    let built = scoped(concat!(module_path!(), "::strict_json"));
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/strict-json", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+    let problem = problem_json(response).await;
+    assert_eq!(problem["errors"][0]["pointer"], "/title");
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/strict-json", "{not json")
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/strict-json", r#"{"title":"abc"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn a_strict_axum_path_is_validated_by_the_engine() {
+    let built = scoped(concat!(module_path!(), "::strict_path"));
+    let response = built.oneshot_get("/strict-path/0").await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let response = built.oneshot_get("/strict-path/2").await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[test]
+fn a_strict_body_is_not_marked_unverified() {
+    let built = scoped(concat!(module_path!(), "::strict_json"));
+    let document = serde_json::to_value(built.document()).unwrap();
+    let operation = &document["paths"]["/strict-json"]["post"];
     assert!(
         operation.get("x-roundhouse-unverified-body").is_none(),
         "{operation}"

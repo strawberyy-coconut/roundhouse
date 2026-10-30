@@ -1,8 +1,10 @@
-//! The validating extractors, axum-shaped.
+//! Axum extractors with the framework's rejection contract.
 //!
-//! These wrappers behave like axum's extractors but derive their documentation from the same type
-//! that performs the check, and reject with the canonical [`Problem`]. `#[handler]` recognises
-//! them by type, so an ordinary signature is enough:
+//! [`Strict<T>`] wraps any axum extractor and converts its rejection into the canonical
+//! [`Problem`]; the inner type stays axum's. The named wrappers below are compatibility
+//! extractors: `Json`, `Form`, `Path` and `Query` also validate during extraction, while
+//! `Extension` only maps the rejection. New code can use `Strict<axum::Json<T>>` and let the
+//! route policy validate. `#[handler]` recognises both forms by type:
 //!
 //! ```ignore
 //! #[handler]
@@ -24,13 +26,13 @@
 //! out. The framework's own extractors above validate during extraction and are not checked
 //! twice.
 //!
-//! [`Extension`] is re-exported from axum; it is stateless, so a handler that only takes
+//! [`Extension`] wraps axum's stateless extension extractor, so a handler that only takes
 //! `Extension<Arc<T>>` works with unit app state. [`Sse`](crate::Sse) and [`File`](crate::File)
 //! live alongside the other response helpers.
 
 use std::ops::{Deref, DerefMut};
 
-use axum::extract::{FromRequest, FromRequestParts};
+use axum::extract::{FromRequest, FromRequestParts, OptionalFromRequest, OptionalFromRequestParts};
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
@@ -94,6 +96,141 @@ fn validation_config(extensions: &axum::http::Extensions) -> ValidationConfig {
         .unwrap_or_default()
 }
 
+/// A pure axum extractor with roundhouse's rejection contract.
+///
+/// `Strict<axum::Json<T>>` extracts with axum's [`axum::Json`] and converts its rejection into a
+/// [`Problem`]; the inner type is untouched. Validation is still the route's job, so the wrapper
+/// adds no constraint logic of its own.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Strict<T>(pub T);
+
+impl<T> Strict<T> {
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<T> Deref for Strict<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for Strict<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
+impl<T> From<T> for Strict<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: IntoResponse> IntoResponse for Strict<T> {
+    fn into_response(self) -> Response {
+        self.0.into_response()
+    }
+}
+
+/// Convert an extractor's rejection into the framework's error body.
+pub trait Rejection {
+    fn into_problem(self) -> Problem;
+}
+
+impl Rejection for Problem {
+    fn into_problem(self) -> Problem {
+        self
+    }
+}
+
+macro_rules! rejection_via_status {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl Rejection for $ty {
+                fn into_problem(self) -> Problem {
+                    rejection_problem(self.status(), self.body_text())
+                }
+            }
+        )*
+    };
+}
+
+rejection_via_status!(
+    axum::extract::rejection::JsonRejection,
+    axum::extract::rejection::FormRejection,
+    axum::extract::rejection::QueryRejection,
+    axum::extract::rejection::PathRejection,
+    axum::extract::rejection::ExtensionRejection,
+);
+
+impl<T, S> FromRequest<S> for Strict<T>
+where
+    T: FromRequest<S>,
+    T::Rejection: Rejection,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Problem> {
+        T::from_request(req, state)
+            .await
+            .map(Self)
+            .map_err(Rejection::into_problem)
+    }
+}
+
+impl<T, S> FromRequestParts<S> for Strict<T>
+where
+    T: FromRequestParts<S>,
+    T::Rejection: Rejection,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Problem> {
+        T::from_request_parts(parts, state)
+            .await
+            .map(Self)
+            .map_err(Rejection::into_problem)
+    }
+}
+
+impl<T, S> OptionalFromRequest<S> for Strict<T>
+where
+    T: OptionalFromRequest<S>,
+    T::Rejection: Rejection,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Option<Self>, Problem> {
+        T::from_request(req, state)
+            .await
+            .map(|value| value.map(Self))
+            .map_err(Rejection::into_problem)
+    }
+}
+
+impl<T, S> OptionalFromRequestParts<S> for Strict<T>
+where
+    T: OptionalFromRequestParts<S>,
+    T::Rejection: Rejection,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Option<Self>, Problem> {
+        T::from_request_parts(parts, state)
+            .await
+            .map(|value| value.map(Self))
+            .map_err(Rejection::into_problem)
+    }
+}
+
 /// JSON extractor and response with `Problem`-shaped rejections and constraint validation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Json<T>(pub T);
@@ -140,9 +277,8 @@ where
         let skip = req.extensions().get::<SkipValidation>().is_some();
         let config = validation_config(req.extensions());
         if skip || config.mode == Validation::Off {
-            let value = axum::Json::<T>::from_request(req, state)
-                .await
-                .map_err(problem_from_json)?;
+            let Strict(value) =
+                <Strict<axum::Json<T>> as FromRequest<S>>::from_request(req, state).await?;
             return Ok(Self(value.0));
         }
 
@@ -154,9 +290,11 @@ where
             .cloned();
         let value = match engine {
             Some(engine) => {
-                let value = axum::Json::<serde_json::Value>::from_request(req, state)
-                    .await
-                    .map_err(problem_from_json)?;
+                let Strict(value) =
+                    <Strict<axum::Json<serde_json::Value>> as FromRequest<S>>::from_request(
+                        req, state,
+                    )
+                    .await?;
                 if let Some(result) = engine.validate::<T>(&value.0) {
                     result.map_err(|errors| problem_from_validation(errors, config.status))?;
                 }
@@ -169,9 +307,9 @@ where
                 })?
             }
             None => {
-                axum::Json::<T>::from_request(req, state)
-                    .await
-                    .map_err(problem_from_json)?
+                <Strict<axum::Json<T>> as FromRequest<S>>::from_request(req, state)
+                    .await?
+                    .0
                     .0
             }
         };
@@ -199,11 +337,7 @@ fn rejection_problem(status: StatusCode, detail: String) -> Problem {
     )
 }
 
-fn problem_from_json(rejection: axum::extract::rejection::JsonRejection) -> Problem {
-    rejection_problem(rejection.status(), rejection.body_text())
-}
-
-/// An `Extension<T>` extractor with a `Problem` rejection.
+/// An `axum::extract::Extension` with a `Problem` rejection.
 ///
 /// axum's rejection is a bare `500` that is not a `Problem`; this wrapper keeps the "one parser"
 /// promise and lets the document describe the failure honestly.
@@ -236,18 +370,13 @@ where
 {
     type Rejection = Problem;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        parts
-            .extensions
-            .get::<T>()
-            .cloned()
-            .map(Extension)
-            .ok_or_else(|| {
-                Problem::internal(format!(
-                    "missing request extension `{}`",
-                    std::any::type_name::<T>()
-                ))
-            })
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let Strict(value) =
+            <Strict<axum::extract::Extension<T>> as FromRequestParts<S>>::from_request_parts(
+                parts, state,
+            )
+            .await?;
+        Ok(Self(value.0))
     }
 }
 
@@ -288,9 +417,12 @@ where
             .extensions
             .get::<Arc<roundhouse_schema::engine::SchemaEngine>>()
             .cloned();
-        let value = axum::extract::Path::<T>::from_request_parts(parts, state)
-            .await
-            .map_err(|rejection| rejection_problem(rejection.status(), rejection.body_text()))?;
+        let value =
+            <axum::extract::Path<T> as FromRequestParts<S>>::from_request_parts(parts, state)
+                .await
+                .map_err(|rejection| {
+                    rejection_problem(rejection.status(), rejection.body_text())
+                })?;
         if !skip && config.mode != Validation::Off {
             if let Some(engine) = engine {
                 let value = crate::doc::PartsValue::parts_value(&value.0);
@@ -402,7 +534,7 @@ where
             .extensions()
             .get::<Arc<roundhouse_schema::engine::SchemaEngine>>()
             .cloned();
-        let value = axum::Form::<T>::from_request(req, state)
+        let value = <axum::Form<T> as FromRequest<S>>::from_request(req, state)
             .await
             .map_err(|rejection| rejection_problem(rejection.status(), rejection.body_text()))?;
         if !skip && config.mode != Validation::Off {
