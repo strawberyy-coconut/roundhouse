@@ -71,12 +71,12 @@ impl ExtractorKind {
         !self.is_body() && self != Self::Other
     }
 
-    /// Whether the shim maps this extractor's rejection to `Problem`. `RepeatedQuery` and `Auth`
-    /// already reject with one, so they are not listed.
+    /// Whether the shim maps this extractor's rejection to `Problem`. `RepeatedQuery`, `Auth` and
+    /// `Multipart` already reject with one, so they are not listed.
     pub(super) fn maps_rejection(self) -> bool {
         matches!(
             self,
-            Self::Json | Self::Form | Self::Multipart | Self::Query | Self::Path | Self::Extension
+            Self::Json | Self::Form | Self::Query | Self::Path | Self::Extension
         )
     }
 }

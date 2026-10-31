@@ -151,117 +151,171 @@ impl<T: IntoResponse> IntoResponse for Mapped<T> {
 }
 
 /// Convert an extractor's rejection into the framework's error body.
+///
+/// `FromRequest` guarantees `IntoResponse`, so one blanket covers axum's built-ins and any
+/// third-party extractor. The response already carries the status and the detail the client would
+/// have seen; a 422 becomes 400 because the document promises a bad request.
 pub trait Rejection {
-    fn into_problem(self) -> Problem;
+    fn into_problem(self) -> impl std::future::Future<Output = Problem> + Send;
 }
 
-impl Rejection for Problem {
-    fn into_problem(self) -> Problem {
-        self
+impl<T> Rejection for T
+where
+    T: IntoResponse + Send,
+{
+    // The explicit `+ Send` is the point: an `async fn` in a trait does not expose one, and the
+    // route futures awaiting this must stay `Send`.
+    #[allow(clippy::manual_async_fn)]
+    fn into_problem(self) -> impl std::future::Future<Output = Problem> + Send {
+        async move {
+            let response = self.into_response();
+            let status = normalize_rejection_status(response.status());
+            let detail = axum::body::to_bytes(response.into_body(), 64 * 1024)
+                .await
+                .ok()
+                .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
+                .filter(|detail| !detail.is_empty())
+                .unwrap_or_else(|| {
+                    status
+                        .canonical_reason()
+                        .unwrap_or("Bad Request")
+                        .to_string()
+                });
+            Problem::from_rejection(
+                status,
+                status.canonical_reason().unwrap_or("Bad Request"),
+                detail,
+            )
+        }
     }
 }
 
-macro_rules! rejection_via_status {
-    ($($ty:ty),* $(,)?) => {
-        $(
-            impl Rejection for $ty {
-                fn into_problem(self) -> Problem {
-                    rejection_problem(self.status(), self.body_text())
-                }
-            }
-        )*
-    };
+fn normalize_rejection_status(status: StatusCode) -> StatusCode {
+    if status == StatusCode::UNPROCESSABLE_ENTITY {
+        StatusCode::BAD_REQUEST
+    } else {
+        status
+    }
 }
 
-rejection_via_status!(
-    axum::extract::rejection::JsonRejection,
-    axum::extract::rejection::FormRejection,
-    axum::extract::rejection::QueryRejection,
-    axum::extract::rejection::PathRejection,
-    axum::extract::rejection::ExtensionRejection,
-);
+/// `T::from_request`, with the rejection converted to a `Problem` in one place.
+#[allow(clippy::result_large_err)]
+async fn from_request_problem<T, S>(
+    request: axum::extract::Request,
+    state: &S,
+) -> Result<T, Problem>
+where
+    T: FromRequest<S> + Send,
+    T::Rejection: Send,
+{
+    match T::from_request(request, state).await {
+        Ok(value) => Ok(value),
+        Err(rejection) => Err(rejection.into_problem().await),
+    }
+}
 
-#[cfg(feature = "multipart")]
-impl Rejection for axum::extract::multipart::MultipartRejection {
-    fn into_problem(self) -> Problem {
-        // `MultipartRejection` exposes its rejection through `IntoResponse`, not a structured
-        // status/body API, so the status is preserved and the detail is generic.
-        let response = self.into_response();
-        let status = response.status();
-        let status = if status == StatusCode::UNPROCESSABLE_ENTITY {
-            StatusCode::BAD_REQUEST
-        } else {
-            status
-        };
-        Problem::from_rejection(
-            status,
-            status.canonical_reason().unwrap_or("Bad Request"),
-            "multipart request was rejected".to_string(),
-        )
+/// `T::from_request_parts`, with the rejection converted to a `Problem`.
+#[allow(clippy::result_large_err)]
+async fn from_request_parts_problem<T, S>(
+    parts: &mut Parts,
+    state: &S,
+) -> Result<T, Problem>
+where
+    T: FromRequestParts<S> + Send,
+    T::Rejection: Send,
+{
+    match T::from_request_parts(parts, state).await {
+        Ok(value) => Ok(value),
+        Err(rejection) => Err(rejection.into_problem().await),
+    }
+}
+
+/// The optional forms, for `Option<Mapped<T>>` and friends.
+#[allow(clippy::result_large_err)]
+async fn optional_from_request_problem<T, S>(
+    request: axum::extract::Request,
+    state: &S,
+) -> Result<Option<T>, Problem>
+where
+    T: OptionalFromRequest<S> + Send,
+    T::Rejection: Send,
+{
+    match <T as OptionalFromRequest<S>>::from_request(request, state).await {
+        Ok(value) => Ok(value),
+        Err(rejection) => Err(rejection.into_problem().await),
+    }
+}
+
+#[allow(clippy::result_large_err)]
+async fn optional_from_request_parts_problem<T, S>(
+    parts: &mut Parts,
+    state: &S,
+) -> Result<Option<T>, Problem>
+where
+    T: OptionalFromRequestParts<S> + Send,
+    T::Rejection: Send,
+{
+    match <T as OptionalFromRequestParts<S>>::from_request_parts(parts, state).await {
+        Ok(value) => Ok(value),
+        Err(rejection) => Err(rejection.into_problem().await),
     }
 }
 
 impl<T, S> FromRequest<S> for Mapped<T>
 where
-    T: FromRequest<S>,
-    T::Rejection: Rejection,
+    T: FromRequest<S> + Send,
+    T::Rejection: Send,
     S: Send + Sync,
 {
     type Rejection = Problem;
 
     async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Problem> {
-        T::from_request(req, state)
-            .await
-            .map(Self)
-            .map_err(Rejection::into_problem)
+        from_request_problem::<T, S>(req, state).await.map(Self)
     }
 }
 
 impl<T, S> FromRequestParts<S> for Mapped<T>
 where
-    T: FromRequestParts<S>,
-    T::Rejection: Rejection,
+    T: FromRequestParts<S> + Send,
+    T::Rejection: Send,
     S: Send + Sync,
 {
     type Rejection = Problem;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Problem> {
-        T::from_request_parts(parts, state)
+        from_request_parts_problem::<T, S>(parts, state)
             .await
             .map(Self)
-            .map_err(Rejection::into_problem)
     }
 }
 
 impl<T, S> OptionalFromRequest<S> for Mapped<T>
 where
-    T: OptionalFromRequest<S>,
-    T::Rejection: Rejection,
+    T: OptionalFromRequest<S> + Send,
+    T::Rejection: Send,
     S: Send + Sync,
 {
     type Rejection = Problem;
 
     async fn from_request(req: axum::extract::Request, state: &S) -> Result<Option<Self>, Problem> {
-        T::from_request(req, state)
+        optional_from_request_problem::<T, S>(req, state)
             .await
             .map(|value| value.map(Self))
-            .map_err(Rejection::into_problem)
     }
 }
 
 impl<T, S> OptionalFromRequestParts<S> for Mapped<T>
 where
-    T: OptionalFromRequestParts<S>,
-    T::Rejection: Rejection,
+    T: OptionalFromRequestParts<S> + Send,
+    T::Rejection: Send,
     S: Send + Sync,
 {
     type Rejection = Problem;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Option<Self>, Problem> {
-        T::from_request_parts(parts, state)
+        optional_from_request_parts_problem::<T, S>(parts, state)
             .await
             .map(|value| value.map(Self))
-            .map_err(Rejection::into_problem)
     }
 }
 
@@ -424,7 +478,7 @@ async fn strict_json<T, S>(
     optional: bool,
 ) -> Result<Option<axum::Json<T>>, Problem>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
     S: Send + Sync,
 {
     let (parts, body) = request.into_parts();
@@ -454,15 +508,13 @@ where
     }
 
     let request = axum::extract::Request::from_parts(parts, axum::body::Body::from(bytes));
-    let value = <axum::Json<T> as FromRequest<S>>::from_request(request, state)
-        .await
-        .map_err(Rejection::into_problem)?;
+    let value = from_request_problem::<axum::Json<T>, S>(request, state).await?;
     Ok(Some(value))
 }
 
 impl<T, S> FromRequest<S> for Strict<axum::Json<T>>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -475,7 +527,7 @@ where
 
 impl<T, S> OptionalFromRequest<S> for Strict<axum::Json<T>>
 where
-    T: DeserializeOwned + 'static,
+    T: DeserializeOwned + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -490,7 +542,7 @@ where
 
 impl<T, S> FromRequest<S> for Strict<axum::Form<T>>
 where
-    T: DeserializeOwned + serde::Serialize + 'static,
+    T: DeserializeOwned + serde::Serialize + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -500,9 +552,7 @@ where
         let policy = Policy::read(&parts);
         let engine = engine(&parts);
         let request = axum::extract::Request::from_parts(parts, body);
-        let axum::Form(value) = <axum::Form<T> as FromRequest<S>>::from_request(request, state)
-            .await
-            .map_err(Rejection::into_problem)?;
+        let axum::Form(value) = from_request_problem::<axum::Form<T>, S>(request, state).await?;
         if policy.enabled() {
             enforce_schema::<T>(&value, engine.as_ref(), policy.status())?;
         }
@@ -519,9 +569,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Problem> {
         let axum::extract::Path(value) =
-            <axum::extract::Path<T> as FromRequestParts<S>>::from_request_parts(parts, state)
-                .await
-                .map_err(Rejection::into_problem)?;
+            from_request_parts_problem::<axum::extract::Path<T>, S>(parts, state).await?;
         let policy = Policy::read(parts);
         if policy.enabled() {
             enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.status())?;
@@ -539,11 +587,8 @@ where
     type Rejection = Problem;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Option<Self>, Problem> {
-        let value = <axum::extract::Path<T> as OptionalFromRequestParts<S>>::from_request_parts(
-            parts, state,
-        )
-        .await
-        .map_err(Rejection::into_problem)?;
+        let value =
+            optional_from_request_parts_problem::<axum::extract::Path<T>, S>(parts, state).await?;
         let Some(axum::extract::Path(value)) = value else {
             return Ok(None);
         };
@@ -558,16 +603,14 @@ where
 
 impl<T, S> FromRequestParts<S> for Strict<axum::extract::Query<T>>
 where
-    T: DeserializeOwned + crate::doc::QueryParams + crate::doc::PartsValue + 'static,
+    T: DeserializeOwned + crate::doc::QueryParams + crate::doc::PartsValue + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Problem> {
         let axum::extract::Query(value) =
-            <axum::extract::Query<T> as FromRequestParts<S>>::from_request_parts(parts, state)
-                .await
-                .map_err(Rejection::into_problem)?;
+            from_request_parts_problem::<axum::extract::Query<T>, S>(parts, state).await?;
         let policy = Policy::read(parts);
         if policy.enabled() {
             enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.status())?;
@@ -586,9 +629,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Problem> {
         let value =
-            <axum::extract::Extension<T> as FromRequestParts<S>>::from_request_parts(parts, state)
-                .await
-                .map_err(Rejection::into_problem)?;
+            from_request_parts_problem::<axum::extract::Extension<T>, S>(parts, state).await?;
         Ok(Strict(value))
     }
 }
@@ -601,13 +642,9 @@ where
     type Rejection = Problem;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Option<Self>, Problem> {
-        // `OptionalFromRequestParts for Extension` is infallible.
         let value =
-            <axum::extract::Extension<T> as OptionalFromRequestParts<S>>::from_request_parts(
-                parts, state,
-            )
-            .await
-            .unwrap_or(None);
+            optional_from_request_parts_problem::<axum::extract::Extension<T>, S>(parts, state)
+                .await?;
         Ok(value.map(Strict))
     }
 }
@@ -621,10 +658,10 @@ where
     type Rejection = Problem;
 
     async fn from_request(request: axum::extract::Request, state: &S) -> Result<Self, Problem> {
+        // `Multipart` already rejects with a `Problem`, so there is nothing to map.
         <crate::multipart::Multipart<F> as FromRequest<S>>::from_request(request, state)
             .await
             .map(Strict)
-            .map_err(Rejection::into_problem)
     }
 }
 
