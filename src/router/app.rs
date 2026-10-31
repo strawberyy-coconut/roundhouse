@@ -17,7 +17,7 @@ use super::fragment::{DocumentRejections, Fragment, PendingMerge};
 pub(crate) type RouterLayer = Box<dyn Fn(Router<()>) -> Router<()> + Send + Sync>;
 pub(crate) type DocumentHook = Box<dyn Fn(&mut OpenApi) + Send + Sync>;
 
-pub(crate) type ValidationState = (
+pub(crate) type ValidationDefaults = (
     axum::http::StatusCode,
     crate::extract::Validation,
     Option<usize>,

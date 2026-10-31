@@ -11,7 +11,7 @@ use crate::build_error::BuildError;
 use crate::problem::Problem;
 use crate::registry::{Module, RouteRecord};
 
-use super::app::ValidationState;
+use super::app::ValidationDefaults;
 use super::built::ResolvedRoute;
 
 pub(super) fn merge_router(
@@ -213,17 +213,8 @@ async fn validate_json_body(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    let config = request
-        .extensions()
-        .get::<crate::extract::ValidationConfig>()
-        .copied()
-        .unwrap_or_default();
-    if config.mode == crate::extract::Validation::Off
-        || request
-            .extensions()
-            .get::<crate::extract::SkipValidation>()
-            .is_some()
-    {
+    let state = crate::extract::ValidationState::read(request.extensions());
+    if state.mode == crate::extract::Validation::Off || state.skip {
         return next.run(request).await;
     }
 
@@ -240,7 +231,7 @@ async fn validate_json_body(
     }
 
     let (parts, body) = request.into_parts();
-    let limit = max_body.unwrap_or(2 * 1024 * 1024);
+    let limit = state.max_body.or(max_body).unwrap_or(2 * 1024 * 1024);
     let bytes = match axum::body::to_bytes(body, limit).await {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -264,11 +255,13 @@ async fn validate_json_body(
         }
     };
     if let Some(Err(errors)) = engine.validate_type(type_id, &value) {
-        return Problem::from_validation_with_status(errors, config.status).into_response();
+        return Problem::from_validation_with_status(errors, state.status).into_response();
     }
 
     let mut parts = parts;
-    parts.extensions.insert(crate::extract::BodyValidated);
+    let mut state = state;
+    state.body_validated = true;
+    parts.extensions.insert(state);
     next.run(axum::http::Request::from_parts(
         parts,
         axum::body::Body::from(bytes),
@@ -280,25 +273,26 @@ async fn skip_validation(
     mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    request
-        .extensions_mut()
-        .insert(crate::extract::SkipValidation);
+    let mut state = crate::extract::ValidationState::read(request.extensions());
+    state.skip = true;
+    request.extensions_mut().insert(state);
     next.run(request).await
 }
 
 pub(super) async fn inject_validation_config(
     axum::extract::State((status, mode, max_body, max_parts, engine)): axum::extract::State<
-        ValidationState,
+        ValidationDefaults,
     >,
     mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    request
-        .extensions_mut()
-        .insert(crate::extract::ValidationConfig { status, mode });
-    request
-        .extensions_mut()
-        .insert(crate::extract::MaxBody(max_body));
+    request.extensions_mut().insert(crate::extract::ValidationState {
+        status,
+        mode,
+        max_body,
+        skip: false,
+        body_validated: false,
+    });
     #[cfg(feature = "multipart")]
     request
         .extensions_mut()

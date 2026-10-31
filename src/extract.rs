@@ -50,10 +50,6 @@ pub use axum::Form;
 pub use axum::Json;
 pub use axum::extract::{Extension, Path, Query};
 
-/// Request extension inserted by a route entry with `validate = false`.
-#[derive(Debug, Clone, Copy)]
-pub struct SkipValidation;
-
 /// Which enforcer an app uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Validation {
@@ -78,27 +74,39 @@ impl Default for Validation {
     }
 }
 
-/// Request extension that carries the app-wide validation settings.
+/// Everything one request needs to know about enforcement.
+///
+/// One extension carries it: the app-wide settings, the route's opt-out, the body limit and
+/// whether the raw JSON layer already ran. Each is a request-scoped fact, and the layers that
+/// add them mutate this value instead of inserting a marker each.
 #[derive(Debug, Clone, Copy)]
-pub struct ValidationConfig {
-    pub status: StatusCode,
-    pub mode: Validation,
+pub(crate) struct ValidationState {
+    pub(crate) status: StatusCode,
+    pub(crate) mode: Validation,
+    pub(crate) max_body: Option<usize>,
+    pub(crate) skip: bool,
+    pub(crate) body_validated: bool,
 }
 
-impl Default for ValidationConfig {
+impl Default for ValidationState {
     fn default() -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
             mode: Validation::default(),
+            max_body: None,
+            skip: false,
+            body_validated: false,
         }
     }
 }
 
-fn validation_config(extensions: &axum::http::Extensions) -> ValidationConfig {
-    extensions
-        .get::<ValidationConfig>()
-        .copied()
-        .unwrap_or_default()
+impl ValidationState {
+    pub(crate) fn read(extensions: &axum::http::Extensions) -> Self {
+        extensions
+            .get::<Self>()
+            .copied()
+            .unwrap_or_default()
+    }
 }
 
 /// An axum extractor whose rejection becomes a [`Problem`], with no schema enforcement.
@@ -303,35 +311,29 @@ impl<T: IntoResponse> IntoResponse for Strict<T> {
     }
 }
 
-/// Marks a request whose JSON body the router already validated from the raw bytes.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct BodyValidated;
-
-/// The app's configured body limit, injected by the router so an extractor can enforce it.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct MaxBody(pub(crate) Option<usize>);
-
 /// The validation policy for one request, read before a body is consumed.
 #[derive(Debug, Clone, Copy)]
 struct Policy {
-    config: ValidationConfig,
-    skip: bool,
+    state: ValidationState,
 }
 
 impl Policy {
     fn read(parts: &Parts) -> Self {
         Self {
-            config: validation_config(&parts.extensions),
-            skip: parts.extensions.get::<SkipValidation>().is_some(),
+            state: ValidationState::read(&parts.extensions),
         }
     }
 
     fn enabled(self) -> bool {
-        !self.skip && self.config.mode != Validation::Off
+        !self.state.skip && self.state.mode != Validation::Off
+    }
+
+    fn status(self) -> StatusCode {
+        self.state.status
     }
 
     fn problem(self, errors: ValidationErrors) -> Problem {
-        validation_problem(errors, self.config.status)
+        validation_problem(errors, self.state.status)
     }
 }
 
@@ -343,10 +345,8 @@ fn engine(parts: &Parts) -> Option<Arc<roundhouse_schema::engine::SchemaEngine>>
 }
 
 fn body_limit(parts: &Parts) -> usize {
-    parts
-        .extensions
-        .get::<MaxBody>()
-        .and_then(|limit| limit.0)
+    ValidationState::read(&parts.extensions)
+        .max_body
         .unwrap_or(2 * 1024 * 1024)
 }
 
@@ -439,8 +439,8 @@ where
         return Ok(None);
     }
 
-    // The router's raw layer may have run already; it marks the request when it did.
-    let already = parts.extensions.get::<BodyValidated>().is_some();
+    // The router's raw layer may have run already; it marks the state when it did.
+    let already = policy.state.body_validated;
     if !already
         && policy.enabled()
         && is_json(&parts)
@@ -504,7 +504,7 @@ where
             .await
             .map_err(Rejection::into_problem)?;
         if policy.enabled() {
-            enforce_schema::<T>(&value, engine.as_ref(), policy.config.status)?;
+            enforce_schema::<T>(&value, engine.as_ref(), policy.status())?;
         }
         Ok(Strict(axum::Form(value)))
     }
@@ -524,7 +524,7 @@ where
                 .map_err(Rejection::into_problem)?;
         let policy = Policy::read(parts);
         if policy.enabled() {
-            enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.config.status)?;
+            enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.status())?;
             value.validate().map_err(|errors| policy.problem(errors))?;
         }
         Ok(Strict(axum::extract::Path(value)))
@@ -549,7 +549,7 @@ where
         };
         let policy = Policy::read(parts);
         if policy.enabled() {
-            enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.config.status)?;
+            enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.status())?;
             value.validate().map_err(|errors| policy.problem(errors))?;
         }
         Ok(Some(Strict(axum::extract::Path(value))))
@@ -570,7 +570,7 @@ where
                 .map_err(Rejection::into_problem)?;
         let policy = Policy::read(parts);
         if policy.enabled() {
-            enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.config.status)?;
+            enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.status())?;
             value.validate().map_err(|errors| policy.problem(errors))?;
         }
         Ok(Strict(axum::extract::Query(value)))
@@ -674,8 +674,7 @@ where
     type Rejection = Problem;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let skip = parts.extensions.get::<SkipValidation>().is_some();
-        let config = validation_config(&parts.extensions);
+        let state = ValidationState::read(&parts.extensions);
         let engine = parts
             .extensions
             .get::<Arc<roundhouse_schema::engine::SchemaEngine>>()
@@ -686,16 +685,16 @@ where
         let query = parts.uri.query().unwrap_or_default();
         let value: T = serde_html_form::from_str(query)
             .map_err(|error| rejection_problem(StatusCode::BAD_REQUEST, error.to_string()))?;
-        if !skip && config.mode != Validation::Off {
+        if !state.skip && state.mode != Validation::Off {
             if let Some(engine) = engine {
                 let value = crate::doc::PartsValue::parts_value(&value);
                 if let Some(result) = engine.validate_parts::<T>(&value) {
-                    result.map_err(|errors| problem_from_validation(errors, config.status))?;
+                    result.map_err(|errors| problem_from_validation(errors, state.status))?;
                 }
             }
             value
                 .validate()
-                .map_err(|errors| problem_from_validation(errors, config.status))?;
+                .map_err(|errors| problem_from_validation(errors, state.status))?;
         }
         Ok(Self(value))
     }

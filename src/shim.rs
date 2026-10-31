@@ -23,26 +23,26 @@
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 
-use crate::extract::{SkipValidation, ValidationConfig};
+
 use crate::problem::Problem;
 
 impl ValidationContext {
-    /// Whether validation should run for this request: the route did not opt out and the app
-    /// did not disable the engine.
+    /// Whether validation should run for this request: the route did not opt out and the app did
+    /// not disable the engine.
     pub fn enabled(&self) -> bool {
-        !self.skip && self.config.mode != crate::extract::Validation::Off
+        !self.0.skip && self.0.mode != crate::extract::Validation::Off
     }
 }
 
-/// The app-wide validation settings, read from the request.
+/// The request's validation state, plus the app's compiled engine.
+///
+/// The engine travels separately because it is shared by the whole app rather than copied per
+/// request.
 #[derive(Clone)]
-pub struct ValidationContext {
-    pub config: ValidationConfig,
-    /// Set by a `validate = false` route or an ancestor that opted out.
-    pub skip: bool,
-    /// The compiled document, when the app enables schema execution.
-    pub engine: Option<std::sync::Arc<roundhouse_schema::engine::SchemaEngine>>,
-}
+pub struct ValidationContext(
+    pub(crate) crate::extract::ValidationState,
+    pub(crate) Option<std::sync::Arc<roundhouse_schema::engine::SchemaEngine>>,
+);
 
 impl<S> FromRequestParts<S> for ValidationContext
 where
@@ -51,21 +51,12 @@ where
     type Rejection = std::convert::Infallible;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let config = parts
-            .extensions
-            .get::<ValidationConfig>()
-            .copied()
-            .unwrap_or_default();
-        let skip = parts.extensions.get::<SkipValidation>().is_some();
+        let state = crate::extract::ValidationState::read(&parts.extensions);
         let engine = parts
             .extensions
             .get::<std::sync::Arc<roundhouse_schema::engine::SchemaEngine>>()
             .cloned();
-        Ok(Self {
-            config,
-            skip,
-            engine,
-        })
+        Ok(Self(state, engine))
     }
 }
 
@@ -132,7 +123,7 @@ fn validation_problem(
     errors: crate::validate::ValidationErrors,
     context: &ValidationContext,
 ) -> Problem {
-    crate::extract::validation_problem(errors, context.config.status)
+    crate::extract::validation_problem(errors, context.0.status)
 }
 
 #[allow(clippy::result_large_err)]
@@ -140,11 +131,7 @@ fn validate_body<T>(value: &T, context: &ValidationContext) -> Result<(), Proble
 where
     T: crate::doc::ApiSchema + serde::Serialize + 'static,
 {
-    crate::extract::enforce_schema(
-        value,
-        context.engine.as_ref(),
-        context.config.status,
-    )?;
+    crate::extract::enforce_schema(value, context.1.as_ref(), context.0.status)?;
     value
         .validate()
         .map_err(|errors| validation_problem(errors, context))
@@ -155,11 +142,7 @@ fn validate_parts<T>(value: &T, context: &ValidationContext) -> Result<(), Probl
 where
     T: crate::doc::PartsValue + 'static,
 {
-    crate::extract::enforce_parts_schema(
-        value,
-        context.engine.as_ref(),
-        context.config.status,
-    )
+    crate::extract::enforce_parts_schema(value, context.1.as_ref(), context.0.status)
 }
 
 // `axum::Json` parses but does not execute the schema; the route's shim does.
