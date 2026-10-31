@@ -10,7 +10,10 @@ use syn::{FnArg, ItemFn, Type};
 use crate::util::{outer_ident, single_generic};
 
 use self::response::{inferred_successes, response_statements};
-use self::signature::{auth_types, body_meta_for, is_parts_arg, is_wrapper_type, result_ok_type};
+use self::signature::{
+    ExtractorKind, auth_types, body_meta_for, classify, is_explicit_strict, is_parts_arg,
+    is_wrapper_type, result_ok_type, strip_wrappers,
+};
 
 /// How the shim extracts one handler argument.
 enum ShimWrap {
@@ -22,33 +25,24 @@ enum ShimWrap {
     OptionalMapped(Box<Type>),
 }
 
-/// Extractors whose rejection the shim maps to a `Problem` by default.
-///
-/// Only axum's fallible built-ins are listed. An unknown type is left alone: a custom extractor
-/// must never fail to compile because the framework guessed at its rejection. A handler that
-/// wants mapping for one can still write `Strict<T>` itself.
-const PROBLEM_MAPPED: &[&str] = &["Json", "Form", "Multipart", "Query", "Path", "Extension"];
-
 fn shim_wrap(ty: &Type) -> ShimWrap {
-    // `Result<Extractor, E>` owns its rejection; an explicit `Strict<..>` is already mapped.
-    if result_ok_type(ty).is_some() || outer_ident(ty).as_deref() == Some("Strict") {
+    // `Result<Extractor, E>` owns its rejection; an explicit `Strict<..>` enforces in the extractor.
+    if result_ok_type(ty).is_some() || is_explicit_strict(ty) {
         return ShimWrap::None;
     }
     if outer_ident(ty).as_deref() == Some("Option") {
         return match single_generic(ty) {
-            Some(inner) if maps_rejection(&inner) => ShimWrap::OptionalMapped(Box::new(inner)),
+            Some(inner) if classify(&inner).maps_rejection() => {
+                ShimWrap::OptionalMapped(Box::new(inner))
+            }
             _ => ShimWrap::None,
         };
     }
-    if maps_rejection(ty) {
+    if classify(ty).maps_rejection() {
         ShimWrap::Mapped
     } else {
         ShimWrap::None
     }
-}
-
-fn maps_rejection(ty: &Type) -> bool {
-    outer_ident(ty).is_some_and(|name| PROBLEM_MAPPED.contains(&name.as_str()))
 }
 
 pub fn expand(item: ItemFn) -> TokenStream {
@@ -118,23 +112,17 @@ pub fn expand(item: ItemFn) -> TokenStream {
         // Compile-time metadata that cannot be recovered from the resolved value: the state
         // type and the `Path<T>` capture list. Both are best-effort and conservative; a path
         // alias simply leaves `PATH_NAMES` empty (the build still checks the document).
-        if let Some(kind) = outer_ident(&ty) {
-            match kind.as_str() {
-                "Path" if is_wrapper_type(&ty) => {
-                    if let Some(inner) = single_generic(&ty) {
-                        path_type = Some(inner.clone());
-                    }
-                }
-                "State" => {
-                    if let Some(inner) = single_generic(&ty) {
-                        state_type = Some(inner);
-                    }
-                }
-                "Json" | "Form" | "Multipart" | "Bytes" | "Body" => {
-                    body_count += 1;
-                }
-                _ => {}
+        match classify(&ty) {
+            ExtractorKind::Path if is_wrapper_type(&ty) => {
+                path_type = single_generic(&strip_wrappers(&ty));
             }
+            ExtractorKind::State => {
+                state_type = single_generic(&strip_wrappers(&ty));
+            }
+            kind if kind.is_body() => {
+                body_count += 1;
+            }
+            _ => {}
         }
 
         // Remember the body type so `docs_with` can clear the unverified-body marker when the

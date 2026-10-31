@@ -36,62 +36,134 @@ pub(super) fn result_ok_type(ty: &Type) -> Option<Type> {
     generic_types(ty).into_iter().next()
 }
 
-/// Classify the body argument for the route's raw JSON validator.
+/// One classification of a handler argument.
 ///
-/// `Result<Extractor, E>` owns its rejection, so it has no automatic body validation. `Json` is
-/// the only kind the router validates before extraction; form and multipart stay in the shim.
+/// The shim's wrapping, the document's body marker and the extractor order all read this, so the
+/// list of known extractors lives here once.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ExtractorKind {
+    Json,
+    Form,
+    Multipart,
+    Query,
+    Path,
+    Extension,
+    Auth,
+    State,
+    Bytes,
+    Body,
+    /// Another parts extractor, or a repeated-key parser.
+    Parts,
+    /// An extractor the framework does not know. Treated as a body: the conservative choice for
+    /// ordering, and never wrapped or claimed in the document.
+    Other,
+}
+
+impl ExtractorKind {
+    pub(super) fn is_body(self) -> bool {
+        matches!(
+            self,
+            Self::Json | Self::Form | Self::Multipart | Self::Bytes | Self::Body
+        )
+    }
+
+    /// Whether the argument is extracted from the request head. An unknown extractor is not.
+    pub(super) fn is_parts(self) -> bool {
+        !self.is_body() && self != Self::Other
+    }
+
+    /// Whether the shim maps this extractor's rejection to `Problem`. `RepeatedQuery` and `Auth`
+    /// already reject with one, so they are not listed.
+    pub(super) fn maps_rejection(self) -> bool {
+        matches!(
+            self,
+            Self::Json | Self::Form | Self::Multipart | Self::Query | Self::Path | Self::Extension
+        )
+    }
+
+    /// The `BodyKind` ident the document uses, when this is a body.
+    pub(super) fn body_kind(self) -> Option<Ident> {
+        match self {
+            Self::Json => Some(format_ident!("Json")),
+            Self::Form => Some(format_ident!("Form")),
+            Self::Multipart => Some(format_ident!("Multipart")),
+            Self::Bytes | Self::Body => Some(format_ident!("Raw")),
+            _ => None,
+        }
+    }
+}
+
+/// Parts extractors with no dedicated [`ExtractorKind`] variant.
+const OTHER_PARTS: &[&str] = &[
+    "RepeatedQuery",
+    "HeaderMap",
+    "Method",
+    "Uri",
+    "OriginalUri",
+    "MatchedPath",
+    "Parts",
+    "ConnectInfo",
+    "TypedHeader",
+];
+
+/// Strip `Option<..>` and an explicit `Strict<..>` so classification sees the extractor.
+///
+/// `Mapped<..>` is deliberately not stripped: a mapping-only extractor is not claimed for the
+/// document or the raw body layer.
+pub(super) fn strip_wrappers(ty: &Type) -> Type {
+    let mut ty = ty.clone();
+    loop {
+        let name = outer_ident(&ty);
+        if matches!(name.as_deref(), Some("Option" | "Strict"))
+            && let Some(inner) = single_generic(&ty)
+        {
+            ty = inner;
+            continue;
+        }
+        return ty;
+    }
+}
+
+pub(super) fn classify(ty: &Type) -> ExtractorKind {
+    let ty = strip_wrappers(ty);
+    match outer_ident(&ty).as_deref() {
+        Some("Json") => ExtractorKind::Json,
+        Some("Form") => ExtractorKind::Form,
+        Some("Multipart") => ExtractorKind::Multipart,
+        Some("Query") => ExtractorKind::Query,
+        Some("Path") => ExtractorKind::Path,
+        Some("Extension") => ExtractorKind::Extension,
+        Some("Auth") => ExtractorKind::Auth,
+        Some("State") => ExtractorKind::State,
+        Some("Bytes") => ExtractorKind::Bytes,
+        Some("Body") => ExtractorKind::Body,
+        Some(name) if OTHER_PARTS.contains(&name) => ExtractorKind::Parts,
+        _ => ExtractorKind::Other,
+    }
+}
+
+/// Whether the handler names `Strict` itself. The shim leaves that extractor alone: it enforces.
+pub(super) fn is_explicit_strict(ty: &Type) -> bool {
+    outer_ident(ty).as_deref() == Some("Strict")
+}
+
+/// The body argument's `(kind, payload)` for the document and the raw JSON validator.
+///
+/// `Result<Extractor, E>` owns its rejection, so it has no automatic body validation.
 pub(super) fn body_meta_for(ty: &Type) -> Option<(Ident, Type)> {
     if result_ok_type(ty).is_some() {
         return None;
     }
-    let ty = if outer_ident(ty).as_deref() == Some("Option") {
-        single_generic(ty)?
-    } else {
-        ty.clone()
-    };
-    let ty = if outer_ident(&ty).as_deref() == Some("Strict") {
-        single_generic(&ty)?
-    } else {
-        ty
-    };
-    match outer_ident(&ty).as_deref() {
-        Some("Json") => single_generic(&ty).map(|inner| (format_ident!("Json"), inner)),
-        Some("Form") => single_generic(&ty).map(|inner| (format_ident!("Form"), inner)),
-        Some("Multipart") => single_generic(&ty).map(|inner| (format_ident!("Multipart"), inner)),
-        Some("Bytes" | "Body") => Some((format_ident!("Raw"), ty.clone())),
-        _ => None,
-    }
+    let kind = classify(ty).body_kind()?;
+    let payload = single_generic(&strip_wrappers(ty)).unwrap_or_else(|| strip_wrappers(ty));
+    Some((kind, payload))
 }
 
 /// Whether this argument is a parts extractor. The injected auth extractor is inserted before the
-/// first argument that is not one, so it always precedes the body. An unknown extractor is
-/// treated as a body: that is the conservative choice, and ordering among parts does not matter.
+/// first argument that is not one, so it always precedes the body.
 pub(super) fn is_parts_arg(ty: &Type) -> bool {
     let ty = result_ok_type(ty).unwrap_or_else(|| ty.clone());
-    let ty = if outer_ident(&ty).as_deref() == Some("Option") {
-        single_generic(&ty).unwrap_or(ty)
-    } else {
-        ty
-    };
-    matches!(
-        outer_ident(&ty).as_deref(),
-        Some(
-            "State"
-                | "Path"
-                | "Query"
-                | "RepeatedQuery"
-                | "Extension"
-                | "Auth"
-                | "HeaderMap"
-                | "Method"
-                | "Uri"
-                | "OriginalUri"
-                | "MatchedPath"
-                | "Parts"
-                | "ConnectInfo"
-                | "TypedHeader"
-        )
-    )
+    classify(&ty).is_parts()
 }
 
 pub(super) fn generic_types(ty: &Type) -> Vec<Type> {
