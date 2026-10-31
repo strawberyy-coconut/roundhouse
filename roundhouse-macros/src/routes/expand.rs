@@ -432,7 +432,6 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
             #route_fn,
             #layer_value,
             <#marker_type as #krate::doc::HandlerMeta>::docs_with,
-            <#marker_type as #krate::doc::HandlerMeta>::body,
             #doc_value,
         );
     };

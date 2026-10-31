@@ -1,5 +1,4 @@
-use quote::format_ident;
-use syn::{Ident, Type};
+use syn::Type;
 
 use crate::util::{outer_ident, single_generic};
 
@@ -80,17 +79,6 @@ impl ExtractorKind {
             Self::Json | Self::Form | Self::Multipart | Self::Query | Self::Path | Self::Extension
         )
     }
-
-    /// The `BodyKind` ident the document uses, when this is a body.
-    pub(super) fn body_kind(self) -> Option<Ident> {
-        match self {
-            Self::Json => Some(format_ident!("Json")),
-            Self::Form => Some(format_ident!("Form")),
-            Self::Multipart => Some(format_ident!("Multipart")),
-            Self::Bytes | Self::Body => Some(format_ident!("Raw")),
-            _ => None,
-        }
-    }
 }
 
 /// Parts extractors with no dedicated [`ExtractorKind`] variant.
@@ -145,18 +133,6 @@ pub(super) fn classify(ty: &Type) -> ExtractorKind {
 /// Whether the handler names `Strict` itself. The shim leaves that extractor alone: it enforces.
 pub(super) fn is_explicit_strict(ty: &Type) -> bool {
     outer_ident(ty).as_deref() == Some("Strict")
-}
-
-/// The body argument's `(kind, payload)` for the document and the raw JSON validator.
-///
-/// `Result<Extractor, E>` owns its rejection, so it has no automatic body validation.
-pub(super) fn body_meta_for(ty: &Type) -> Option<(Ident, Type)> {
-    if result_ok_type(ty).is_some() {
-        return None;
-    }
-    let kind = classify(ty).body_kind()?;
-    let payload = single_generic(&strip_wrappers(ty)).unwrap_or_else(|| strip_wrappers(ty));
-    Some((kind, payload))
 }
 
 /// Whether this argument is a parts extractor. The injected auth extractor is inserted before the

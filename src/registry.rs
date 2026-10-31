@@ -125,7 +125,6 @@ pub struct RouteRecord {
     pub(crate) handler: fn() -> Box<dyn Any + Send + Sync>,
     pub(crate) layer: Option<RouteLayer>,
     pub(crate) docs: fn(&mut Components, bool) -> HandlerDocs,
-    pub(crate) body: fn() -> Option<crate::doc::BodyMeta>,
     /// A `doc = |docs| ..` hook from the table entry. It runs after the handler's inferred
     /// documentation and before the document checks, so hand-written parameters still pass
     /// through the capture and conflict validation.
@@ -163,7 +162,6 @@ impl RouteRecord {
         handler: fn() -> Box<dyn Any + Send + Sync>,
         layer: Option<RouteLayer>,
         docs: fn(&mut Components, bool) -> HandlerDocs,
-        body: fn() -> Option<crate::doc::BodyMeta>,
         doc: Option<fn(&mut HandlerDocs)>,
     ) -> Self {
         Self {
@@ -193,7 +191,6 @@ impl RouteRecord {
             handler,
             layer,
             docs,
-            body,
             doc,
         }
     }

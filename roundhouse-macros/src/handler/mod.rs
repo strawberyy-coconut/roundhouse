@@ -11,8 +11,8 @@ use crate::util::{outer_ident, single_generic};
 
 use self::response::{inferred_successes, response_statements};
 use self::signature::{
-    ExtractorKind, auth_types, body_meta_for, classify, is_explicit_strict, is_parts_arg,
-    is_wrapper_type, result_ok_type, strip_wrappers,
+    ExtractorKind, auth_types, classify, is_explicit_strict, is_parts_arg, is_wrapper_type,
+    result_ok_type, strip_wrappers,
 };
 
 /// How the shim extracts one handler argument.
@@ -64,7 +64,6 @@ pub fn expand(item: ItemFn) -> TokenStream {
     let mut required_auth: Vec<TokenStream> = Vec::new();
     let mut body_count = 0usize;
     let mut body_type: Option<Type> = None;
-    let mut body_meta: Option<TokenStream> = None;
 
     for argument in &item.sig.inputs {
         let FnArg::Typed(argument) = argument else {
@@ -135,17 +134,6 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 ty.clone()
             });
         }
-        if body_meta.is_none()
-            && let Some((kind, payload)) = body_meta_for(&argument.ty)
-        {
-            body_meta = Some(quote! {
-                #krate::doc::BodyMeta {
-                    kind: #krate::doc::BodyKind::#kind,
-                    type_id: || ::core::any::TypeId::of::<#payload>(),
-                }
-            });
-        }
-
         // Everything else is decided by the resolved type. This is what keeps an alias or a
         // re-export (`use axum::Json;`, `use roundhouse::Json as Body;`) from claiming the
         // documentation of a different extractor.
@@ -269,10 +257,6 @@ pub fn expand(item: ItemFn) -> TokenStream {
         }),
         None => quote!(true),
     };
-    let body_expression = match &body_meta {
-        Some(meta) => quote!(::core::option::Option::Some(#meta)),
-        None => quote!(::core::option::Option::None),
-    };
     let inferred_success = match inferred_successes(&item.sig.output) {
         Some(statuses) => {
             let statuses = statuses
@@ -333,10 +317,6 @@ pub fn expand(item: ItemFn) -> TokenStream {
             const PATH_NAMES: &'static [&'static str] = #path_names;
             const REQUIRED_AUTH: &'static [&'static str] = &[#(#required_auth),*];
             const INFERRED_SUCCESS: ::core::option::Option<&'static [u16]> = #inferred_success;
-
-            fn body() -> ::core::option::Option<#krate::doc::BodyMeta> {
-                #body_expression
-            }
 
             fn docs(
                 components: &mut #krate::utoipa::openapi::schema::Components,

@@ -177,11 +177,6 @@ where
                 content_type == "application/json" || content_type.ends_with("+json")
             })
             .map(|(type_id, _)| *type_id)
-            .or_else(|| {
-                (record.body)()
-                    .filter(|meta| meta.kind == crate::doc::BodyKind::Json)
-                    .map(|meta| (meta.type_id)())
-            })
     {
         method_router = method_router.layer(axum::middleware::from_fn_with_state(
             (engine.clone(), type_id, max_body),

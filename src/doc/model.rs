@@ -85,22 +85,6 @@ impl ResponseDoc {
     }
 }
 
-/// How a handler reads the request body.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BodyKind {
-    Json,
-    Form,
-    Multipart,
-    Raw,
-}
-
-/// The body a handler takes, as metadata for the request validator.
-#[derive(Debug, Clone, Copy)]
-pub struct BodyMeta {
-    pub kind: BodyKind,
-    pub type_id: fn() -> TypeId,
-}
-
 /// A path or query type whose parameter schema the engine should compile.
 #[derive(Clone, Copy)]
 pub struct PartsDoc {
