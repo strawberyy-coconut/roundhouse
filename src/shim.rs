@@ -140,18 +140,11 @@ fn validate_body<T>(value: &T, context: &ValidationContext) -> Result<(), Proble
 where
     T: crate::doc::ApiSchema + serde::Serialize + 'static,
 {
-    if let Some(engine) = &context.engine {
-        let value = serde_json::to_value(value).map_err(|error| {
-            Problem::from_rejection(
-                axum::http::StatusCode::BAD_REQUEST,
-                "Bad Request",
-                error.to_string(),
-            )
-        })?;
-        if let Some(result) = engine.validate::<T>(&value) {
-            result.map_err(|errors| validation_problem(errors, context))?;
-        }
-    }
+    crate::extract::enforce_schema(
+        value,
+        context.engine.as_ref(),
+        context.config.status,
+    )?;
     value
         .validate()
         .map_err(|errors| validation_problem(errors, context))
@@ -162,13 +155,11 @@ fn validate_parts<T>(value: &T, context: &ValidationContext) -> Result<(), Probl
 where
     T: crate::doc::PartsValue + 'static,
 {
-    if let Some(engine) = &context.engine {
-        let value = crate::doc::PartsValue::parts_value(value);
-        if let Some(result) = engine.validate_parts::<T>(&value) {
-            result.map_err(|errors| validation_problem(errors, context))?;
-        }
-    }
-    Ok(())
+    crate::extract::enforce_parts_schema(
+        value,
+        context.engine.as_ref(),
+        context.config.status,
+    )
 }
 
 // `axum::Json` parses but does not execute the schema; the route's shim does.

@@ -373,13 +373,15 @@ fn malformed_json(detail: String) -> Problem {
     Problem::from_rejection(StatusCode::BAD_REQUEST, "Bad Request", detail)
 }
 
-/// Run the emitted schema for a body that has been deserialized. A form is not JSON on the wire,
-/// so the schema is applied to the value serde produced.
+/// Execute the emitted schema for a value that has already been deserialized.
+///
+/// Shared with the route shim: a form is not JSON on the wire, so the schema is applied to the
+/// value serde produced, whichever path reached it.
 #[allow(clippy::result_large_err)]
-fn enforce_value<T>(
+pub(crate) fn enforce_schema<T>(
     value: &T,
-    engine: &Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
-    policy: Policy,
+    engine: Option<&Arc<roundhouse_schema::engine::SchemaEngine>>,
+    status: StatusCode,
 ) -> Result<(), Problem>
 where
     T: serde::Serialize + 'static,
@@ -388,22 +390,26 @@ where
         let value =
             serde_json::to_value(value).map_err(|error| malformed_json(error.to_string()))?;
         if let Some(result) = engine.validate::<T>(&value) {
-            result.map_err(|errors| policy.problem(errors))?;
+            result.map_err(|errors| validation_problem(errors, status))?;
         }
     }
     Ok(())
 }
 
-/// Run the emitted parts schema for `Path`/`Query`.
+/// Execute the emitted parts schema for `Path`/`Query`. Shared with the route shim.
 #[allow(clippy::result_large_err)]
-fn enforce_parts<T>(value: &T, parts: &Parts, policy: Policy) -> Result<(), Problem>
+pub(crate) fn enforce_parts_schema<T>(
+    value: &T,
+    engine: Option<&Arc<roundhouse_schema::engine::SchemaEngine>>,
+    status: StatusCode,
+) -> Result<(), Problem>
 where
     T: crate::doc::PartsValue + 'static,
 {
-    if let Some(engine) = engine(parts) {
+    if let Some(engine) = engine {
         let value = crate::doc::PartsValue::parts_value(value);
         if let Some(result) = engine.validate_parts::<T>(&value) {
-            result.map_err(|errors| policy.problem(errors))?;
+            result.map_err(|errors| validation_problem(errors, status))?;
         }
     }
     Ok(())
@@ -498,7 +504,7 @@ where
             .await
             .map_err(Rejection::into_problem)?;
         if policy.enabled() {
-            enforce_value::<T>(&value, &engine, policy)?;
+            enforce_schema::<T>(&value, engine.as_ref(), policy.config.status)?;
         }
         Ok(Strict(axum::Form(value)))
     }
@@ -518,7 +524,7 @@ where
                 .map_err(Rejection::into_problem)?;
         let policy = Policy::read(parts);
         if policy.enabled() {
-            enforce_parts::<T>(&value, parts, policy)?;
+            enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.config.status)?;
             value.validate().map_err(|errors| policy.problem(errors))?;
         }
         Ok(Strict(axum::extract::Path(value)))
@@ -543,7 +549,7 @@ where
         };
         let policy = Policy::read(parts);
         if policy.enabled() {
-            enforce_parts::<T>(&value, parts, policy)?;
+            enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.config.status)?;
             value.validate().map_err(|errors| policy.problem(errors))?;
         }
         Ok(Some(Strict(axum::extract::Path(value))))
@@ -564,7 +570,7 @@ where
                 .map_err(Rejection::into_problem)?;
         let policy = Policy::read(parts);
         if policy.enabled() {
-            enforce_parts::<T>(&value, parts, policy)?;
+            enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.config.status)?;
             value.validate().map_err(|errors| policy.problem(errors))?;
         }
         Ok(Strict(axum::extract::Query(value)))
