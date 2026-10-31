@@ -1,4 +1,4 @@
-error[E0271]: type mismatch resolving `<AuthedValidated<Bearer> as ShimPolicy>::State == HandlerState`
+error[E0271]: type mismatch resolving `<Authed<Bearer> as ShimPolicy>::State == HandlerState`
   --> tests/ui/security_state_mismatch.rs:31:1
    |
 31 | / routes! {
@@ -6,7 +6,7 @@ error[E0271]: type mismatch resolving `<AuthedValidated<Bearer> as ShimPolicy>::
 33 | |  get("/", show, security = [Bearer]) }
    | |______________________________________^ expected `HandlerState`, found `SchemeState`
    |
-   = note: required for `roundhouse::shim::AuthedValidated<Bearer>` to implement `roundhouse::shim::ShimPolicyFor<HandlerState>`
+   = note: required for `roundhouse::shim::Authed<Bearer>` to implement `roundhouse::shim::ShimPolicyFor<HandlerState>`
 note: required by a bound in `show_missing_roundhouse_handler_attribute::__roundhouse_shim`
   --> tests/ui/security_state_mismatch.rs:35:1
    |
@@ -14,7 +14,7 @@ note: required by a bound in `show_missing_roundhouse_handler_attribute::__round
    | ^^^^^^^^^^ required by this bound in `show_missing_roundhouse_handler_attribute::__roundhouse_shim`
    = note: this error originates in the macro `routes` which comes from the expansion of the attribute macro `handler` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `fn(roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, <roundhouse::shim::AuthedValidated<Bearer> as roundhouse::shim::ShimPolicy>::Auth) -> impl Future<Output = axum::http::Response<Body>> {show_missing_roundhouse_handler_attribute::__roundhouse_shim::<roundhouse::shim::AuthedValidated<Bearer>>}: Handler<(axum_core::extract::private::ViaParts, roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, AuthEnforce<Bearer>), HandlerState>` is not satisfied
+error[E0277]: the trait bound `fn(roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, <roundhouse::shim::Authed<Bearer> as roundhouse::shim::ShimPolicy>::Auth) -> impl Future<Output = axum::http::Response<Body>> {show_missing_roundhouse_handler_attribute::__roundhouse_shim::<roundhouse::shim::Authed<Bearer>>}: Handler<(axum_core::extract::private::ViaParts, roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, AuthEnforce<Bearer>), HandlerState>` is not satisfied
   --> tests/ui/security_state_mismatch.rs:31:1
    |
 31 | / routes! {
@@ -22,10 +22,10 @@ error[E0277]: the trait bound `fn(roundhouse::shim::ValidationContext, axum::ext
 33 | |  get("/", show, security = [Bearer]) }
    | |                                      ^
    | |                                      |
-   | |______________________________________`fn(roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, <roundhouse::shim::AuthedValidated<Bearer> as roundhouse::shim::ShimPolicy>::Auth) -> impl Future<Output = axum::http::Response<Body>> {show_missing_roundhouse_handler_attribute::__roundhouse_shim::<roundhouse::shim::AuthedValidated<Bearer>>}` doesn't satisfy the trait bound
+   | |______________________________________`fn(roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, <roundhouse::shim::Authed<Bearer> as roundhouse::shim::ShimPolicy>::Auth) -> impl Future<Output = axum::http::Response<Body>> {show_missing_roundhouse_handler_attribute::__roundhouse_shim::<roundhouse::shim::Authed<Bearer>>}` doesn't satisfy the trait bound
    |                                        unsatisfied trait bound
    |
-   = help: the trait `Handler<(axum_core::extract::private::ViaParts, roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, AuthEnforce<Bearer>), HandlerState>` is not implemented for fn item `fn(roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, <roundhouse::shim::AuthedValidated<Bearer> as roundhouse::shim::ShimPolicy>::Auth) -> impl Future<Output = axum::http::Response<Body>> {show_missing_roundhouse_handler_attribute::__roundhouse_shim::<roundhouse::shim::AuthedValidated<Bearer>>}`
+   = help: the trait `Handler<(axum_core::extract::private::ViaParts, roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, AuthEnforce<Bearer>), HandlerState>` is not implemented for fn item `fn(roundhouse::shim::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, <roundhouse::shim::Authed<Bearer> as roundhouse::shim::ShimPolicy>::Auth) -> impl Future<Output = axum::http::Response<Body>> {show_missing_roundhouse_handler_attribute::__roundhouse_shim::<roundhouse::shim::Authed<Bearer>>}`
    = note: Consider using `#[axum::debug_handler]` to improve the error message
 note: required by a bound in `axum::routing::get`
   --> $CARGO/axum-$VERSION/src/routing/method_routing.rs

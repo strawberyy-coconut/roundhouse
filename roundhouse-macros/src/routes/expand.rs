@@ -229,10 +229,8 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
         None => quote!(<#marker_type as #krate::doc::HandlerMeta>::State),
     };
     let policy = match (single_scheme, entry.validate) {
-        (Some(scheme), true) => quote!(#krate::shim::AuthedValidated::<#scheme>),
-        (Some(scheme), false) => quote!(#krate::shim::Authed::<#scheme>),
-        (None, true) => quote!(#krate::shim::Validated::<#shim_state>),
-        (None, false) => quote!(#krate::shim::Plain::<#shim_state>),
+        (Some(scheme), _) => quote!(#krate::shim::Authed::<#scheme>),
+        (None, _) => quote!(#krate::shim::Plain::<#shim_state>),
     };
     let state = match single_scheme {
         Some(_) => quote!(

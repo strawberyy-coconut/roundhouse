@@ -299,7 +299,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
             {
                 let _ = (&__rh_auth, &__rh_state);
                 #(#shim_unwraps)*
-                if P::VALIDATE && __rh_ctx.enabled() {
+                if __rh_ctx.enabled() {
                     #(#shim_checks)*
                 }
                 let __rh_response = #shim_call;

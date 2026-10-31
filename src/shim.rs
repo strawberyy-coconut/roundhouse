@@ -5,7 +5,7 @@
 //! the route table can choose a policy at the call site:
 //!
 //! ```ignore
-//! axum::routing::get(hello_marker::__roundhouse_shim::<roundhouse::shim::Validated>)
+//! axum::routing::get(hello_marker::__roundhouse_shim::<roundhouse::shim::Plain>)
 //! ```
 //!
 //! The handler function itself stays exactly as written. Validation is opt-out per route
@@ -78,9 +78,6 @@ pub trait ShimPolicy: 'static {
     /// stateless handler can sit under `security = [A]` without declaring `State<A::State>`.
     type State: Clone + Send + Sync + 'static;
     type Auth: FromRequestParts<Self::State> + Send + 'static;
-
-    /// Whether the shim validates every validatable argument.
-    const VALIDATE: bool;
 }
 
 /// A policy whose state is exactly a stateful handler's `State<S>`.
@@ -102,17 +99,11 @@ where
 {
 }
 
-/// No validation, no auth: the `validate = false` route with no security requirement.
+/// No security scheme: the default route.
 pub struct Plain<S>(std::marker::PhantomData<S>);
 
-/// Validation on, no auth: the default.
-pub struct Validated<S>(std::marker::PhantomData<S>);
-
-/// A route entry with one security scheme and validation off.
+/// A route entry with one security scheme.
 pub struct Authed<A>(std::marker::PhantomData<A>);
-
-/// A route entry with one security scheme and validation on.
-pub struct AuthedValidated<A>(std::marker::PhantomData<A>);
 
 impl<S> ShimPolicy for Plain<S>
 where
@@ -120,28 +111,11 @@ where
 {
     type State = S;
     type Auth = ();
-    const VALIDATE: bool = false;
-}
-
-impl<S> ShimPolicy for Validated<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    type State = S;
-    type Auth = ();
-    const VALIDATE: bool = true;
 }
 
 impl<A: crate::auth::Authenticate> ShimPolicy for Authed<A> {
     type State = A::State;
     type Auth = crate::auth::AuthEnforce<A>;
-    const VALIDATE: bool = false;
-}
-
-impl<A: crate::auth::Authenticate> ShimPolicy for AuthedValidated<A> {
-    type State = A::State;
-    type Auth = crate::auth::AuthEnforce<A>;
-    const VALIDATE: bool = true;
 }
 
 /// One argument's contribution to route-level validation.
