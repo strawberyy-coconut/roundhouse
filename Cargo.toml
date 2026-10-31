@@ -17,7 +17,7 @@ resolver = "2"
 
 [package]
 name = "roundhouse"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "An OpenAPI-first axum framework: declarations in, router and document out."
 license = "MIT OR Apache-2.0"
@@ -48,7 +48,7 @@ http = "1"
 jiff = { version = "0.2", optional = true, features = ["serde"] }
 matchit = "0.8"
 regex = "1"
-roundhouse-macros = { path = "roundhouse-macros", version = "0.2.1", optional = true }
+roundhouse-macros = { path = "roundhouse-macros", version = "0.2.2", optional = true }
 roundhouse-multipart = { path = "roundhouse-multipart", version = "0.2.0", optional = true }
 roundhouse-problem = { path = "roundhouse-problem", version = "0.2.0" }
 roundhouse-schema = { path = "roundhouse-schema", version = "0.2.1" }
