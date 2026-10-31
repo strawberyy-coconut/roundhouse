@@ -102,10 +102,7 @@ impl Default for ValidationState {
 
 impl ValidationState {
     pub(crate) fn read(extensions: &axum::http::Extensions) -> Self {
-        extensions
-            .get::<Self>()
-            .copied()
-            .unwrap_or_default()
+        extensions.get::<Self>().copied().unwrap_or_default()
     }
 }
 
@@ -216,10 +213,7 @@ where
 
 /// `T::from_request_parts`, with the rejection converted to a `Problem`.
 #[allow(clippy::result_large_err)]
-async fn from_request_parts_problem<T, S>(
-    parts: &mut Parts,
-    state: &S,
-) -> Result<T, Problem>
+async fn from_request_parts_problem<T, S>(parts: &mut Parts, state: &S) -> Result<T, Problem>
 where
     T: FromRequestParts<S> + Send,
     T::Rejection: Send,

@@ -286,13 +286,15 @@ pub(super) async fn inject_validation_config(
     mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    request.extensions_mut().insert(crate::extract::ValidationState {
-        status,
-        mode,
-        max_body,
-        skip: false,
-        body_validated: false,
-    });
+    request
+        .extensions_mut()
+        .insert(crate::extract::ValidationState {
+            status,
+            mode,
+            max_body,
+            skip: false,
+            body_validated: false,
+        });
     #[cfg(feature = "multipart")]
     request
         .extensions_mut()
