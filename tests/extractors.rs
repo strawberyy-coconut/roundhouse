@@ -4,7 +4,7 @@
 //! of either, or an unrelated type with the same name. The document must describe the extractor
 //! that actually runs.
 
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -166,5 +166,69 @@ fn a_json_extractor_aliased_as_body_is_not_documented_as_octet_stream() {
     assert!(
         !body.contains("application/octet-stream"),
         "the resolved type is JSON, not a raw body: {body}"
+    );
+}
+
+mod strict_alias {
+    use super::*;
+    // The alias resolves to axum's `Json`, so `Strict` accepts it.
+    use roundhouse::Json as Payload;
+
+    routes! {
+        prefix = "/strict-alias",
+        post("/", create, operation_id = "strict_alias_create"),
+    }
+
+    #[handler]
+    pub async fn create(Strict(Payload(_body)): Strict<Payload<Contact>>) -> StatusCode {
+        StatusCode::CREATED
+    }
+}
+
+mod mapped_only {
+    use super::*;
+
+    routes! {
+        prefix = "/mapped",
+        post("/", create, operation_id = "mapped_only_create"),
+    }
+
+    #[handler]
+    pub async fn create(Mapped(Json(_body)): Mapped<Json<Contact>>) -> StatusCode {
+        StatusCode::CREATED
+    }
+}
+
+/// `Strict` is enforced by the extractor, so it resolves through an alias too.
+#[tokio::test]
+async fn a_strict_extractor_enforces_through_an_alias() {
+    let built = app(&strict_alias::MODULE);
+    let response = built
+        .oneshot_json(http::Method::POST, "/strict-alias", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+}
+
+/// `Mapped` is the mapping-only escape hatch: the rejection shape changes, the constraints do not.
+#[tokio::test]
+async fn mapped_maps_the_rejection_without_enforcing() {
+    let built = app(&mapped_only::MODULE);
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/mapped", r#"{"title":"ab"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/mapped", "{not json")
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
     );
 }

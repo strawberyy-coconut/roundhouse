@@ -12,6 +12,45 @@ use crate::util::{outer_ident, single_generic};
 use self::response::{inferred_successes, response_statements};
 use self::signature::{auth_types, body_meta_for, is_parts_arg, is_wrapper_type, result_ok_type};
 
+/// How the shim extracts one handler argument.
+enum ShimWrap {
+    /// The handler's own extractor, unchanged.
+    None,
+    /// `Mapped<T>`: the extractor's rejection is a `Problem`.
+    Mapped,
+    /// `Option<Mapped<T>>` for an optional fallible extractor.
+    OptionalMapped(Box<Type>),
+}
+
+/// Extractors whose rejection the shim maps to a `Problem` by default.
+///
+/// Only axum's fallible built-ins are listed. An unknown type is left alone: a custom extractor
+/// must never fail to compile because the framework guessed at its rejection. A handler that
+/// wants mapping for one can still write `Strict<T>` itself.
+const PROBLEM_MAPPED: &[&str] = &["Json", "Form", "Multipart", "Query", "Path", "Extension"];
+
+fn shim_wrap(ty: &Type) -> ShimWrap {
+    // `Result<Extractor, E>` owns its rejection; an explicit `Strict<..>` is already mapped.
+    if result_ok_type(ty).is_some() || outer_ident(ty).as_deref() == Some("Strict") {
+        return ShimWrap::None;
+    }
+    if outer_ident(ty).as_deref() == Some("Option") {
+        return match single_generic(ty) {
+            Some(inner) if maps_rejection(&inner) => ShimWrap::OptionalMapped(Box::new(inner)),
+            _ => ShimWrap::None,
+        };
+    }
+    if maps_rejection(ty) {
+        ShimWrap::Mapped
+    } else {
+        ShimWrap::None
+    }
+}
+
+fn maps_rejection(ty: &Type) -> bool {
+    outer_ident(ty).is_some_and(|name| PROBLEM_MAPPED.contains(&name.as_str()))
+}
+
 pub fn expand(item: ItemFn) -> TokenStream {
     let krate = crate::util::krate();
     if !item.sig.generics.params.is_empty() {
@@ -179,6 +218,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
     let mut shim_params = Vec::new();
     let mut shim_idents = Vec::new();
     let mut shim_checks = Vec::new();
+    let mut shim_unwraps = Vec::new();
     // The auth extractor goes just before the body argument, so a handler that also takes
     // `Auth<A>` runs first and leaves the `Authenticated` marker. The shim's `AuthEnforce` then
     // sees it and skips a second authentication.
@@ -193,7 +233,29 @@ pub fn expand(item: ItemFn) -> TokenStream {
         }
         let ident = format_ident!("__rh_arg_{index}");
         let ty = &argument.ty;
-        shim_params.push(quote!(#ident: #ty));
+        // Route policy, applied by the shim rather than in the handler's own signature: the
+        // extractor's rejection becomes a `Problem` without the handler naming `Strict`. An
+        // unrecognized extractor keeps its own rejection, so this never guesses at a type.
+        let wrap = shim_wrap(ty);
+        shim_params.push(match &wrap {
+            ShimWrap::None => quote!(#ident: #ty),
+            ShimWrap::Mapped => quote!(#ident: #krate::extract::Mapped<#ty>),
+            ShimWrap::OptionalMapped(inner) => {
+                quote!(#ident: ::core::option::Option<#krate::extract::Mapped<#inner>>)
+            }
+        });
+        shim_unwraps.push(match wrap {
+            ShimWrap::None => quote!(),
+            ShimWrap::Mapped => quote! {
+                let #ident = #krate::extract::Mapped::into_inner(#ident);
+            },
+            ShimWrap::OptionalMapped(_) => quote! {
+                let #ident = ::core::option::Option::map(
+                    #ident,
+                    #krate::extract::Mapped::into_inner,
+                );
+            },
+        });
         shim_checks.push(quote! {
             if let ::core::result::Result::Err(__rh_problem) = {
                 use #krate::shim::ValidateArg as _;
@@ -264,6 +326,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 #policy_bound,
             {
                 let _ = (&__rh_auth, &__rh_state);
+                #(#shim_unwraps)*
                 if P::VALIDATE && __rh_ctx.enabled() {
                     #(#shim_checks)*
                 }

@@ -664,3 +664,128 @@ fn the_document_publishes_the_route_scheme() {
         "{document}"
     );
 }
+
+mod default_rejections {
+    use super::*;
+
+    #[derive(Debug, Deserialize, PathParams)]
+    pub struct NumericId {
+        pub id: u64,
+    }
+
+    #[derive(Debug, Deserialize, QueryParams)]
+    pub struct Page {
+        pub page: Option<u32>,
+    }
+
+    routes! {
+        prefix = "/defaults",
+        get("/items/{id}", show, operation_id = "defaults_show"),
+        get("/search", search, operation_id = "defaults_search"),
+    }
+
+    #[handler]
+    pub async fn show(axum::extract::Path(path): axum::extract::Path<NumericId>) -> String {
+        path.id.to_string()
+    }
+
+    #[handler]
+    pub async fn search(axum::extract::Query(query): axum::extract::Query<Page>) -> String {
+        format!("{:?}", query.page)
+    }
+}
+
+/// The shim maps a rejection to `Problem` without the handler naming `Strict`.
+#[tokio::test]
+async fn axum_extractor_rejections_are_problems_by_default() {
+    let built = scoped(&default_rejections::MODULE);
+
+    let response = built.oneshot_get("/defaults/items/not-a-number").await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+    let problem = problem_json(response).await;
+    assert_eq!(problem["status"], 400);
+    assert_eq!(problem["title"], "Bad Request");
+
+    let response = built
+        .oneshot_get("/defaults/search?page=not-a-number")
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+    let problem = problem_json(response).await;
+    assert_eq!(problem["status"], 400);
+
+    let response = built.oneshot_get("/defaults/items/7").await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+mod unvalidated_json {
+    use super::*;
+
+    routes! {
+        prefix = "/unvalidated-json",
+        post("/", create, operation_id = "shim_unvalidated_json_create", validate = false),
+    }
+
+    #[handler]
+    pub async fn create(axum::Json(_body): axum::Json<NewNote>) -> StatusCode {
+        StatusCode::NO_CONTENT
+    }
+}
+
+mod optional_json {
+    use super::*;
+
+    routes! {
+        prefix = "/optional-json",
+        post("/", create, operation_id = "shim_optional_json_create", validate = false),
+    }
+
+    #[handler]
+    pub async fn create(body: Option<axum::Json<NewNote>>) -> StatusCode {
+        match body {
+            Some(_) => StatusCode::NO_CONTENT,
+            None => StatusCode::OK,
+        }
+    }
+}
+
+/// Rejection mapping is the shim's, not the schema engine's: it also holds when validation is off.
+#[tokio::test]
+async fn a_rejected_body_is_a_problem_even_with_validation_off() {
+    let built = scoped(&unvalidated_json::MODULE);
+    let response = built
+        .oneshot_json(http::Method::POST, "/unvalidated-json", "{not json")
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+    problem_json(response).await;
+}
+
+#[tokio::test]
+async fn an_optional_extractor_is_wrapped_too() {
+    let built = scoped(&optional_json::MODULE);
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/optional-json", "{not json")
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+
+    let response = built
+        .oneshot_json(http::Method::POST, "/optional-json", r#"{"title":"abcd"}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}

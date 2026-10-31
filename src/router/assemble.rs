@@ -272,6 +272,8 @@ async fn validate_json_body(
         return Problem::from_validation_with_status(errors, config.status).into_response();
     }
 
+    let mut parts = parts;
+    parts.extensions.insert(crate::extract::BodyValidated);
     next.run(axum::http::Request::from_parts(
         parts,
         axum::body::Body::from(bytes),
@@ -299,6 +301,9 @@ pub(super) async fn inject_validation_config(
     request
         .extensions_mut()
         .insert(crate::extract::ValidationConfig { status, mode });
+    request
+        .extensions_mut()
+        .insert(crate::extract::MaxBody(max_body));
     #[cfg(feature = "multipart")]
     request
         .extensions_mut()

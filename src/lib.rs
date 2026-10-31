@@ -138,7 +138,7 @@ pub use axum::response::sse::{Event, KeepAlive, Sse};
 pub use build_error::{BuildError, Source};
 pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams, validate_document};
 pub use extract::{
-    Extension, Form, Json, Path, Query, Rejection, RepeatedQuery, Strict, Validation,
+    Extension, Form, Json, Mapped, Path, Query, Rejection, RepeatedQuery, Strict, Validation,
 };
 #[cfg(feature = "multipart-tempfile")]
 pub use multipart::TempFile;
@@ -200,7 +200,7 @@ pub mod prelude {
     pub use crate::attachment::{Attachment, File};
     pub use crate::auth::{Auth, AuthScheme, AuthScopes, Authenticate, Authorize, NoScopes};
     pub use crate::doc::PathNames;
-    pub use crate::extract::{Extension, Form, Json, Path, Query, RepeatedQuery, Strict};
+    pub use crate::extract::{Extension, Form, Json, Mapped, Path, Query, RepeatedQuery, Strict};
     pub use crate::problem::Problem;
     pub use crate::utoipa;
     pub use crate::validate::{ValidationError, ValidationErrors};

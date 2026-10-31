@@ -1,8 +1,10 @@
-//! Axum extractors with an optional `Problem` rejection.
+//! Axum extractors with a `Problem` rejection.
 //!
 //! `Json`, `Form`, `Path` and `Extension` are re-exported from axum; `RepeatedQuery` is the one custom
-//! parser (`serde_html_form`, so repeated keys work). Wrap any extractor in [`Strict<T>`] to
-//! convert its rejection into the canonical [`Problem`] while keeping the inner type axum's.
+//! parser (`serde_html_form`, so repeated keys work). The route shim maps the built-in extractors'
+//! rejections to the canonical [`Problem`], so a handler names axum's types and still answers RFC 9457.
+//! [`Mapped<T>`] maps a foreign extractor's rejection without enforcing anything; [`Strict<T>`]
+//! enforces the operation's schema as part of extraction.
 //! Validation is the route policy's job, not the extractor's: JSON bodies are checked from the raw
 //! bytes before extraction, and parts are checked by the generated shim. `#[handler]` recognises
 //! both forms by type:
@@ -99,21 +101,22 @@ fn validation_config(extensions: &axum::http::Extensions) -> ValidationConfig {
         .unwrap_or_default()
 }
 
-/// A pure axum extractor with roundhouse's rejection contract.
+/// An axum extractor whose rejection becomes a [`Problem`], with no schema enforcement.
 ///
-/// `Strict<axum::Json<T>>` extracts with axum's [`axum::Json`] and converts its rejection into a
-/// [`Problem`]; the inner type is untouched. Validation is still the route's job, so the wrapper
-/// adds no constraint logic of its own.
+/// `Mapped<axum::Json<T>>` extracts with axum's [`axum::Json`] and converts its rejection into a
+/// [`Problem`]; the inner type is untouched. The framework cannot know how to hold a foreign
+/// extractor to a schema, so none is applied. Use it for a third-party extractor, or when
+/// extracting outside a route. For axum's built-in extractors use [`Strict`], which enforces.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Strict<T>(pub T);
+pub struct Mapped<T>(pub T);
 
-impl<T> Strict<T> {
+impl<T> Mapped<T> {
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
-impl<T> Deref for Strict<T> {
+impl<T> Deref for Mapped<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -121,19 +124,19 @@ impl<T> Deref for Strict<T> {
     }
 }
 
-impl<T> DerefMut for Strict<T> {
+impl<T> DerefMut for Mapped<T> {
     fn deref_mut(&mut self) -> &mut T {
         &mut self.0
     }
 }
 
-impl<T> From<T> for Strict<T> {
+impl<T> From<T> for Mapped<T> {
     fn from(value: T) -> Self {
         Self(value)
     }
 }
 
-impl<T: IntoResponse> IntoResponse for Strict<T> {
+impl<T: IntoResponse> IntoResponse for Mapped<T> {
     fn into_response(self) -> Response {
         self.0.into_response()
     }
@@ -190,7 +193,7 @@ impl Rejection for axum::extract::multipart::MultipartRejection {
     }
 }
 
-impl<T, S> FromRequest<S> for Strict<T>
+impl<T, S> FromRequest<S> for Mapped<T>
 where
     T: FromRequest<S>,
     T::Rejection: Rejection,
@@ -206,7 +209,7 @@ where
     }
 }
 
-impl<T, S> FromRequestParts<S> for Strict<T>
+impl<T, S> FromRequestParts<S> for Mapped<T>
 where
     T: FromRequestParts<S>,
     T::Rejection: Rejection,
@@ -222,7 +225,7 @@ where
     }
 }
 
-impl<T, S> OptionalFromRequest<S> for Strict<T>
+impl<T, S> OptionalFromRequest<S> for Mapped<T>
 where
     T: OptionalFromRequest<S>,
     T::Rejection: Rejection,
@@ -238,7 +241,7 @@ where
     }
 }
 
-impl<T, S> OptionalFromRequestParts<S> for Strict<T>
+impl<T, S> OptionalFromRequestParts<S> for Mapped<T>
 where
     T: OptionalFromRequestParts<S>,
     T::Rejection: Rejection,
@@ -250,6 +253,371 @@ where
         T::from_request_parts(parts, state)
             .await
             .map(|value| value.map(Self))
+            .map_err(Rejection::into_problem)
+    }
+}
+
+/// An axum extractor that enforces the operation's schema and answers `Problem`.
+///
+/// `Strict<axum::Json<T>>` buffers the body, validates it against the emitted schema, then
+/// deserializes; `Strict<axum::extract::Path<T>>` validates the extracted parts. The inner type is
+/// axum's, so the handler destructures it exactly as before. Writing it is an assertion that this
+/// argument is held to its schema; the route policy (`validate = false`, `Validation::Off`) still
+/// decides whether constraints run, and a `Result<Extractor, E>` argument is never wrapped.
+///
+/// The default path does not need this: the route shim maps axum's built-in extractors and the
+/// router dispatches enforcement by the resolved type. Naming `Strict` makes enforcement part of
+/// the signature instead.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Strict<T>(pub T);
+
+impl<T> Strict<T> {
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+impl<T> Deref for Strict<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for Strict<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
+impl<T> From<T> for Strict<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: IntoResponse> IntoResponse for Strict<T> {
+    fn into_response(self) -> Response {
+        self.0.into_response()
+    }
+}
+
+/// Marks a request whose JSON body the router already validated from the raw bytes.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BodyValidated;
+
+/// The app's configured body limit, injected by the router so an extractor can enforce it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MaxBody(pub(crate) Option<usize>);
+
+/// The validation policy for one request, read before a body is consumed.
+#[derive(Debug, Clone, Copy)]
+struct Policy {
+    config: ValidationConfig,
+    skip: bool,
+}
+
+impl Policy {
+    fn read(parts: &Parts) -> Self {
+        Self {
+            config: validation_config(&parts.extensions),
+            skip: parts.extensions.get::<SkipValidation>().is_some(),
+        }
+    }
+
+    fn enabled(self) -> bool {
+        !self.skip && self.config.mode != Validation::Off
+    }
+
+    fn problem(self, errors: ValidationErrors) -> Problem {
+        validation_problem(errors, self.config.status)
+    }
+}
+
+fn engine(parts: &Parts) -> Option<Arc<roundhouse_schema::engine::SchemaEngine>> {
+    parts
+        .extensions
+        .get::<Arc<roundhouse_schema::engine::SchemaEngine>>()
+        .cloned()
+}
+
+fn body_limit(parts: &Parts) -> usize {
+    parts
+        .extensions
+        .get::<MaxBody>()
+        .and_then(|limit| limit.0)
+        .unwrap_or(2 * 1024 * 1024)
+}
+
+fn is_json(parts: &Parts) -> bool {
+    parts
+        .headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            let value = value.split(';').next().unwrap_or(value).trim();
+            value == "application/json" || value.ends_with("+json")
+        })
+}
+
+fn too_large(limit: usize) -> Problem {
+    Problem::from_rejection(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "Payload Too Large",
+        format!("request body exceeds {limit} bytes"),
+    )
+}
+
+fn malformed_json(detail: String) -> Problem {
+    Problem::from_rejection(StatusCode::BAD_REQUEST, "Bad Request", detail)
+}
+
+/// Run the emitted schema for a body that has been deserialized. A form is not JSON on the wire,
+/// so the schema is applied to the value serde produced.
+#[allow(clippy::result_large_err)]
+fn enforce_value<T>(
+    value: &T,
+    engine: &Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
+    policy: Policy,
+) -> Result<(), Problem>
+where
+    T: serde::Serialize + 'static,
+{
+    if let Some(engine) = engine {
+        let value =
+            serde_json::to_value(value).map_err(|error| malformed_json(error.to_string()))?;
+        if let Some(result) = engine.validate::<T>(&value) {
+            result.map_err(|errors| policy.problem(errors))?;
+        }
+    }
+    Ok(())
+}
+
+/// Run the emitted parts schema for `Path`/`Query`.
+#[allow(clippy::result_large_err)]
+fn enforce_parts<T>(value: &T, parts: &Parts, policy: Policy) -> Result<(), Problem>
+where
+    T: crate::doc::PartsValue + 'static,
+{
+    if let Some(engine) = engine(parts) {
+        let value = crate::doc::PartsValue::parts_value(value);
+        if let Some(result) = engine.validate_parts::<T>(&value) {
+            result.map_err(|errors| policy.problem(errors))?;
+        }
+    }
+    Ok(())
+}
+
+/// Buffer, validate, then hand the bytes to axum's JSON extractor so its content-type and
+/// deserialization rejections stay exactly as documented.
+#[allow(clippy::result_large_err)]
+async fn strict_json<T, S>(
+    request: axum::extract::Request,
+    state: &S,
+    optional: bool,
+) -> Result<Option<axum::Json<T>>, Problem>
+where
+    T: DeserializeOwned + 'static,
+    S: Send + Sync,
+{
+    let (parts, body) = request.into_parts();
+    let policy = Policy::read(&parts);
+    let engine = engine(&parts);
+    let limit = body_limit(&parts);
+    let bytes = axum::body::to_bytes(body, limit)
+        .await
+        .map_err(|_| too_large(limit))?;
+
+    if optional && bytes.is_empty() {
+        return Ok(None);
+    }
+
+    // The router's raw layer may have run already; it marks the request when it did.
+    let already = parts.extensions.get::<BodyValidated>().is_some();
+    if !already
+        && policy.enabled()
+        && is_json(&parts)
+        && let Some(engine) = &engine
+    {
+        let value: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|error| malformed_json(error.to_string()))?;
+        if let Some(result) = engine.validate::<T>(&value) {
+            result.map_err(|errors| policy.problem(errors))?;
+        }
+    }
+
+    let request = axum::extract::Request::from_parts(parts, axum::body::Body::from(bytes));
+    let value = <axum::Json<T> as FromRequest<S>>::from_request(request, state)
+        .await
+        .map_err(Rejection::into_problem)?;
+    Ok(Some(value))
+}
+
+impl<T, S> FromRequest<S> for Strict<axum::Json<T>>
+where
+    T: DeserializeOwned + 'static,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request(request: axum::extract::Request, state: &S) -> Result<Self, Problem> {
+        let value = strict_json::<T, S>(request, state, false).await?;
+        Ok(Strict(value.expect("a required body is always present")))
+    }
+}
+
+impl<T, S> OptionalFromRequest<S> for Strict<axum::Json<T>>
+where
+    T: DeserializeOwned + 'static,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request(
+        request: axum::extract::Request,
+        state: &S,
+    ) -> Result<Option<Self>, Problem> {
+        Ok(strict_json::<T, S>(request, state, true).await?.map(Strict))
+    }
+}
+
+impl<T, S> FromRequest<S> for Strict<axum::Form<T>>
+where
+    T: DeserializeOwned + serde::Serialize + 'static,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request(request: axum::extract::Request, state: &S) -> Result<Self, Problem> {
+        let (parts, body) = request.into_parts();
+        let policy = Policy::read(&parts);
+        let engine = engine(&parts);
+        let request = axum::extract::Request::from_parts(parts, body);
+        let axum::Form(value) = <axum::Form<T> as FromRequest<S>>::from_request(request, state)
+            .await
+            .map_err(Rejection::into_problem)?;
+        if policy.enabled() {
+            enforce_value::<T>(&value, &engine, policy)?;
+        }
+        Ok(Strict(axum::Form(value)))
+    }
+}
+
+impl<T, S> FromRequestParts<S> for Strict<axum::extract::Path<T>>
+where
+    T: DeserializeOwned + crate::PathValidate + crate::doc::PartsValue + Send + 'static,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Problem> {
+        let axum::extract::Path(value) =
+            <axum::extract::Path<T> as FromRequestParts<S>>::from_request_parts(parts, state)
+                .await
+                .map_err(Rejection::into_problem)?;
+        let policy = Policy::read(parts);
+        if policy.enabled() {
+            enforce_parts::<T>(&value, parts, policy)?;
+            value.validate().map_err(|errors| policy.problem(errors))?;
+        }
+        Ok(Strict(axum::extract::Path(value)))
+    }
+}
+
+impl<T, S> OptionalFromRequestParts<S> for Strict<axum::extract::Path<T>>
+where
+    T: DeserializeOwned + crate::PathValidate + crate::doc::PartsValue + Send + 'static,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Option<Self>, Problem> {
+        let value = <axum::extract::Path<T> as OptionalFromRequestParts<S>>::from_request_parts(
+            parts, state,
+        )
+        .await
+        .map_err(Rejection::into_problem)?;
+        let Some(axum::extract::Path(value)) = value else {
+            return Ok(None);
+        };
+        let policy = Policy::read(parts);
+        if policy.enabled() {
+            enforce_parts::<T>(&value, parts, policy)?;
+            value.validate().map_err(|errors| policy.problem(errors))?;
+        }
+        Ok(Some(Strict(axum::extract::Path(value))))
+    }
+}
+
+impl<T, S> FromRequestParts<S> for Strict<axum::extract::Query<T>>
+where
+    T: DeserializeOwned + crate::doc::QueryParams + crate::doc::PartsValue + 'static,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Problem> {
+        let axum::extract::Query(value) =
+            <axum::extract::Query<T> as FromRequestParts<S>>::from_request_parts(parts, state)
+                .await
+                .map_err(Rejection::into_problem)?;
+        let policy = Policy::read(parts);
+        if policy.enabled() {
+            enforce_parts::<T>(&value, parts, policy)?;
+            value.validate().map_err(|errors| policy.problem(errors))?;
+        }
+        Ok(Strict(axum::extract::Query(value)))
+    }
+}
+
+impl<T, S> FromRequestParts<S> for Strict<axum::extract::Extension<T>>
+where
+    T: Clone + Send + Sync + 'static,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Problem> {
+        let value =
+            <axum::extract::Extension<T> as FromRequestParts<S>>::from_request_parts(parts, state)
+                .await
+                .map_err(Rejection::into_problem)?;
+        Ok(Strict(value))
+    }
+}
+
+impl<T, S> OptionalFromRequestParts<S> for Strict<axum::extract::Extension<T>>
+where
+    T: Clone + Send + Sync + 'static,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Option<Self>, Problem> {
+        // `OptionalFromRequestParts for Extension` is infallible.
+        let value =
+            <axum::extract::Extension<T> as OptionalFromRequestParts<S>>::from_request_parts(
+                parts, state,
+            )
+            .await
+            .unwrap_or(None);
+        Ok(value.map(Strict))
+    }
+}
+
+#[cfg(feature = "multipart")]
+impl<F, S> FromRequest<S> for Strict<crate::multipart::Multipart<F>>
+where
+    F: crate::multipart::MultipartForm + Send,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request(request: axum::extract::Request, state: &S) -> Result<Self, Problem> {
+        <crate::multipart::Multipart<F> as FromRequest<S>>::from_request(request, state)
+            .await
+            .map(Strict)
             .map_err(Rejection::into_problem)
     }
 }

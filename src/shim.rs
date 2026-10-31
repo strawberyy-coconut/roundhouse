@@ -11,6 +11,14 @@
 //! The handler function itself stays exactly as written. Validation is opt-out per route
 //! (`validate = false`); the shim checks the args that the framework's own extractors do not
 //! already validate, which is why [`ValidateArg`] is a no-op for `roundhouse::Json` and friends.
+//!
+//! The same seam owns the rejection contract: an argument whose extractor is one of axum's
+//! fallible built-ins is read through [`Mapped`](crate::extract::Mapped), so the rejection is a
+//! [`Problem`](crate::Problem) rather than axum's plain-text response. The handler still declares
+//! and destructures its own type; only the shim's copy is wrapped.
+//!
+//! An explicit [`Strict`](crate::extract::Strict) is left alone: that extractor enforces the schema
+//! itself, and only the `validate_with` hooks fall through to [`ValidateArg`] here.
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -235,12 +243,30 @@ where
     }
 }
 
-impl<T> ValidateArg for crate::extract::Strict<T>
+// An explicit `Strict` extractor already ran the schema in the extractor; only the custom hooks
+// remain, and they need the concrete type. `Path`/`Query`/`Extension`/`Multipart` are complete, so
+// the fallback below leaves them alone.
+impl<T> ValidateArg for crate::extract::Strict<axum::Json<T>>
 where
-    T: ValidateArg,
+    T: crate::doc::ApiSchema,
 {
     fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
-        self.0.validate_arg(context)
+        self.0
+            .0
+            .validate()
+            .map_err(|errors| validation_problem(errors, context))
+    }
+}
+
+impl<T> ValidateArg for crate::extract::Strict<axum::Form<T>>
+where
+    T: crate::doc::ApiSchema,
+{
+    fn validate_arg(&self, context: &ValidationContext) -> Result<(), Problem> {
+        self.0
+            .0
+            .validate()
+            .map_err(|errors| validation_problem(errors, context))
     }
 }
 
