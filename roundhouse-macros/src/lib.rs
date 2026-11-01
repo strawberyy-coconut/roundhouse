@@ -34,9 +34,9 @@
 //! }
 //! ```
 //!
-//! The macros never infer behavior that the router does not implement. If a declaration cannot
-//! be described honestly, the build fails (or, for `try_build`, returns a
-//! `roundhouse::BuildError`) instead of emitting a document that lies.
+//! The generated router and document come from the same declarations. A declaration that cannot
+//! be represented honestly fails the build, or returns a `roundhouse::BuildError` from
+//! `App::try_build`, rather than publishing a document that disagrees with the router.
 
 mod api_response;
 mod api_schema;
@@ -126,9 +126,8 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 ///
 /// # Paths
 ///
-/// Paths must start with `/`; use `"/"` for the module's own path. Captures use axum 0.8 /
-/// matchit syntax: `{id}` for a segment and `{*rest}` for a trailing wildcard. The older axum
-/// 0.7 syntax (`:id`) is rejected at compile time.
+/// Paths must start with `/`; use `"/"` for the module's own path. Captures use `{id}` for a
+/// segment and `{*rest}` for a trailing wildcard. Escaped braces use `{{` and `}}`.
 ///
 /// If the handler takes `Path<T>` where `T: roundhouse::PathNames`, the macro statically checks
 /// that every capture in the leaf path is declared by `T`. The check is deliberately a subset
@@ -327,24 +326,23 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     handler::expand(item).into()
 }
 
-/// Derive the optional roundhouse extensions to a schema.
+/// Define the roundhouse extensions to a schema.
 ///
-/// Wire shape and component naming come from `utoipa::ToSchema`; this derive must be paired with
-/// it:
+/// Wire shape and component naming come from `utoipa::ToSchema`; this derive is paired with it:
 ///
 /// ```ignore
 /// #[derive(serde::Serialize, serde::Deserialize, roundhouse::ToSchema, roundhouse::ApiSchema)]
 /// pub struct Signup { .. }
 /// ```
 ///
-/// **Deriving `ApiSchema` is optional.** A type that derives only `ToSchema` can still be a JSON
-/// request or response body: the document inlines its `ToSchema` schema and registers the
-/// components it references. Derive `ApiSchema` when you want the type published as a named
-/// component (`$ref`), when it uses a roundhouse-only keyword (`unique_items`, a `url` format
-/// patch), or when it needs a `validate_with` hook. Using utoipa for the shape means serde's
-/// `rename_all`, `skip`, `flatten`, tagging and recursion rules are implemented in one place, not
-/// two. Component names follow utoipa as well; use `#[schema(as = module::Name)]` when two types
-/// share a simple name.
+/// `ApiSchema` registers the type as a named component (`$ref`) and applies the roundhouse-only
+/// patches. A type that derives only `ToSchema` can still be a JSON request or response body: the
+/// document inlines its `ToSchema` schema and registers the components it references. Derive
+/// `ApiSchema` when the type should be a named component, uses `unique_items` or the `url` to
+/// `uri` format mapping, or has a `validate_with` hook.
+///
+/// Component names follow utoipa; use `#[schema(as = module::Name)]` when two types share a simple
+/// name.
 ///
 /// # Constraints
 ///
@@ -363,12 +361,11 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// - `#[roundhouse(validate_with = path)]` — a function `fn(&T) -> Result<(), ValidationErrors>`
 ///   run in addition to the declared constraints. Its errors keep the field's JSON Pointer.
 ///
-/// Constraints are published **and** enforced: the emitted schema is compiled and executed by the
-/// `schema-engine` feature, so there is one declarative source rather than a second generated
-/// check. `#[schema(..)]` constraints work with `ToSchema` alone. `unique_items`, the `url` format
-/// patch and `validate_with` require this derive. `validate_with` is Rust code, not expressible
-/// in JSON Schema, and runs after the engine. `#[schema(skip_validation)]` was removed on purpose:
-/// opt out for a whole route with `validate = false` in `routes!` instead.
+/// Constraints are published and enforced: the emitted schema is compiled and executed by the
+/// `schema-engine` feature. `#[schema(..)]` constraints work with `ToSchema` alone; `unique_items`,
+/// the `url` to `uri` mapping and `validate_with` require this derive. `validate_with` is Rust
+/// code, so it runs after the engine. Opt a route out of constraint checks with `validate = false`
+/// in `routes!`.
 ///
 /// # Example
 ///
@@ -566,8 +563,8 @@ pub fn derive_multipart(input: TokenStream) -> TokenStream {
 ///
 /// - `#[status(code)]` — required. `#[status(code, description = "..")]` overrides the canonical
 ///   reason phrase. `#[status(code, problem = "slug")]` documents an error variant as an RFC 9457
-///   problem with type `https://roundhouse.rs/problems/{slug}`.
-/// - `#[response(status = code)]` is accepted as a migration alias for `#[status(code)]`.
+///   problem with type `https://roundhouse.rs/problems/{slug}`. `#[response(status = code)]` is
+///   an equivalent spelling.
 ///
 /// # Field attributes
 ///

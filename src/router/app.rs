@@ -111,7 +111,7 @@ where
         self
     }
 
-    /// Apply a tower layer globally and document what it guarantees (§6.1).
+    /// Apply a tower layer globally and document what it guarantees.
     pub fn layer_documented<L>(self, layer: L, doc: fn() -> crate::doc::layer::LayerDoc) -> Self
     where
         L: Layer<Route> + Clone + Send + Sync + 'static,
@@ -219,7 +219,7 @@ where
         self
     }
 
-    /// Turn the loud-derivation warnings into build errors.
+    /// Promote build diagnostics into errors.
     pub fn strict(mut self) -> Self {
         self.strict = true;
         self

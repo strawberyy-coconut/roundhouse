@@ -194,11 +194,11 @@ pub fn normalise_template(template: &str) -> String {
     out
 }
 
-/// Reject templates axum's router cannot serve, with a migration hint for axum 0.7 syntax.
+/// Reject templates axum's router cannot serve.
 pub fn validate_template(template: &str) -> Result<(), String> {
     if template.split('/').any(|segment| segment.starts_with(':')) {
         return Err(format!(
-            "path `{template}` uses axum 0.7 syntax; use `{{id}}` for a capture and `{{*rest}}` for a wildcard"
+            "path `{template}` uses an unsupported `:name` segment; use `{{name}}` for a capture and `{{*rest}}` for a wildcard"
         ));
     }
 
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn old_syntax_is_rejected() {
+    fn colon_captures_are_rejected() {
         assert!(validate_template("/blog/:id").is_err());
         assert!(validate_template("/blog/{id}").is_ok());
     }

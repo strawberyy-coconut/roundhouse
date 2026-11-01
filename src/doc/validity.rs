@@ -1,9 +1,8 @@
 //! Structural validation of the emitted document.
 //!
-//! This is the invariant the project exists for, checked on the final artifact rather than on the
-//! declarations: every template capture has exactly one required path parameter, every path
-//! parameter is used, operation ids are unique, every security requirement names a declared
-//! scheme, and every operation has at least one response.
+//! The checks run on the final artifact: every template capture has exactly one required path
+//! parameter, every path parameter is used, operation ids are unique, every security requirement
+//! names a declared scheme, and every operation has at least one response.
 
 const OPERATIONS: [&str; 8] = [
     "get", "put", "post", "delete", "options", "head", "patch", "trace",

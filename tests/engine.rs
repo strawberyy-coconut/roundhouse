@@ -1,4 +1,4 @@
-//! Schema execution and the conformance checks behind §7.7.
+//! Schema execution and the conformance checks behind it.
 
 #![cfg(feature = "schema-engine")]
 

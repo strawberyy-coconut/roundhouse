@@ -198,7 +198,7 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
         return ExpandedEntry {
             defs: syn::Error::new(
                 entry.path.span(),
-                "axum 0.7 path syntax (`:id`) is not supported; use `{id}` for a capture and `{*rest}` for a wildcard",
+                "path segments cannot start with `:`; use `{id}` for a capture and `{*rest}` for a wildcard",
             )
             .to_compile_error(),
             record: format_ident!("__ROUNDHOUSE_ROUTE_{index}"),

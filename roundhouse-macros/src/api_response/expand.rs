@@ -53,7 +53,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
                 )
             })?;
         let attrs: VariantAttrs = if attrs.path().is_ident("response") {
-            // Accept `#[response(status = 201)]` as a migration alias.
+            // Accept `#[response(status = 201)]` as an equivalent spelling.
             let mut tokens = TokenStream::new();
             let parsed =
                 attrs.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)?;

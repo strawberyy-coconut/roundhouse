@@ -6,7 +6,7 @@ use crate::registry::Module;
 ///
 /// A `routes!` invocation produces one [`Module`] and a `__roundhouse_fragment()` function
 /// returning this value. `...module` spreads compose fragments, and [`crate::App::fragment`] roots the
-/// app at one. The fragment owns the modules directly; there is no link-time discovery.
+/// app at one. The fragment owns its modules directly, and composition is explicit.
 #[derive(Debug, Clone, Default)]
 pub struct Fragment {
     roots: Vec<&'static Module>,
@@ -47,7 +47,7 @@ pub(crate) struct PendingMerge {
 /// One entry in a built app's merge ledger.
 ///
 /// A merged router is served but not discovered for the document, so the document is incomplete.
-/// An application can assert its own migration debt with [`crate::Built::merges`] in CI.
+/// An application can inspect [`crate::Built::merges`] in CI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MergeRecord {
     pub(crate) source: crate::build_error::Source,

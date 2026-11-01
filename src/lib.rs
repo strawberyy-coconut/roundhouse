@@ -2,11 +2,11 @@
 //!
 //! An OpenAPI-first framework for [axum]. You declare routes, parameters, schemas, auth and errors
 //! once; roundhouse builds the `axum::Router` **and** the OpenAPI 3.1 document from those same
-//! declarations. The route tree is the wiring: no link-time registry and no hand-maintained spec.
+//! declarations. The module tree is the complete route set.
 //!
 //! [axum]: https://docs.rs/axum
 //!
-//! ## Getting started
+//! ## Quick start
 //!
 //! ```toml
 //! [dependencies]
@@ -15,8 +15,8 @@
 //! serde = { version = "1", features = ["derive"] }
 //! ```
 //!
-//! A route lives beside its handler in a `routes!` table. The same table declares the module's
-//! prefix, tags, security and layers, and composes child modules with `...module`:
+//! A route lives beside its handler in a `routes!` table. The table declares the module's prefix,
+//! tags, security and layers, and composes child modules with `...module`:
 //!
 //! ```no_run
 //! use roundhouse::prelude::*;
@@ -47,22 +47,21 @@
 //! }
 //! ```
 //!
-//! `GET /v1/hello/world` answers JSON, and `GET /openapi.json` describes the same route,
+//! `GET /v1/hello/world` answers JSON, and `GET /openapi.json` describes the same operation,
 //! including the `name` path parameter that `Path<String>` cannot name by itself.
 //!
 //! ## How it fits together
 //!
-//! 1. **Declare.** `routes!` emits one `Module` per invocation: its prefix, tags, layers and
-//!    `Auth<A>` guards, the routes declared in that table, and the children composed with
-//!    `...module`. `#[handler]` derives the documentation half from the handler signature.
-//! 2. **Build.** [`App::build`](router::App::build) walks the composed module tree into a
-//!    [`Built`]: the `axum::Router`, the resolved route table, and the document.
-//!    A single table's duplicates, operation ids and missing success responses are rejected by
-//!    the macro during expansion; collisions across composed modules, state mismatches and auth
-//!    guards whose state does not match the app are found here.
-//!    [`App::try_build`](router::App::try_build) reports the latter without panicking.
-//! 3. **Enforce.** The extractors in [`extract`] enforce the constraints they publish, and
-//!    [`auth`] enforces the security requirements it publishes. Rejections are [`Problem`].
+//! 1. **Declare.** `routes!` emits one [`Module`] per invocation: its prefix, tags, layers and
+//!    security guards, the routes declared in that table, and the children composed with
+//!    `...module`. `#[handler]` derives the request, response and security documentation from the
+//!    handler signature.
+//! 2. **Build.** [`App::build`](router::App::build) walks the module tree into a [`Built`]:
+//!    the `axum::Router`, the resolved route table and the OpenAPI document.
+//!    [`App::try_build`](router::App::try_build) performs the same checks and returns a
+//!    [`BuildError`] instead of panicking.
+//! 3. **Enforce.** The published schema is executed for request validation, and declared security
+//!    installs the matching guard. Rejections use the [`Problem`] body.
 //!
 //! ## Where to look next
 //!
@@ -70,7 +69,7 @@
 //! |---|---|
 //! | [`prelude`] | everything a route module normally imports |
 //! | [`router`] | `App`, `Built`, `Fragment`, `Module` |
-//! | [`extract`] | `Json`, `Form`, `Path`, `Query`, `Extension`, `Validation` |
+//! | [`extract`] | `Json`, `Form`, `Path`, `Query`, `RepeatedQuery`, `Strict`, `Mapped`, `Validation` |
 //! | [`doc`] | `ApiSchema`, parameter tables, response docs, layer docs |
 //! | [`auth`] | `Auth<A>`, `AuthScheme`, `Authenticate`, `Authorize` |
 //! | [`problem`] | the RFC 9457 `Problem` body |
@@ -89,20 +88,21 @@
 //!
 //! | Feature | Enables |
 //! |---|---|
+//! | `macros` | `routes!`, `#[handler]` and the derives (default) |
+//! | `schema-engine` | Execute the emitted JSON Schema for request and response validation (default) |
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
-//! | `schema-engine` | Execute the emitted JSON Schema for request and response validation (default) |
 //! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | `ToSchema`/`ApiSchema` support for those types |
 //!
-//! `ToSchema` is re-exported by [`prelude`], so the usual `use roundhouse::prelude::*;` makes the
-//! derive available. The derived code refers to `utoipa` by name; importing the prelude brings
-//! `utoipa` into scope, or use `use roundhouse::utoipa;` when importing items individually.
+//! `ToSchema` is re-exported by [`prelude`], so `use roundhouse::prelude::*;` makes the derive
+//! available. The prelude also re-exports the `utoipa` module used by the derives; importing
+//! individual items instead uses `use roundhouse::utoipa;`.
 //!
 //! ## Examples
 //!
-//! The repository ships runnable examples for routing, module composition and layers, validation, uploads,
-//! auth and utoipa interop (see the `examples/` directory). `examples/notes` is the smallest and
-//! the best starting point.
+//! The repository ships runnable examples for routing, module composition, layers, validation,
+//! uploads, auth and utoipa interop (see the `examples/` directory). `examples/notes` is the
+//! smallest and the best starting point.
 //!
 //! ## Minimum supported Rust version
 //!

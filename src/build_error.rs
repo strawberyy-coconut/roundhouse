@@ -1,7 +1,7 @@
 //! Build-time diagnostics.
 //!
 //! Resolution is fallible. `App::try_build()` returns these as values; `App::build()` panics with
-//! their `Display` form so a server can log and exit instead of unwinding inside a handler.
+//! their `Display` form.
 
 use std::fmt;
 

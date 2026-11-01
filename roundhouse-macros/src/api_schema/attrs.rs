@@ -64,9 +64,9 @@ pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
                     schema.constraints.example = Some(meta.value()?.parse()?);
                 } else if meta.path.is_ident("skip_validation") {
                     return Err(meta.error(
-                        "`#[schema(skip_validation)]` was removed: a constraint is either published \
-                         and enforced, or not declared. Use `validate = false` on the routes! entry \
-                         to opt the whole body out.",
+                        "`#[schema(skip_validation)]` is not supported: a declared constraint is \
+                         published and enforced. Use `validate = false` on the routes! entry to \
+                         opt the whole body out.",
                     ));
                 } else if meta.path.is_ident("unique_items") {
                     return Err(meta.error(
@@ -85,7 +85,7 @@ pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
                     ));
                 } else if meta.path.is_ident("via") {
                     return Err(meta.error(
-                        "`via = utoipa` is no longer needed: derive `utoipa::ToSchema` alongside \
+                        "`via = utoipa` is not supported: derive `utoipa::ToSchema` alongside \
                          `ApiSchema`",
                     ));
                 } else if meta.input.peek(syn::token::Paren) {

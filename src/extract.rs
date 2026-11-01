@@ -1,13 +1,16 @@
 //! Axum extractors with a `Problem` rejection.
 //!
-//! `Json`, `Form`, `Path` and `Extension` are re-exported from axum; `RepeatedQuery` is the one custom
-//! parser (`serde_html_form`, so repeated keys work). The route shim maps the built-in extractors'
-//! rejections to the canonical [`Problem`], so a handler names axum's types and still answers RFC 9457.
+//! `Json`, `Form`, `Path` and `Extension` are re-exported from axum; `RepeatedQuery` is the custom
+//! query parser (`serde_html_form`, so repeated keys work). The route shim maps the built-in
+//! extractors' rejections to the canonical [`Problem`], so a handler names axum's types and still
+//! answers RFC 9457.
+//!
 //! [`Mapped<T>`] maps a foreign extractor's rejection without enforcing anything; [`Strict<T>`]
 //! enforces the operation's schema as part of extraction.
-//! Validation is the route policy's job, not the extractor's: JSON bodies are checked from the raw
-//! bytes before extraction, and parts are checked by the generated shim. `#[handler]` recognises
-//! both forms by type:
+//!
+//! Validation is a route policy. JSON bodies are checked from the raw request bytes before
+//! extraction, and path, query and form values are checked by the generated shim. `#[handler]`
+//! recognises both forms by type:
 //!
 //! ```ignore
 //! #[handler]
@@ -19,15 +22,14 @@
 //! ```
 //!
 //! [`Validation`] selects the enforcer: the emitted JSON Schema, executed by the `schema-engine`
-//! feature (enabled by default), or nothing. The schema is the only source of declarative
-//! constraints; `validate_with` hooks run afterwards. Bodies are validated after deserialization,
-//! so a violation carries a JSON Pointer into the request body.
+//! feature (enabled by default), or nothing. The schema is the source of declarative constraints;
+//! `validate_with` hooks run afterwards. Failures carry a JSON Pointer into the request body or
+//! the parameter value.
 //!
-//! Validation is also a route policy. Every `routes!` entry is validated by default; the route's
-//! generated shim runs the same checks for `axum`'s extractors (`axum::Json`, `Path`, `RepeatedQuery`,
-//! `Form`), so a handler can stay on axum's types and still be enforced. `validate = false` opts
-//! out. The framework's own extractors above validate during extraction and are not checked
-//! twice.
+//! Every `routes!` entry validates by default. The route's generated shim runs the same checks for
+//! `axum`'s extractors (`axum::Json`, `Path`, `Query`, `RepeatedQuery`, `Form`), so a handler can
+//! stay on axum's types and still be enforced. `validate = false` opts out. The framework's own
+//! extractors validate during extraction and are not checked twice.
 //!
 //! [`Extension`] is axum's stateless extension extractor, so a handler that only takes
 //! `Extension<Arc<T>>` works with unit app state. [`Sse`](crate::Sse) and [`File`](crate::File)
@@ -317,13 +319,12 @@ where
 ///
 /// `Strict<axum::Json<T>>` buffers the body, validates it against the emitted schema, then
 /// deserializes; `Strict<axum::extract::Path<T>>` validates the extracted parts. The inner type is
-/// axum's, so the handler destructures it exactly as before. Writing it is an assertion that this
-/// argument is held to its schema; the route policy (`validate = false`, `Validation::Off`) still
-/// decides whether constraints run, and a `Result<Extractor, E>` argument is never wrapped.
+/// axum's, so the handler destructures it exactly as before. Writing it makes enforcement part of
+/// the signature; the route policy (`validate = false`, `Validation::Off`) still decides whether
+/// constraints run, and a `Result<Extractor, E>` argument is never wrapped.
 ///
-/// The default path does not need this: the route shim maps axum's built-in extractors and the
-/// router dispatches enforcement by the resolved type. Naming `Strict` makes enforcement part of
-/// the signature instead.
+/// Use it when you want the extractor itself to own validation and the `Problem` rejection. Most
+/// handlers use axum's built-in extractors and rely on the route shim instead.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Strict<T>(pub T);
 

@@ -6,12 +6,17 @@ use utoipa::openapi::schema::{Components, KnownFormat, ObjectBuilder, Schema, Sc
 
 use crate::validate::ValidationErrors;
 
+#[cfg(any(
+    feature = "uuid",
+    feature = "chrono",
+    feature = "time",
+    feature = "jiff"
+))]
+use super::string_with_format;
 use super::{
     ApiSchema, any_value, array, bool_schema, bytes_schema, integer, map, nullable, number, string,
     unsigned_integer,
 };
-#[cfg(any(feature = "uuid", feature = "chrono", feature = "time", feature = "jiff"))]
-use super::string_with_format;
 
 impl ApiSchema for () {
     fn schema() -> RefOr<Schema> {

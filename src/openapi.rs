@@ -1,9 +1,9 @@
-//! The stable facade over utoipa's document model.
+//! The facade over utoipa's document model.
 //!
 //! Applications configure an app with [`Info`] and read an [`OpenApi`] document. Both are
-//! roundhouse types; `as_utoipa`/`into_utoipa` are the explicit escape hatch for code that needs
-//! utoipa itself. The rest of the document model (schemas, paths, responses) is re-exported or
-//! accepted through utoipa-compatible values by the derives.
+//! roundhouse types; `as_utoipa`/`into_utoipa` expose the underlying utoipa values. The rest of
+//! the document model (schemas, paths, responses) is accepted through utoipa-compatible values by
+//! the derives.
 //!
 //! ```no_run
 //! use roundhouse::openapi::Info;
@@ -14,8 +14,8 @@
 //! ```
 //!
 //! [`Components`] is the component table passed to low-level `ApiSchema`/`ApiResponse`
-//! implementations. It is currently the utoipa table so hand-written schema code stays
-//! source-compatible; keeping the name here gives a single place to change when utoipa moves.
+//! implementations. It is re-exported from utoipa so hand-written schema code uses the same
+//! model.
 
 use serde::{Deserialize, Serialize};
 

@@ -116,7 +116,8 @@ pub fn build_with_observations(
                 Diagnostic::new(
                     route.record.source_ref(),
                     format!(
-                        "operation `{}` declares file field(s) `{}` without `max_bytes`; they are                          bounded only by the app-wide body limit",
+                        "operation `{}` declares file field(s) `{}` without `max_bytes`; they are \
+                         bounded only by the app-wide body limit",
                         route.operation_id,
                         docs.unbounded_file_fields.join("`, `")
                     ),

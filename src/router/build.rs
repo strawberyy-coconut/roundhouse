@@ -245,7 +245,7 @@ where
     /// Build and serve on `addr`, without a graceful-shutdown signal.
     ///
     /// Use [`App::serve_with`] to stop accepting connections and let in-flight requests finish
-    /// when the process receives `SIGTERM`/`SIGINT`.
+    /// when the supplied shutdown future resolves.
     pub async fn serve(self, addr: impl Into<String>) -> std::io::Result<()> {
         self.serve_with(addr, std::future::pending()).await
     }

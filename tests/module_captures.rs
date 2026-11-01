@@ -600,11 +600,11 @@ fn a_catch_all_in_a_module_is_rejected() {
 }
 
 #[test]
-fn old_axum_syntax_in_a_module_is_rejected() {
+fn a_colon_capture_in_a_module_is_rejected() {
     let error = scoped(&old_syntax_module::MODULE)
         .try_build()
         .err()
-        .expect("`:id` is axum 0.7 syntax");
+        .expect("`:id` is not a supported capture syntax");
     assert!(matches!(error, BuildError::InvalidPrefix { .. }));
 }
 

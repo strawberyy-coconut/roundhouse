@@ -88,7 +88,7 @@ mod mounted {
 fn a_doc_hook_clears_the_marker_and_its_parameter_is_checked() {
     let built = App::new(State)
         .include(&manual::MODULE)
-        .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
+        .openapi(|| roundhouse::openapi::Info::new("Contracts", "0.1.0"))
         .try_build()
         .expect("manual docs build");
     let document = document(&built);
@@ -141,7 +141,7 @@ mod manual_conflict {
 fn a_hand_written_parameter_goes_through_the_conflict_check() {
     let error = App::new(State)
         .include(&manual_conflict::MODULE)
-        .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
+        .openapi(|| roundhouse::openapi::Info::new("Contracts", "0.1.0"))
         .try_build()
         .err()
         .expect("conflicting hand-written parameters must fail");
@@ -178,7 +178,7 @@ mod manual_unknown {
 fn a_hand_written_capture_still_has_to_exist() {
     let error = App::new(State)
         .include(&manual_unknown::MODULE)
-        .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
+        .openapi(|| roundhouse::openapi::Info::new("Contracts", "0.1.0"))
         .try_build()
         .err()
         .expect("an unknown capture must fail");
@@ -189,7 +189,7 @@ fn a_hand_written_capture_still_has_to_exist() {
 fn a_foreign_utoipa_type_is_documented_inline() {
     let built = App::new(State)
         .include(&foreign::MODULE)
-        .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
+        .openapi(|| roundhouse::openapi::Info::new("Contracts", "0.1.0"))
         .try_build()
         .expect("foreign ToSchema types build");
     let document = document(&built);
@@ -217,7 +217,7 @@ fn a_foreign_utoipa_type_is_documented_inline() {
 async fn an_explicit_module_is_served_at_its_declared_prefix() {
     let built = App::new(State)
         .include(&mounted::MODULE)
-        .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
+        .openapi(|| roundhouse::openapi::Info::new("Contracts", "0.1.0"))
         .build();
 
     assert_eq!(
@@ -234,7 +234,7 @@ fn app_merge_is_visible_and_strict_rejects_it() {
     let built = App::new(State)
         .include(&mounted::MODULE)
         .merge(merged)
-        .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
+        .openapi(|| roundhouse::openapi::Info::new("Contracts", "0.1.0"))
         .build();
     let document = document(&built);
     assert_eq!(document["x-roundhouse-merged"], true);
@@ -246,7 +246,7 @@ fn app_merge_is_visible_and_strict_rejects_it() {
     );
     assert_eq!(built.merges().len(), 1);
     assert_eq!(built.merges()[0].source().module_path, "App::merge");
-    assert!(built.merges()[0].location().contains("roadmap.rs"));
+    assert!(built.merges()[0].location().contains("contracts.rs"));
 
     let strict = App::new(State)
         .include(&mounted::MODULE)
@@ -277,7 +277,7 @@ fn the_facade_covers_info_openapi_and_components() {
 async fn a_module_reference_composes_without_a_string_path() {
     let built = App::new(State)
         .include(&mounted::MODULE)
-        .openapi(|| roundhouse::openapi::Info::new("Roadmap", "0.1.0"))
+        .openapi(|| roundhouse::openapi::Info::new("Contracts", "0.1.0"))
         .build();
 
     assert_eq!(

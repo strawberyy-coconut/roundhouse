@@ -1,9 +1,9 @@
 //! Typed multipart extraction.
 //!
-//! `Multipart<F>` reads a `multipart/form-data` body into a derived struct. A derive emits a field
-//! table (`name -> kind`, limits, accepted media types), so the extractor routes each part as it
-//! arrives instead of collecting every part first. The rejection body is the canonical
-//! [`Problem`], so one client parser handles multipart and every other roundhouse extractor.
+//! `Multipart<F>` reads a `multipart/form-data` body into a derived struct. The derive emits a field
+//! table (`name -> kind`, limits, accepted media types); the extractor routes each part as it
+//! arrives against that table. Rejections use the canonical [`Problem`] body, so one client parser
+//! handles multipart and every other roundhouse extractor.
 //!
 //! # Features
 //!

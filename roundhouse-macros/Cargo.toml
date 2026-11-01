@@ -2,7 +2,7 @@
 name = "roundhouse-macros"
 version = "0.2.2"
 edition = "2024"
-description = "Proc macros for roundhouse: routes!, mount!, #[handler] and the derives."
+description = "Proc macros for roundhouse: routes!, #[handler] and the derives."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/strawberyy-coconut/roundhouse"
 rust-version = "1.88"

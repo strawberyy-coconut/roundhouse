@@ -1,11 +1,11 @@
 //! The descriptors `routes!` emits: a module tree of route declarations.
 //!
-//! There is no link-time registry. A `routes!` invocation produces a `pub const MODULE: Module`
-//! (plus `__roundhouse_fragment()`), and an application composes modules explicitly with
-//! `...module` spreads, `App::include` or `app!(state, module)`. Resolution walks that tree.
+//! A `routes!` invocation produces a `pub const MODULE: Module` (plus
+//! `__roundhouse_fragment()`), and an application composes modules explicitly with `...module`
+//! spreads, `App::include` or `app!(state, module)`. Resolution walks that tree.
 //!
 //! The constructors are public (but hidden from docs) because macro expansions in user crates
-//! call them. Their fields are private, so adding a field is not a breaking change.
+//! call them.
 
 use std::any::Any;
 use std::fmt;

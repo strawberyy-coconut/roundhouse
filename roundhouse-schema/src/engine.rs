@@ -118,7 +118,6 @@ impl SchemaEngine {
             .map(|validator| validate_with(validator, value))
     }
 
-    /// Validate a path/query value against its compiled type.
     /// Validate a value against a type identified at runtime. Used by the request layer, which
     /// sees the document's `TypeId` rather than a generic parameter.
     pub fn validate_type(

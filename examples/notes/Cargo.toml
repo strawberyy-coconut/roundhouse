@@ -3,7 +3,7 @@ name = "notes-example"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "The roundhouse example app: a small notes API declared with routes!, mount! and #[handler]."
+description = "The roundhouse example app: a small notes API declared with routes!, module composition and #[handler]."
 
 [dependencies]
 axum = "0.8"

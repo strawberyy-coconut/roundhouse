@@ -1,8 +1,9 @@
 //! RFC 9457 `application/problem+json` responses.
 //!
-//! This is the leaf error type shared by the `roundhouse` facade and its satellites. It depends on
-//! `roundhouse-schema` for [`ValidationError`], but has no route, registry or router knowledge of
-//! its own.
+//! [`Problem`] is the error body used by roundhouse: malformed JSON, a wrong `Content-Type`, a
+//! missing parameter, a failed constraint and an unmatched route all use this shape, so a client
+//! needs one parser. A `Result<_, Problem>` documents a `default` problem response alongside the
+//! success response.
 
 use axum::body::Body;
 use axum::response::{IntoResponse, Response};

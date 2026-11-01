@@ -1,8 +1,12 @@
 //! Schema derivation, constraints and validation.
 //!
-//! This crate has no route or axum dependency: the document half of roundhouse can be used by a
-//! build script, an SDK or a test without compiling a server. The `roundhouse` facade re-exports
-//! everything here, so user imports stay `roundhouse::…`.
+//! This crate has no route or axum dependency: it can be used by a build script, an SDK or a test
+//! without compiling a server. The `roundhouse` facade re-exports its public items, so application
+//! imports normally use `roundhouse::...`.
+//!
+//! `ApiSchema` supplies the document shape and custom validation hooks. `PartsSchema` and
+//! `PartsValue` describe path and query types. The `schema-engine` feature compiles the emitted
+//! JSON Schema and executes it to produce [`ValidationErrors`].
 
 #[cfg(feature = "schema-engine")]
 pub mod engine;

@@ -1,18 +1,16 @@
 //! Authentication and authorization: `Auth<A>` extractors and the security-scheme registry.
 //!
-//! An [`AuthScheme`] is pure metadata: its name, kind, failure statuses and identity type. Its
-//! [`Authenticate`] implementation reads credentials — with access to `Self::State`, normally the
-//! app state — and returns an identity or a rejection.
+//! An [`AuthScheme`] declares its name, kind, state and identity type. Its [`Authenticate`]
+//! implementation reads credentials — with access to `Self::State`, normally the app state — and
+//! returns an identity or a rejection.
 //!
 //! `Auth<A>` extracts that identity. `Auth<A, Scopes>` additionally publishes `Scopes` in the
-//! operation's security requirement and only compiles when `Scopes: Authorize<A>`, so a scope
-//! cannot be documented without an enforcement decision. Several required `Auth<A>` extractors
-//! AND into one requirement; `Option<Auth<A>>` adds the unauthenticated alternative.
+//! operation's security requirement and only compiles when `Scopes: Authorize<A>`. Several
+//! required `Auth<A>` extractors AND into one requirement; `Option<Auth<A>>` adds the
+//! unauthenticated alternative.
 //!
-//! Module-level `security = [A, ...]` names scheme *types*, not strings. It installs the `Auth<A>`
-//! check on every route below that module as well as publishing the requirement, so the document
-//! cannot advertise a check the router does not perform. Scheme kinds are never guessed from
-//! names.
+//! Module-level `security = [A, ...]` names scheme types. It installs the `Auth<A>` check on every
+//! route below that module and publishes the matching requirement.
 //!
 //! A `routes!` entry with one scheme is enforced by the generated handler shim instead: the
 //! shim extracts [`AuthEnforce<A>`] before the body, and the route's guard is skipped
@@ -21,9 +19,8 @@
 //! request extensions and the shim's enforcement is a no-op, so one request authenticates at
 //! most once per scheme.
 //!
-//! The schemes in `examples/auth` are a reference implementation, not a supported backend. See
-//! the crate README for production guidance, and use a maintained library or gateway for token
-//! verification.
+//! The schemes in `examples/auth` are a compact reference implementation. Production code should
+//! verify tokens with a maintained library or gateway.
 
 use std::any::{Any, TypeId};
 use std::future::Future;
@@ -90,8 +87,8 @@ pub fn auth_doc<A: AuthScheme, Scopes: AuthScopes>() -> AuthDoc {
 /// A security requirement that also installs its own enforcer.
 ///
 /// A module's `security = [Bearer]` and a `routes!` entry's `security = [Bearer]` expand to these.
-/// The guard is applied to the route's `MethodRouter`, so the declaration and the check are the
-/// same piece of code: the document cannot advertise a scheme that nothing authenticates.
+/// The guard is applied to the route's `MethodRouter`, so the declaration and the check share one
+/// source.
 #[derive(Clone, Copy)]
 pub struct AuthGuard {
     pub name: &'static str,
@@ -272,12 +269,11 @@ impl AuthScopes for NoScopes {}
 /// trait is the handler's proof that the requirement is enforced: `Auth<A, Scopes>` does not
 /// compile without it. `NoScopes` is the only built-in implementation and grants everything.
 ///
-/// This is a **route-level gate over the identity**, not a resource policy: the method receives
-/// only `A::Identity`, so it can check roles, scopes or whether the principal is active, but it
-/// cannot see the path parameters or the state that would answer "is this user a member of
-/// project X?". Do that check in the handler once the typed path is extracted and return a
-/// `403 Problem`; the document still publishes the route's scope, because scopes and row-level
-/// membership are different claims.
+/// This trait is the route-level gate over the identity: the method receives only
+/// `A::Identity`, so it can check roles, scopes or whether the principal is active. A policy that
+/// needs path parameters or application state belongs in the handler after extraction; return a
+/// `403 Problem` from there. The operation still publishes the route's scope, because the scope
+/// gate and resource policy are separate checks.
 pub trait Authorize<A: AuthScheme>: AuthScopes {
     /// Return `Ok(())` when `identity` may exercise this route, or the rejection to send.
     #[allow(clippy::result_large_err)]
