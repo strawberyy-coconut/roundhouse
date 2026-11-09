@@ -35,7 +35,7 @@ pub(super) fn merge_router(
 
 pub(super) fn add_get_route<H, T>(
     router: Router<()>,
-    path: &'static str,
+    path: &str,
     handler: H,
     source: crate::build_error::Source,
 ) -> Result<Router<()>, BuildError>
@@ -92,6 +92,113 @@ pub(super) fn docs_html(spec_path: &str) -> String {
 </body>
 </html>"##
     )
+}
+
+/// The vendored Swagger UI files served by [`App::swagger`](super::App::swagger).
+#[cfg(feature = "swagger")]
+pub(super) struct SwaggerAsset {
+    pub(super) name: &'static str,
+    pub(super) bytes: &'static [u8],
+    pub(super) content_type: &'static str,
+}
+
+#[cfg(feature = "swagger")]
+pub(super) const SWAGGER_ASSETS: &[SwaggerAsset] = &[
+    SwaggerAsset {
+        name: "swagger-ui.css",
+        bytes: include_bytes!("../../assets/swagger-ui/swagger-ui.css"),
+        content_type: "text/css; charset=utf-8",
+    },
+    SwaggerAsset {
+        name: "swagger-ui-bundle.js",
+        bytes: include_bytes!("../../assets/swagger-ui/swagger-ui-bundle.js"),
+        content_type: "text/javascript; charset=utf-8",
+    },
+    SwaggerAsset {
+        name: "oauth2-redirect.html",
+        bytes: include_bytes!("../../assets/swagger-ui/oauth2-redirect.html"),
+        content_type: "text/html; charset=utf-8",
+    },
+    SwaggerAsset {
+        name: "favicon-16x16.png",
+        bytes: include_bytes!("../../assets/swagger-ui/favicon-16x16.png"),
+        content_type: "image/png",
+    },
+    SwaggerAsset {
+        name: "favicon-32x32.png",
+        bytes: include_bytes!("../../assets/swagger-ui/favicon-32x32.png"),
+        content_type: "image/png",
+    },
+];
+
+#[cfg(feature = "swagger")]
+pub(super) fn swagger_html(spec_path: &str, swagger_path: &str) -> String {
+    let base = swagger_path.trim_end_matches('/');
+    format!(
+        r##"<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>API documentation</title>
+  <link rel="stylesheet" href="{base}/assets/swagger-ui.css">
+  <link rel="icon" type="image/png" href="{base}/assets/favicon-32x32.png" sizes="32x32">
+  <link rel="icon" type="image/png" href="{base}/assets/favicon-16x16.png" sizes="16x16">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="{base}/assets/swagger-ui-bundle.js"></script>
+  <script>
+    SwaggerUIBundle({{
+      url: "{spec_path}",
+      dom_id: "#swagger-ui",
+      oauth2RedirectUrl: "{base}/assets/oauth2-redirect.html"
+    }});
+  </script>
+</body>
+</html>"##
+    )
+}
+
+/// Register the vendored Swagger UI page and its assets.
+#[cfg(feature = "swagger")]
+pub(super) fn add_swagger_routes(
+    router: Router<()>,
+    spec_path: &str,
+    swagger_path: &str,
+) -> Result<Router<()>, BuildError> {
+    let swagger_path = crate::prefix::join("", swagger_path);
+    let html = swagger_html(spec_path, &swagger_path);
+    let mut router = add_get_route(
+        router,
+        &swagger_path,
+        move || {
+            let html = html.clone();
+            async move { axum::response::Html(html) }
+        },
+        crate::build_error::Source::new("App::swagger_route", "<app>", 0),
+    )?;
+
+    let asset_root = crate::prefix::join(&swagger_path, "assets");
+    for asset in SWAGGER_ASSETS {
+        let path = crate::prefix::join(&asset_root, asset.name);
+        let bytes = asset.bytes;
+        let content_type = asset.content_type;
+        router = add_get_route(
+            router,
+            &path,
+            move || async move {
+                let mut response = axum::response::Response::new(axum::body::Body::from(bytes));
+                response.headers_mut().insert(
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::HeaderValue::from_static(content_type),
+                );
+                response
+            },
+            crate::build_error::Source::new("App::swagger_route", "<app>", 0),
+        )?;
+    }
+
+    Ok(router)
 }
 
 pub(super) fn build_module(

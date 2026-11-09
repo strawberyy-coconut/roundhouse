@@ -13,6 +13,8 @@ use crate::problem::Problem;
 use crate::registry::{Method, Module, RouteRecord};
 
 use super::app::App;
+#[cfg(feature = "swagger")]
+use super::assemble::add_swagger_routes;
 use super::assemble::{
     add_get_route, build_method_router, build_module, docs_html, inject_validation_config,
     merge_router,
@@ -39,8 +41,14 @@ where
     /// and document gates as [`App::build`] but never unwinds.
     pub fn try_build(self) -> Result<Built, BuildError> {
         let mut diagnostics = Vec::new();
-        let serve_openapi =
-            self.info.is_some() || self.openapi_route.is_some() || self.docs_route.is_some();
+        #[cfg(feature = "swagger")]
+        let serve_swagger = self.swagger_route.is_some();
+        #[cfg(not(feature = "swagger"))]
+        let serve_swagger = false;
+        let serve_openapi = self.info.is_some()
+            || self.openapi_route.is_some()
+            || self.docs_route.is_some()
+            || serve_swagger;
         let resolved = self.resolve(&mut diagnostics)?;
         self.check_reserved_paths(serve_openapi, &resolved)?;
         for merge in &self.merges {
@@ -154,6 +162,12 @@ where
                 },
                 crate::build_error::Source::new("App::docs_route", "<app>", 0),
             )?;
+        }
+
+        #[cfg(feature = "swagger")]
+        if serve_openapi && let Some(swagger_path) = self.swagger_route {
+            let spec_path = self.openapi_route.unwrap_or("/openapi.json");
+            router = add_swagger_routes(router, spec_path, swagger_path)?;
         }
 
         // A served response is part of the contract: a method mismatch uses the same Problem
@@ -279,22 +293,46 @@ where
             return Ok(());
         }
 
-        let mut reserved = Vec::new();
+        let mut reserved: Vec<(String, &'static str, crate::build_error::Source)> = Vec::new();
         if let Some(path) = self.openapi_route {
-            reserved.push((path, "the generated OpenAPI document"));
+            reserved.push((
+                prefix::join("", path),
+                "the generated OpenAPI document",
+                crate::build_error::Source::new("App::openapi_route", "<app>", 0),
+            ));
         }
         if let Some(path) = self.docs_route {
-            reserved.push((path, "the documentation UI"));
+            reserved.push((
+                prefix::join("", path),
+                "the documentation UI",
+                crate::build_error::Source::new("App::docs_route", "<app>", 0),
+            ));
+        }
+        #[cfg(feature = "swagger")]
+        if let Some(path) = self.swagger_route {
+            let swagger = prefix::join("", path);
+            reserved.push((
+                swagger.clone(),
+                "the self-hosted Swagger UI",
+                crate::build_error::Source::new("App::swagger_route", "<app>", 0),
+            ));
+            let asset_root = prefix::join(&swagger, "assets");
+            for asset in super::assemble::SWAGGER_ASSETS {
+                reserved.push((
+                    prefix::join(&asset_root, asset.name),
+                    "a self-hosted Swagger UI asset",
+                    crate::build_error::Source::new("App::swagger_route", "<app>", 0),
+                ));
+            }
         }
 
-        for (path, what) in reserved {
-            let normalised = prefix::join("", path);
+        for (path, what, _) in &reserved {
             if let Some(route) = resolved.iter().find(|route| {
-                prefix::join("", &route.path) == normalised
+                prefix::join("", &route.path) == *path
                     && matches!(route.method, Method::Get | Method::Any)
             }) {
                 return Err(BuildError::RouteConflict {
-                    path: normalised,
+                    path: path.clone(),
                     reason: format!(
                         "{what} is served at this path; move the document route or the operation"
                     ),
@@ -303,15 +341,18 @@ where
             }
         }
 
-        if let (Some(openapi), Some(docs)) = (self.openapi_route, self.docs_route)
-            && prefix::join("", openapi) == prefix::join("", docs)
-        {
-            return Err(BuildError::RouteConflict {
-                path: prefix::join("", openapi),
-                reason: "the OpenAPI document and the documentation UI cannot share a path"
-                    .to_string(),
-                source: crate::build_error::Source::new("App::docs_route", "<app>", 0),
-            });
+        for (index, (path, what, source)) in reserved.iter().enumerate() {
+            if let Some((_, other, _)) = reserved
+                .iter()
+                .skip(index + 1)
+                .find(|(other_path, _, _)| other_path == path)
+            {
+                return Err(BuildError::RouteConflict {
+                    path: path.clone(),
+                    reason: format!("{what} and {other} cannot share a path"),
+                    source: *source,
+                });
+            }
         }
 
         Ok(())

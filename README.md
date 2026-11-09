@@ -271,6 +271,11 @@ The OpenAPI document is always built. `App::openapi(..)` sets the info and serve
 `/openapi.json`; `App::openapi_route(..)` chooses another path. `App::docs()` serves a Swagger UI
 at `/docs`, and `App::docs_route(..)` moves it. The UI loads pinned Swagger UI assets from unpkg.
 
+With the `swagger` feature, `App::swagger()` serves a self-hosted Swagger UI at `/docs/swagger`
+with the assets embedded in the binary, so the page works without browser network access.
+`App::swagger_route(..)` moves it. `App::docs()` and `App::swagger()` can be used together, or
+`App::swagger()` can replace the CDN UI entirely.
+
 ```rust
 let built = app(state).build();
 std::fs::write("target/openapi.json", built.openapi_json())?;
@@ -317,6 +322,7 @@ Rust 1.88 or newer is required. The default features are `macros` and `schema-en
 |---|---|
 | `macros` | `routes!`, `#[handler]` and the derives |
 | `schema-engine` | Execute the emitted JSON Schema for request and response validation |
+| `swagger` | Vendored Swagger UI assets for `App::swagger()` |
 | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 | `uuid`, `chrono`, `time`, `jiff`, `decimal` | Schema support for those types |

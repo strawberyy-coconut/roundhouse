@@ -35,6 +35,8 @@ multipart = ["dep:roundhouse-multipart", "axum/multipart"]
 multipart-tempfile = ["multipart", "roundhouse-multipart/multipart-tempfile"]
 # Execute the emitted JSON Schema for request/response validation (default).
 schema-engine = ["roundhouse-schema/schema-engine"]
+# Serve the vendored Swagger UI assets with `App::swagger()`.
+swagger = []
 uuid = ["roundhouse-schema/uuid"]
 chrono = ["roundhouse-schema/chrono"]
 time = ["roundhouse-schema/time"]
@@ -73,6 +75,11 @@ uuid = { version = "1", features = ["serde"] }
 name = "files"
 path = "tests/files.rs"
 required-features = ["multipart", "multipart-tempfile"]
+
+[[test]]
+name = "swagger"
+path = "tests/swagger.rs"
+required-features = ["swagger"]
 
 [package.metadata.docs.rs]
 all-features = true

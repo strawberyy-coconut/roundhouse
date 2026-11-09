@@ -90,6 +90,7 @@
 //! |---|---|
 //! | `macros` | `routes!`, `#[handler]` and the derives (default) |
 //! | `schema-engine` | Execute the emitted JSON Schema for request and response validation (default) |
+//! | `swagger` | Vendored Swagger UI assets for `App::swagger()` |
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 //! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | `ToSchema`/`ApiSchema` support for those types |

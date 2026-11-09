@@ -41,6 +41,8 @@ pub struct App<S> {
     pub(crate) document_hooks: Vec<DocumentHook>,
     pub(crate) openapi_route: Option<&'static str>,
     pub(crate) docs_route: Option<&'static str>,
+    #[cfg(feature = "swagger")]
+    pub(crate) swagger_route: Option<&'static str>,
     pub(crate) document_rejections: DocumentRejections,
     pub(crate) validation_status: axum::http::StatusCode,
     pub(crate) validate_responses: bool,
@@ -68,6 +70,8 @@ where
             document_hooks: Vec::new(),
             openapi_route: None,
             docs_route: None,
+            #[cfg(feature = "swagger")]
+            swagger_route: None,
             document_rejections: DocumentRejections::Auto,
             validation_status: axum::http::StatusCode::BAD_REQUEST,
             validate_responses: false,
@@ -201,7 +205,7 @@ where
     ///
     /// This implies the document route: a UI without a document is a broken page. The UI assets
     /// are pinned (and SRI-checked) but loaded from unpkg, so the page needs browser network
-    /// access; serve your own UI at the document route for an air-gapped deployment.
+    /// access. Enable the `swagger` feature and use `App::swagger` for a self-hosted UI.
     pub fn docs(mut self) -> Self {
         self.docs_route = Some("/docs");
         if self.openapi_route.is_none() {
@@ -213,6 +217,30 @@ where
     /// Serve the docs UI at a custom path. Implies the document route.
     pub fn docs_route(mut self, path: &'static str) -> Self {
         self.docs_route = Some(path);
+        if self.openapi_route.is_none() {
+            self.openapi_route = Some("/openapi.json");
+        }
+        self
+    }
+
+    /// Serve a self-hosted Swagger UI at `/docs/swagger` over the generated document.
+    ///
+    /// Unlike [`App::docs`], the page loads its CSS, JavaScript and OAuth redirect assets from
+    /// routes served by this app, so it works without browser network access. This implies the
+    /// document route and can be used alongside [`App::docs`].
+    #[cfg(feature = "swagger")]
+    pub fn swagger(mut self) -> Self {
+        self.swagger_route = Some("/docs/swagger");
+        if self.openapi_route.is_none() {
+            self.openapi_route = Some("/openapi.json");
+        }
+        self
+    }
+
+    /// Serve the self-hosted Swagger UI at a custom path. Implies the document route.
+    #[cfg(feature = "swagger")]
+    pub fn swagger_route(mut self, path: &'static str) -> Self {
+        self.swagger_route = Some(path);
         if self.openapi_route.is_none() {
             self.openapi_route = Some("/openapi.json");
         }
