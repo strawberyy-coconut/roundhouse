@@ -343,6 +343,7 @@ impl<S> ExtractArg for axum::extract::State<S> {
     fn document(_components: &mut Components, _docs: &mut HandlerDocs) {}
 }
 
+#[cfg(feature = "serve")]
 impl<T> ExtractArg for axum::extract::ConnectInfo<T> {
     fn document(_components: &mut Components, _docs: &mut HandlerDocs) {}
 }

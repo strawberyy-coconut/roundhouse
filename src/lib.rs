@@ -84,14 +84,13 @@
 //!
 //! ## Feature flags
 //!
-//! The default build includes the macros, the schema engine and the server runtime. Everything
-//! else is opt-in:
+//! The default build includes the schema engine and the server runtime. The macros are always
+//! part of the framework:
 //!
 //! | Feature | Enables |
 //! |---|---|
-//! | `macros` | `routes!`, `#[handler]` and the derives (default) |
 //! | `schema-engine` | Execute the emitted JSON Schema for request and response validation (default) |
-//! | `serve` | `App::serve`/`App::serve_with` and the tokio server runtime (default) |
+//! | `serve` | `App::serve`/`App::serve_with`, axum's `ConnectInfo<T>`, and the tokio server runtime (default) |
 //! | `swagger` | Vendored Swagger UI assets for `App::swagger()` |
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
@@ -162,9 +161,8 @@ pub use regex;
 pub use serde_json;
 pub use utoipa;
 
-#[cfg(all(feature = "macros", feature = "multipart"))]
+#[cfg(feature = "multipart")]
 pub use roundhouse_macros::Multipart;
-#[cfg(feature = "macros")]
 pub use roundhouse_macros::{
     ApiError, ApiResponse, ApiSchema, PathParams, QueryParams, handler, routes,
 };
@@ -213,7 +211,6 @@ pub mod prelude {
     pub use crate::{ApiError, ApiResponse, ApiSchema, ToSchema, app};
     #[cfg(feature = "multipart")]
     pub use crate::{FilePart, Multipart};
-    #[cfg(feature = "macros")]
     pub use crate::{PathParams, QueryParams, handler, routes};
     pub use axum::response::sse::{Event, KeepAlive, Sse};
 

@@ -345,13 +345,13 @@ cargo add axum
 cargo add serde --features derive
 ```
 
-Rust 1.88 or newer is required. The default features are `macros`, `schema-engine` and `serve`.
+Rust 1.88 or newer is required. The default features are `schema-engine` and `serve`; the macros
+are always part of the framework.
 
 | Feature | Enables |
 |---|---|
-| `macros` | `routes!`, `#[handler]` and the derives |
 | `schema-engine` | Execute the emitted JSON Schema for request and response validation |
-| `serve` | `App::serve`/`App::serve_with` and the tokio server runtime |
+| `serve` | `App::serve`/`App::serve_with`, axum's `ConnectInfo<T>`, and the tokio server runtime |
 | `swagger` | Vendored Swagger UI assets for `App::swagger()` |
 | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 | `multipart-tempfile` | `TempFile` (implies `multipart`) |
