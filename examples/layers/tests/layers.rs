@@ -20,17 +20,17 @@ async fn send(router: axum::Router, method: Method, uri: &str) -> axum::response
 async fn every_layer_level_adds_its_header() {
     let app = built();
 
-    let response = send(app.router(), Method::GET, "/full/ok").await;
+    let response = send(app.into_router(), Method::GET, "/full/ok").await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()["x-global"], "global");
     assert_eq!(response.headers()["x-module"], "module");
 
-    let response = send(app.router(), Method::GET, "/route-layer/ok").await;
+    let response = send(app.into_router(), Method::GET, "/route-layer/ok").await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()["x-global"], "global");
     assert_eq!(response.headers()["x-route-layer"], "route-layer");
 
-    let response = send(app.router(), Method::GET, "/entry/ok").await;
+    let response = send(app.into_router(), Method::GET, "/entry/ok").await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()["x-global"], "global");
     assert_eq!(response.headers()["x-entry"], "entry");
@@ -40,7 +40,7 @@ async fn every_layer_level_adds_its_header() {
 async fn fallback_and_merge_are_wrapped_by_the_global_layer() {
     let app = built();
 
-    let response = send(app.router(), Method::GET, "/missing").await;
+    let response = send(app.into_router(), Method::GET, "/missing").await;
     assert_eq!(response.status(), StatusCode::IM_A_TEAPOT);
     assert_eq!(response.headers()["x-global"], "global");
     let body = http_body_util::BodyExt::collect(response.into_body())
@@ -49,7 +49,7 @@ async fn fallback_and_merge_are_wrapped_by_the_global_layer() {
         .to_bytes();
     assert_eq!(&body[..], b"custom fallback");
 
-    let response = send(app.router(), Method::GET, "/merged").await;
+    let response = send(app.into_router(), Method::GET, "/merged").await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()["x-global"], "global");
 }
@@ -75,7 +75,7 @@ async fn app_router_can_be_embedded_in_a_larger_app() {
 #[tokio::test]
 async fn route_layer_matches_routes_without_wrapping_outer_404s() {
     let app = built();
-    let response = send(app.router(), Method::GET, "/route-layer/missing").await;
+    let response = send(app.into_router(), Method::GET, "/route-layer/missing").await;
     assert_eq!(response.status(), StatusCode::IM_A_TEAPOT);
     assert_eq!(response.headers()["x-global"], "global");
     assert!(response.headers().get("x-route-layer").is_none());

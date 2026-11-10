@@ -92,8 +92,8 @@ async fn discovered_and_hand_written_routers_agree() {
 
 #[tokio::test]
 async fn app_returns_a_real_axum_router() {
-    let router: Router<AppState> = notes_example::app(state()).router();
-    let response = router.with_state(state()).oneshot_request("/healthz").await;
+    let router: Router = notes_example::app(state()).into_router();
+    let response = router.oneshot_request("/healthz").await;
     assert_eq!(response.status(), StatusCode::OK);
 }
 

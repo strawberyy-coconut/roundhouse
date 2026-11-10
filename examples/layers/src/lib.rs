@@ -23,9 +23,8 @@ fn merged_router() -> Router {
 
 /// The other escape hatch: take the ready router and embed it inside a larger axum app.
 pub fn embedded(state: AppState) -> Router {
-    let discovered = app(state.clone()).router();
+    let discovered = app(state).into_router();
     Router::new()
         .nest("/embedded", discovered)
         .route("/outer", get(|| async { "outer" }))
-        .with_state(state)
 }

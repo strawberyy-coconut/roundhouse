@@ -246,11 +246,22 @@ where
         })
     }
 
+    /// The ready `axum::Router<()>`.
+    ///
+    /// Application state has already been applied to every route, so the returned router needs no
+    /// further `with_state` call. Embed it with `nest`, `merge` or `fallback_service`.
+    pub fn into_router(self) -> Router<()> {
+        self.build().router
+    }
+
     /// The escape hatch: a real `axum::Router<S>`.
     ///
     /// State has already been provided inside; wrapping the ready router as a fallback service
     /// keeps the return type exactly what an axum user expects while preserving module layers and
     /// `404`/`405` semantics.
+    #[deprecated(
+        note = "use `App::into_router()`; state is already applied and the router needs no                 second `with_state` call"
+    )]
     pub fn router(self) -> Router<S> {
         let built = self.build();
         Router::<S>::new().fallback_service(built.router)
