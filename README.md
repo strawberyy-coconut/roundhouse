@@ -267,6 +267,14 @@ enforcer:
 `Strict<Path<T>>`, and so on). `Mapped<T>` only converts a foreign extractor's rejection into a
 `Problem` and does not apply a schema.
 
+A JSON body is buffered and parsed once by the schema engine and once by the extractor. That is
+deliberate: it keeps the `Serialize` bound off the handler and validates the bytes the client
+sent. The body limit bounds the memory; the default is 2 MiB, and `App::max_body` changes it.
+`validate = false` is not a silent performance switch: it marks the body unverified, and a strict
+build rejects it. `Strict<Json<T>>` still buffers. A future after-extraction mode for
+`Serialize` body types would avoid the second parse; streaming JSON Schema validation is not
+planned, because `required`, `additionalProperties` and `oneOf` need the whole value.
+
 Failures carry JSON Pointers and stable codes:
 
 ```json

@@ -90,12 +90,17 @@ malformed JSON has the same `Problem` shape as a constraint failure. The flag pr
 
 The cost is that the request body is buffered and parsed once by the validator, then parsed again
 by axum's extractor. That is a deliberate trade-off: it keeps the `Serialize` bound off the
-handler and validates before any extractor can consume the body. `Validation::Off` is the
-app-wide escape hatch when the cost is unacceptable.
+handler and validates before any extractor can consume the body. The body limit bounds the memory;
+the default is 2 MiB and `App::max_body` raises or lowers it.
+
+`validate = false` is not a silent performance switch: it marks the body unverified in the
+document, and `App::strict()` rejects that marker. `Strict<Json<T>>` also buffers and parses
+twice, so it is not an escape hatch for large bodies.
 
 A later optimization may skip the raw layer when the body schema has no enforceable keywords, or
-offer a validate-after-extraction mode for `Serialize` body types. Neither changes the default
-until a benchmark justifies it.
+offer a validate-after-extraction mode for `Serialize` body types. The latter would need an
+explicit extractor or route mode so the `Serialize` bound is checked at compile time. Neither
+changes the default until a benchmark justifies it.
 
 ### 3. The shim
 
@@ -236,7 +241,11 @@ It requires `schema-engine`; without the feature `try_build` returns
 - Only JSON request bodies are validated from raw bytes. Forms are validated after
   deserialisation; multipart is enforced by its extractor.
 - A JSON body is currently parsed twice when schema mode is on: once for validation and once by
-  the extractor. The alternative is documented above.
+  the extractor. For large payloads, set an explicit body limit and choose `validate = false` or
+  `Validation::Off` deliberately; do not add a silent size threshold, because it would change the
+  contract based on the request size.
+- Streaming JSON Schema validation is not planned: `required`, `additionalProperties`, `oneOf` and
+  most format checks need the whole value.
 - Response validation is JSON-only and needs the body in memory.
 - Constraints are declarative. Cross-field, database or async rules belong in `validate_with`
   or the handler, and are not inferred from the document.
