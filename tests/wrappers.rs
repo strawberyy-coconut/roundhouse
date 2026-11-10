@@ -43,8 +43,8 @@ fn wrappers_document_their_statuses() {
         .build();
     let document = serde_json::to_value(built.document()).unwrap();
     assert_eq!(
-        document["paths"]["/things"]["post"]["responses"]["201"]["content"]["application/json"]
-            ["schema"]["$ref"],
+        document["paths"]["/things"]["post"]["responses"]["201"]["content"]["application/json"]["schema"]
+            ["$ref"],
         "#/components/schemas/Thing"
     );
     assert_eq!(
@@ -55,9 +55,7 @@ fn wrappers_document_their_statuses() {
 
 #[tokio::test]
 async fn wrappers_answer_the_status() {
-    let built = roundhouse::App::new(State)
-        .include(&routes::MODULE)
-        .build();
+    let built = roundhouse::App::new(State).include(&routes::MODULE).build();
     let created = built
         .oneshot_json(roundhouse::http::Method::POST, "/things", r#"{}"#)
         .await;

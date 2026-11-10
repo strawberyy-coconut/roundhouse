@@ -148,12 +148,16 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
     };
 
     Ok(vec![quote! {
-        let __rh_recognized = {
-            use #krate::doc::ProbeReturn as _;
-            (&#krate::doc::ReturnProbe::<#ty>::new()).probe_return(components, &mut docs)
-        };
-        if !__rh_recognized {
-            #unknown
+        match {
+            use #krate::doc::ProbeResponses as _;
+            (&#krate::doc::ResponseProbe::<#ty>::new()).probe_responses(components)
+        } {
+            ::core::option::Option::Some(__rh_responses) => {
+                docs.responses.extend(__rh_responses);
+            }
+            ::core::option::Option::None => {
+                #unknown
+            }
         }
     }])
 }

@@ -50,14 +50,3 @@ fn a_result_alias_documents_both_sides() {
     );
     assert_eq!(responses["404"]["description"], "Not Found");
 }
-
-#[test]
-fn probe_sees_through_the_alias() {
-    use roundhouse::doc::{HandlerDocs, ProbeReturn};
-    let mut components = roundhouse::utoipa::openapi::schema::Components::new();
-    let mut docs = HandlerDocs::default();
-    let recognized = (&roundhouse::doc::ReturnProbe::<ApiResult<Json<Thing>>>::new())
-        .probe_return(&mut components, &mut docs);
-    assert!(recognized);
-    assert!(!docs.responses.is_empty());
-}

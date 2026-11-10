@@ -23,12 +23,6 @@ fn register_expr(ty: &Type) -> TokenStream {
 
 pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
     let krate = crate::util::krate();
-    if !input.generics.params.is_empty() {
-        return Err(syn::Error::new_spanned(
-            &input.generics,
-            "ApiResponse/ApiError do not support generic enums in v0.2",
-        ));
-    }
     let ident = input.ident.clone();
     let Data::Enum(data) = &input.data else {
         return Err(syn::Error::new_spanned(
@@ -36,11 +30,18 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             "ApiResponse/ApiError can only be derived for an enum",
         ));
     };
+    let type_params: Vec<syn::Ident> = input
+        .generics
+        .type_params()
+        .map(|param| param.ident.clone())
+        .collect();
 
     let mut arms = Vec::new();
     let mut docs = Vec::new();
     let mut registrations = Vec::new();
     let mut success_statuses: Vec<u16> = Vec::new();
+    let mut runtime_bounds = Vec::new();
+    let mut doc_bounds = Vec::new();
 
     for variant in &data.variants {
         let tags = crate::doc_tags::parse(
@@ -87,6 +88,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         }
 
         let fields = collect_fields(&variant.fields)?;
+        collect_bounds(&fields, &type_params, &mut runtime_bounds, &mut doc_bounds);
         let body = fields.iter().find(|field| field.body);
         let headers: Vec<&FieldInfo> = fields
             .iter()
@@ -309,7 +311,27 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         }
     }
 
+    let mut runtime_generics = input.generics.clone();
+    runtime_generics
+        .make_where_clause()
+        .predicates
+        .extend(runtime_bounds);
+    let mut doc_generics = input.generics.clone();
+    doc_generics
+        .make_where_clause()
+        .predicates
+        .extend(doc_bounds);
+    let (_, ty_generics, _) = input.generics.split_for_impl();
+    let (runtime_impl_generics, _, runtime_where) = runtime_generics.split_for_impl();
+    let (doc_impl_generics, _, doc_where) = doc_generics.split_for_impl();
+    let (error_impl_generics, _, error_where) = input.generics.split_for_impl();
+
     let docs_fn = format_ident!("__roundhouse_responses_{}", ident);
+    let docs_call = if type_params.is_empty() {
+        quote!(#docs_fn(components))
+    } else {
+        quote!(#docs_fn::#ty_generics(components))
+    };
     let detail_prefix = if error_only {
         quote! {
             let _roundhouse_detail = ::std::string::ToString::to_string(&self);
@@ -320,8 +342,10 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
     let error_assert = if error_only {
         quote! {
             const _: fn() = || {
-                fn assert_error<T: ::std::error::Error>() {}
-                assert_error::<#ident>();
+                fn assert_error<T: ::std::error::Error + ?Sized>() {}
+                fn check #error_impl_generics () #error_where {
+                    assert_error::<#ident #ty_generics>();
+                }
             };
         }
     } else {
@@ -331,7 +355,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
     Ok(quote! {
         #error_assert
 
-        impl #krate::axum::response::IntoResponse for #ident {
+        impl #runtime_impl_generics #krate::axum::response::IntoResponse for #ident #ty_generics #runtime_where {
             fn into_response(self) -> #krate::axum::response::Response {
                 use #krate::axum::response::IntoResponse;
                 #detail_prefix
@@ -342,26 +366,117 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         }
 
         #[allow(non_snake_case)]
-        fn #docs_fn(
+        fn #docs_fn #doc_impl_generics (
             components: &mut #krate::utoipa::openapi::schema::Components,
-        ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {
+        ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> #doc_where {
             let mut responses = ::std::vec::Vec::new();
             #(#registrations)*
             #(#docs)*
             responses
         }
 
-        impl #krate::doc::ApiResponse for #ident {
+        impl #doc_impl_generics #krate::doc::ApiResponse for #ident #ty_generics #doc_where {
             const SUCCESS: &'static [u16] = &[#(#success_statuses),*];
 
             fn responses(
                 components: &mut #krate::utoipa::openapi::schema::Components,
             ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {
-                #docs_fn(components)
+                #docs_call
             }
         }
 
     })
+}
+
+fn collect_bounds(
+    fields: &[FieldInfo],
+    type_params: &[syn::Ident],
+    runtime: &mut Vec<syn::WherePredicate>,
+    docs: &mut Vec<syn::WherePredicate>,
+) {
+    let krate = crate::util::krate();
+    for field in fields {
+        let ty = &field.ty;
+        if field.body {
+            let doc_ty = if crate::util::outer_ident(ty).as_deref() == Some("Json") {
+                crate::util::single_generic(ty).unwrap_or_else(|| ty.clone())
+            } else {
+                ty.clone()
+            };
+            if mentions_generic(&doc_ty, type_params) {
+                docs.push(syn::parse2(quote!(#doc_ty: #krate::doc::ApiSchema)).expect("bound"));
+            }
+            if mentions_generic(ty, type_params) {
+                runtime.push(
+                    syn::parse2(quote!(#ty: #krate::axum::response::IntoResponse)).expect("bound"),
+                );
+            }
+        }
+        if field.header.is_some() {
+            if mentions_generic(ty, type_params) {
+                docs.push(syn::parse2(quote!(#ty: #krate::doc::ApiSchema)).expect("bound"));
+            }
+            let runtime_ty = if field.optional {
+                crate::util::single_generic(ty).unwrap_or_else(|| ty.clone())
+            } else {
+                ty.clone()
+            };
+            if mentions_generic(&runtime_ty, type_params) {
+                runtime.push(
+                    syn::parse2(quote!(
+                        #runtime_ty: ::std::convert::TryInto<#krate::axum::http::HeaderValue>
+                    ))
+                    .expect("bound"),
+                );
+            }
+        }
+        if field.location {
+            if mentions_generic(ty, type_params) {
+                docs.push(syn::parse2(quote!(#ty: #krate::doc::ApiSchema)).expect("bound"));
+            }
+            let runtime_ty = if field.optional {
+                crate::util::single_generic(ty).unwrap_or_else(|| ty.clone())
+            } else {
+                ty.clone()
+            };
+            if mentions_generic(&runtime_ty, type_params) {
+                runtime.push(
+                    syn::parse2(quote!(
+                        #runtime_ty: ::std::convert::TryInto<#krate::axum::http::HeaderValue>
+                    ))
+                    .expect("bound"),
+                );
+            }
+        }
+    }
+}
+
+fn mentions_generic(ty: &Type, type_params: &[syn::Ident]) -> bool {
+    match ty {
+        Type::Path(path) => path.path.segments.iter().any(|segment| {
+            type_params.contains(&segment.ident)
+                || match &segment.arguments {
+                    syn::PathArguments::AngleBracketed(arguments) => {
+                        arguments.args.iter().any(|argument| match argument {
+                            syn::GenericArgument::Type(ty) => mentions_generic(ty, type_params),
+                            _ => false,
+                        })
+                    }
+                    _ => false,
+                }
+        }),
+        Type::Reference(reference) => mentions_generic(&reference.elem, type_params),
+        Type::Array(array) => mentions_generic(&array.elem, type_params),
+        Type::Slice(slice) => mentions_generic(&slice.elem, type_params),
+        Type::Tuple(tuple) => tuple
+            .elems
+            .iter()
+            .any(|element| mentions_generic(element, type_params)),
+        Type::Paren(paren) => mentions_generic(&paren.elem, type_params),
+        Type::Group(group) => mentions_generic(&group.elem, type_params),
+        Type::Ptr(ptr) => mentions_generic(&ptr.elem, type_params),
+        _ => false,
+    }
 }
 
 fn canonical_reason(status: u16) -> &'static str {

@@ -124,6 +124,7 @@ pub(super) fn field_info(
     let mut header = None;
     let mut location = false;
     let mut from = false;
+    let mut source = false;
 
     for attr in attrs {
         if attr.path().is_ident("body") {
@@ -132,6 +133,8 @@ pub(super) fn field_info(
             location = true;
         } else if attr.path().is_ident("from") {
             from = true;
+        } else if attr.path().is_ident("source") {
+            source = true;
         } else if attr.path().is_ident("header") {
             let (value, append) = attr.parse_args_with(|input: ParseStream<'_>| {
                 let name: LitStr = input.parse()?;
@@ -153,7 +156,7 @@ pub(super) fn field_info(
         }
     }
 
-    if lone_unnamed && header.is_none() && !location && !from {
+    if lone_unnamed && header.is_none() && !location && !from && !source {
         body = true;
     }
 
