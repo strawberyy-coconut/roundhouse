@@ -96,4 +96,8 @@ impl<T: PathNames> PathNames for Option<T> {
         }
         params
     }
+
+    fn parts_doc() -> Option<crate::schema::PartsDoc> {
+        T::parts_doc()
+    }
 }

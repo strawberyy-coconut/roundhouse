@@ -40,6 +40,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
     let mut arms = Vec::new();
     let mut docs = Vec::new();
     let mut registrations = Vec::new();
+    let mut success_statuses: Vec<u16> = Vec::new();
 
     for variant in &data.variants {
         let attrs = variant
@@ -94,6 +95,9 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
 
         let bindings = bindings(&variant.fields, &variant.ident, &fields);
         let status = attrs.status;
+        if (200..300).contains(&status) && !success_statuses.contains(&status) {
+            success_statuses.push(status);
+        }
         let description = attrs
             .description
             .clone()
@@ -343,6 +347,8 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         }
 
         impl #krate::doc::ApiResponse for #ident {
+            const SUCCESS: &'static [u16] = &[#(#success_statuses),*];
+
             fn responses(
                 components: &mut #krate::utoipa::openapi::schema::Components,
             ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {

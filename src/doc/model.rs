@@ -1,10 +1,9 @@
-use std::any::TypeId;
 use std::collections::BTreeMap;
 
 use utoipa::openapi::RefOr;
-use utoipa::openapi::schema::{Components, Schema};
+use utoipa::openapi::schema::Schema;
 
-use super::{PartsSchema, schema};
+use super::schema;
 
 /// A documented request body.
 #[derive(Clone)]
@@ -81,22 +80,6 @@ impl ResponseDoc {
             content_type: None,
             schema: None,
             headers: Vec::new(),
-        }
-    }
-}
-
-/// A path or query type whose parameter schema the engine should compile.
-#[derive(Clone, Copy)]
-pub struct PartsDoc {
-    pub type_id: fn() -> TypeId,
-    pub schema: fn(&mut Components) -> RefOr<Schema>,
-}
-
-impl PartsDoc {
-    pub fn new<T: PartsSchema + 'static>() -> Self {
-        Self {
-            type_id: || TypeId::of::<T>(),
-            schema: <T as PartsSchema>::parts_schema,
         }
     }
 }

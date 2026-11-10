@@ -45,7 +45,7 @@ mod manual {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, roundhouse::utoipa::ToSchema)]
+#[derive(Debug, Serialize, Deserialize, roundhouse::utoipa::ToSchema, roundhouse::ApiSchema)]
 pub struct Foreign {
     pub id: i64,
 }
@@ -186,21 +186,25 @@ fn a_hand_written_capture_still_has_to_exist() {
 }
 
 #[test]
-fn a_foreign_utoipa_type_is_documented_inline() {
+fn a_foreign_api_schema_type_is_documented_by_reference() {
     let built = App::new(State)
         .include(&foreign::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Contracts", "0.1.0"))
         .try_build()
-        .expect("foreign ToSchema types build");
+        .expect("foreign ApiSchema types build");
     let document = document(&built);
     assert_eq!(
         document["paths"]["/foreign-schema/response"]["get"]["responses"]["200"]["content"]["application/json"]
-            ["schema"]["properties"]["id"]["type"],
-        "integer"
+            ["schema"]["$ref"],
+        "#/components/schemas/Foreign"
     );
     assert_eq!(
         document["paths"]["/foreign-schema/request"]["post"]["requestBody"]["content"]["application/json"]
-            ["schema"]["properties"]["id"]["type"],
+            ["schema"]["$ref"],
+        "#/components/schemas/Foreign"
+    );
+    assert_eq!(
+        document["components"]["schemas"]["Foreign"]["properties"]["id"]["type"],
         "integer"
     );
     assert_eq!(

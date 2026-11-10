@@ -95,6 +95,10 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             fn params() -> ::std::vec::Vec<#krate::doc::Param> {
                 ::std::vec![#(#params),*]
             }
+
+            fn parts_doc() -> ::core::option::Option<#krate::doc::PartsDoc> {
+                ::core::option::Option::Some(#krate::doc::PartsDoc::new::<Self>())
+            }
         }
 
         impl #krate::doc::PathValidate for #ident {

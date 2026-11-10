@@ -4,6 +4,8 @@
 //! describe path and query parameter types. The actual OpenAPI shape comes from
 //! `utoipa::ToSchema`.
 
+use std::any::TypeId;
+
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::{Components, Schema};
 
@@ -63,6 +65,26 @@ pub trait PartsValue {
     fn parts_value(&self) -> serde_json::Value;
 }
 
+/// A path or query type the schema engine should validate for this operation.
+///
+/// The document builder records the type once, and the engine compiles its parts schema for
+/// runtime validation. `PathNames` and `QueryParams` expose one when the type has a
+/// `PartsSchema`; scalar path types have none.
+#[derive(Clone, Copy)]
+pub struct PartsDoc {
+    pub type_id: fn() -> TypeId,
+    pub schema: fn(&mut Components) -> RefOr<Schema>,
+}
+
+impl PartsDoc {
+    pub fn new<T: PartsSchema + 'static>() -> Self {
+        Self {
+            type_id: || TypeId::of::<T>(),
+            schema: <T as PartsSchema>::parts_schema,
+        }
+    }
+}
+
 /// Build the object schema for a parts type from its documented parameters.
 pub trait PathNames {
     const NAMES: &'static [&'static str] = &[];
@@ -74,6 +96,11 @@ pub trait PathNames {
 
     fn params() -> Vec<super::Param> {
         Vec::new()
+    }
+
+    /// The parts schema this path type participates in, if any.
+    fn parts_doc() -> Option<PartsDoc> {
+        None
     }
 }
 

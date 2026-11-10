@@ -106,18 +106,21 @@ impl<T: ?Sized> Default for ResponseProbe<T> {
 }
 
 pub trait ProbeResponses {
-    fn probe_responses(self, components: &mut Components) -> Vec<ResponseDoc>;
+    /// `Some` when the type implements [`ApiResponse`], including a known type that documents no
+    /// response (for example `Option<T>` or `Infallible`). `None` means the document cannot see
+    /// the response type at all.
+    fn probe_responses(self, components: &mut Components) -> Option<Vec<ResponseDoc>>;
 }
 
 impl<T: ApiResponse + ?Sized> ProbeResponses for &ResponseProbe<T> {
-    fn probe_responses(self, components: &mut Components) -> Vec<ResponseDoc> {
-        T::responses(components)
+    fn probe_responses(self, components: &mut Components) -> Option<Vec<ResponseDoc>> {
+        Some(T::responses(components))
     }
 }
 
 impl<T: ?Sized> ProbeResponses for &&ResponseProbe<T> {
-    fn probe_responses(self, _components: &mut Components) -> Vec<ResponseDoc> {
-        Vec::new()
+    fn probe_responses(self, _components: &mut Components) -> Option<Vec<ResponseDoc>> {
+        None
     }
 }
 
@@ -180,6 +183,11 @@ pub fn bytes_response(status: u16) -> ResponseDoc {
 ///
 /// [`Problem`]: crate::Problem
 pub trait ApiResponse {
+    /// The success statuses this response guarantees. An empty slice means the type is known but
+    /// produces no success response; `&[0]` means the status is chosen at runtime and documented
+    /// as OpenAPI's `default` response.
+    const SUCCESS: &'static [u16] = &[200];
+
     fn responses(components: &mut Components) -> Vec<ResponseDoc>;
 }
 
@@ -187,3 +195,118 @@ pub trait ApiResponse {
 pub trait ApiError: std::error::Error + axum::response::IntoResponse + ApiResponse {}
 
 impl<T> ApiError for T where T: std::error::Error + axum::response::IntoResponse + ApiResponse {}
+
+impl<T: ApiSchema> ApiResponse for axum::Json<T> {
+    fn responses(components: &mut Components) -> Vec<ResponseDoc> {
+        json_response::<T>(components, 200)
+    }
+}
+
+impl ApiResponse for String {
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        vec![plain_text_response(200)]
+    }
+}
+
+impl ApiResponse for &'static str {
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        vec![plain_text_response(200)]
+    }
+}
+
+impl ApiResponse for bytes::Bytes {
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        vec![bytes_response(200)]
+    }
+}
+
+impl ApiResponse for axum::body::Body {
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        vec![bytes_response(200)]
+    }
+}
+
+impl<T: ApiSchema> ApiResponse for Vec<T> {
+    fn responses(components: &mut Components) -> Vec<ResponseDoc> {
+        json_response::<Vec<T>>(components, 200)
+    }
+}
+
+impl ApiResponse for axum::http::StatusCode {
+    const SUCCESS: &'static [u16] = &[0];
+
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        vec![ResponseDoc::default_response()]
+    }
+}
+
+impl ApiResponse for () {
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        vec![ResponseDoc::new(200, "OK")]
+    }
+}
+
+impl<T: ApiResponse> ApiResponse for Option<T> {
+    const SUCCESS: &'static [u16] = &[];
+
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        Vec::new()
+    }
+}
+
+impl ApiResponse for std::convert::Infallible {
+    const SUCCESS: &'static [u16] = &[];
+
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        Vec::new()
+    }
+}
+
+impl<T: ApiResponse, E: ApiResponse> ApiResponse for Result<T, E> {
+    const SUCCESS: &'static [u16] = T::SUCCESS;
+
+    fn responses(components: &mut Components) -> Vec<ResponseDoc> {
+        let mut responses = T::responses(components);
+        responses.extend(E::responses(components));
+        responses
+    }
+}
+
+impl<T: ApiResponse> ApiResponse for (axum::http::StatusCode, T) {
+    const SUCCESS: &'static [u16] = &[0];
+
+    fn responses(components: &mut Components) -> Vec<ResponseDoc> {
+        let mut responses = T::responses(components);
+        if responses.is_empty() {
+            return vec![ResponseDoc::default_response()];
+        }
+        for response in &mut responses {
+            response.status = 0;
+        }
+        responses
+    }
+}
+
+impl<T: ApiSchema> ApiResponse for axum::response::Html<T> {
+    fn responses(components: &mut Components) -> Vec<ResponseDoc> {
+        vec![text_response::<T>(components, 200, "text/html")]
+    }
+}
+
+impl<T: crate::attachment::AttachmentType> ApiResponse for crate::attachment::Attachment<T> {
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        vec![crate::attachment::attachment_response::<T>(200)]
+    }
+}
+
+impl ApiResponse for crate::attachment::File {
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        vec![crate::attachment::file_response(200)]
+    }
+}
+
+impl<E> ApiResponse for axum::response::sse::Sse<E> {
+    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+        vec![crate::attachment::sse_response(200)]
+    }
+}

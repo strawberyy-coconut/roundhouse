@@ -62,114 +62,58 @@ pub fn expand(item: ItemFn) -> TokenStream {
     let mut path_type: Option<Type> = None;
     let mut statements: Vec<TokenStream> = Vec::new();
     let mut required_auth: Vec<TokenStream> = Vec::new();
-    let mut body_count = 0usize;
-    let mut body_type: Option<Type> = None;
+    let mut verify_checks: Vec<TokenStream> = Vec::new();
 
     for argument in &item.sig.inputs {
         let FnArg::Typed(argument) = argument else {
             continue;
         };
-        let (ty, handled) = match result_ok_type(&argument.ty) {
-            Some(ok) => (ok, true),
-            None => ((*argument.ty).clone(), false),
-        };
-        if let Some((auth, scopes, optional)) = auth_types(&ty) {
+        let ty = &argument.ty;
+
+        if let Some((auth, _scopes, optional)) = auth_types(ty) {
             if state_type.is_none() {
                 state_type = Some(syn::parse_quote!(
                     <#auth as #krate::auth::AuthScheme>::State
                 ));
             }
-            let scopes = match scopes {
-                Some(scopes) => quote!(#scopes),
-                None => quote!(#krate::auth::NoScopes),
-            };
-            statements.push(quote! {
-                docs.schemes.push(#krate::auth::auth_scheme::<#auth>());
-            });
-            if optional {
-                statements.push(quote! {
-                    docs.optional_auth.push(
-                        #krate::auth::auth_doc::<#auth, #scopes>()
-                    );
-                });
-            } else {
+            if !optional {
                 required_auth.push(quote!(
                     <#auth as #krate::auth::AuthScheme>::NAME
                 ));
-                statements.push(quote! {
-                    docs.required_auth.push(
-                        #krate::auth::auth_doc::<#auth, #scopes>()
-                    );
-                    docs.failures.extend(
-                        #krate::doc::auth_failures::<#auth>()
-                    );
-                });
             }
-            continue;
         }
 
-        // Compile-time metadata that cannot be recovered from the resolved value: the state
-        // type and the `Path<T>` capture list. Both are best-effort and conservative; a path
-        // alias simply leaves `PATH_NAMES` empty (the build still checks the document).
-        match classify(&ty) {
-            ExtractorKind::Path if is_wrapper_type(&ty) => {
-                path_type = single_generic(&strip_wrappers(&ty));
+        // Compile-time metadata that cannot be recovered from a trait bound: the state type and
+        // the `Path<T>` capture list. Both are best-effort and conservative; a path alias simply
+        // leaves `PATH_NAMES` empty (the build still checks the document).
+        match classify(ty) {
+            ExtractorKind::Path if is_wrapper_type(ty) => {
+                path_type = single_generic(&strip_wrappers(ty));
             }
             ExtractorKind::State => {
-                state_type = single_generic(&strip_wrappers(&ty));
-            }
-            kind if kind.is_body() => {
-                body_count += 1;
+                state_type = single_generic(&strip_wrappers(ty));
             }
             _ => {}
         }
 
-        // Remember the body type so `docs_with` can clear the unverified-body marker when the
-        // route's shim validates it. A `Result<Extractor, E>` owns its rejection and is never
-        // cleared; `Option<Json<T>>` is unwrapped so the probe sees `Json<T>`.
-        if !handled && body_type.is_none() && !is_parts_arg(&ty) {
-            body_type = Some(if outer_ident(&ty).as_deref() == Some("Option") {
-                single_generic(&ty).unwrap_or_else(|| ty.clone())
-            } else {
-                ty.clone()
-            });
-        }
-        // Everything else is decided by the resolved type. This is what keeps an alias or a
-        // re-export (`use axum::Json;`, `use roundhouse::Json as Body;`) from claiming the
-        // documentation of a different extractor.
-        let add_failures = !handled;
+        // Everything else is the extractor's own business. The probe resolves `ExtractArg` at the
+        // concrete type and falls back to the unverified-extractor marker for types the framework
+        // does not know.
         statements.push(quote! {
             {
-                use #krate::doc::ProbeExtractor as _;
-                (&#krate::doc::ExtractProbe::<#ty>::new())
-                    .probe_extractor(components, &mut docs, #add_failures);
-            }
-            if !#handled {
-                use #krate::doc::ProbeJsonBody as _;
-                (&&#krate::doc::JsonBodyProbe::<#ty>::new())
-                    .probe_json_body(components, &mut docs);
-                use #krate::doc::ProbeToSchemaBody as _;
-                (&&#krate::doc::ToSchemaBodyProbe::<#ty>::new())
-                    .probe_to_schema_body(components, &mut docs);
-            }
-            {
-                use #krate::doc::ProbeForeignBody as _;
-                (&&#krate::doc::ForeignBodyProbe::<#ty>::new())
-                    .probe_foreign_body(components, &mut docs);
-            }
-            if !#handled {
-                use #krate::doc::ProbeParts as _;
-                (&&#krate::doc::PartsProbe::<#ty>::new()).probe_parts(components, &mut docs);
+                use #krate::doc::ProbeArg as _;
+                (&#krate::doc::ArgProbe::<#ty>::new()).document(components, &mut docs);
             }
         });
-    }
-
-    if body_count > 1 {
-        return syn::Error::new(
-            item.sig.ident.span(),
-            "a handler may read the request body at most once (Json/Form/Multipart)",
-        )
-        .to_compile_error();
+        verify_checks.push(quote! {
+            {
+                use #krate::doc::ProbeArg as _;
+                let __rh_probe = &#krate::doc::ArgProbe::<#ty>::new();
+                if __rh_probe.body_arg() && !__rh_probe.verified() {
+                    __rh_all_verified = false;
+                }
+            }
+        });
     }
 
     let response_statements = match response_statements(&item.sig.output) {
@@ -195,9 +139,9 @@ pub fn expand(item: ItemFn) -> TokenStream {
     let mut shim_idents = Vec::new();
     let mut shim_checks = Vec::new();
     let mut shim_unwraps = Vec::new();
-    // The auth extractor goes just before the body argument, so a handler that also takes
-    // `Auth<A>` runs first and leaves the `Authenticated` marker. The shim's `AuthEnforce` then
-    // sees it and skips a second authentication.
+    // The auth extractor goes just before the body argument. A handler that also takes `Auth<A>`
+    // runs first and leaves the `Authenticated` marker, so the shim's `AuthEnforce` skips a
+    // second authentication.
     let mut auth_positioned = false;
     for (index, argument) in item.sig.inputs.iter().enumerate() {
         let FnArg::Typed(argument) = argument else {
@@ -234,8 +178,8 @@ pub fn expand(item: ItemFn) -> TokenStream {
         });
         shim_checks.push(quote! {
             if let ::core::result::Result::Err(__rh_problem) = {
-                use #krate::shim::ValidateArg as _;
-                (&#ident).validate_arg(&__rh_ctx)
+                use #krate::doc::ProbeArg as _;
+                (&#krate::doc::ArgProbe::<#ty>::new()).validate(&#ident, &__rh_ctx)
             } {
                 return #krate::axum::response::IntoResponse::into_response(__rh_problem);
             }
@@ -249,13 +193,6 @@ pub fn expand(item: ItemFn) -> TokenStream {
         quote!(#name(#(#shim_idents),*).await)
     } else {
         quote!(#name(#(#shim_idents),*))
-    };
-    let body_validated = match &body_type {
-        Some(ty) => quote!({
-            use #krate::shim::ProbeBody as _;
-            (&#krate::shim::BodyProbe::<#ty>::new()).probe_body()
-        }),
-        None => quote!(true),
     };
     let inferred_success = match inferred_successes(&item.sig.output) {
         Some(statuses) => {
@@ -331,8 +268,12 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 validate: bool,
             ) -> #krate::doc::HandlerDocs {
                 let mut docs = <Self as #krate::doc::HandlerMeta>::docs(components);
-                if validate && #body_validated {
-                    docs.unverified = false;
+                if validate {
+                    let mut __rh_all_verified = true;
+                    #(#verify_checks)*
+                    if __rh_all_verified {
+                        docs.unverified = false;
+                    }
                 }
                 docs
             }

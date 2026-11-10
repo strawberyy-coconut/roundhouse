@@ -94,6 +94,13 @@ const OTHER_PARTS: &[&str] = &[
     "TypedHeader",
 ];
 
+/// Whether this argument is a parts extractor. The injected auth extractor is inserted before the
+/// first argument that is not one, so it always precedes the body.
+pub(super) fn is_parts_arg(ty: &Type) -> bool {
+    let ty = result_ok_type(ty).unwrap_or_else(|| ty.clone());
+    classify(&ty).is_parts()
+}
+
 /// Strip `Option<..>` and an explicit `Strict<..>` so classification sees the extractor.
 ///
 /// `Mapped<..>` is deliberately not stripped: a mapping-only extractor is not claimed for the
@@ -133,13 +140,6 @@ pub(super) fn classify(ty: &Type) -> ExtractorKind {
 /// Whether the handler names `Strict` itself. The shim leaves that extractor alone: it enforces.
 pub(super) fn is_explicit_strict(ty: &Type) -> bool {
     outer_ident(ty).as_deref() == Some("Strict")
-}
-
-/// Whether this argument is a parts extractor. The injected auth extractor is inserted before the
-/// first argument that is not one, so it always precedes the body.
-pub(super) fn is_parts_arg(ty: &Type) -> bool {
-    let ty = result_ok_type(ty).unwrap_or_else(|| ty.clone());
-    classify(&ty).is_parts()
 }
 
 pub(super) fn generic_types(ty: &Type) -> Vec<Type> {

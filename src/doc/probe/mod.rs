@@ -1,9 +1,7 @@
 //! Concrete-type probes used by the macros.
 
-mod body;
-mod extract;
+mod arg;
 mod schema;
 
-pub use body::*;
-pub use extract::*;
+pub use arg::*;
 pub use schema::*;

@@ -108,6 +108,51 @@ impl ValidationState {
     }
 }
 
+/// The request's validation state, plus the app's compiled engine.
+///
+/// `#[handler]` passes this to [`ExtractArg::validate`](crate::doc::ExtractArg::validate). A
+/// custom extractor can use [`ValidationContext::enabled`], [`ValidationContext::engine`] and
+/// [`ValidationContext::status`] without reaching into the generated shim.
+#[derive(Clone)]
+pub struct ValidationContext(
+    pub(crate) ValidationState,
+    pub(crate) Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
+);
+
+impl ValidationContext {
+    /// Whether validation should run for this request: the route did not opt out and the app did
+    /// not disable the engine.
+    pub fn enabled(&self) -> bool {
+        !self.0.skip && self.0.mode != Validation::Off
+    }
+
+    /// The compiled schema engine, when schema mode is active.
+    pub fn engine(&self) -> Option<&Arc<roundhouse_schema::engine::SchemaEngine>> {
+        self.1.as_ref()
+    }
+
+    /// The status a validation failure should use. `400` by default.
+    pub fn status(&self) -> StatusCode {
+        self.0.status
+    }
+}
+
+impl<S> FromRequestParts<S> for ValidationContext
+where
+    S: Send + Sync,
+{
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let state = ValidationState::read(&parts.extensions);
+        let engine = parts
+            .extensions
+            .get::<Arc<roundhouse_schema::engine::SchemaEngine>>()
+            .cloned();
+        Ok(Self(state, engine))
+    }
+}
+
 /// An axum extractor whose rejection becomes a [`Problem`], with no schema enforcement.
 ///
 /// `Mapped<axum::Json<T>>` extracts with axum's [`axum::Json`] and converts its rejection into a

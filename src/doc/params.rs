@@ -1,6 +1,6 @@
 use utoipa::openapi::schema::Components;
 
-use super::{Param, PathNames};
+use super::{Param, PartsDoc, PathNames};
 
 pub fn path_params<T: PathNames>() -> Vec<Param> {
     T::params()
@@ -13,6 +13,11 @@ pub trait QueryParams {
     /// Run the custom `validate_with` hooks; declarative constraints come from the parameter
     /// schema.
     fn validate_at(&self, _pointer: &str, _errors: &mut crate::validate::ValidationErrors) {}
+
+    /// The parts schema this query type participates in, if any.
+    fn parts_doc() -> Option<PartsDoc> {
+        None
+    }
 
     fn validate(&self) -> Result<(), crate::validate::ValidationErrors> {
         let mut errors = crate::validate::ValidationErrors::new();
@@ -38,6 +43,10 @@ impl<T: QueryParams> QueryParams for Option<T> {
         if let Some(value) = self {
             value.validate_at(pointer, errors);
         }
+    }
+
+    fn parts_doc() -> Option<PartsDoc> {
+        T::parts_doc()
     }
 }
 

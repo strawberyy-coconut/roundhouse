@@ -249,39 +249,42 @@ pub fn routes(input: TokenStream) -> TokenStream {
 ///
 /// # Extractors
 ///
-/// The macro reads the signature's resolved types, not just their spelling, so aliases and
-/// re-exports keep working. It understands:
+/// The macro no longer classifies argument types. Each extractor contributes its own
+/// documentation and validation through `roundhouse::doc::ExtractArg`; the macro asks the
+/// concrete type and marks an extractor without an implementation as unverified.
 ///
 /// - `State<T>` — sets the app state type. Every handler in one app must agree on it.
 /// - `Path<T>` — records the capture names from `T: roundhouse::PathNames` and the schema for a
 ///   scalar `Path<T>`. With a scalar type the names are unknown, so the compile-time check is
 ///   skipped and the build validates the document instead.
 /// - `Query<T>` and `RepeatedQuery<T>` — document query parameters from `T: roundhouse::QueryParams`.
-/// - `Json<T>`, `Form<T>` and `Multipart<F>` — document the request body. A handler may read the
+/// - `Json<T>`, `Form<T>` and `Multipart<F>` — document the request body. `Json<T>` and `Form<T>`
+///   require `T: roundhouse::ApiSchema` for automatic documentation. A handler may read the
 ///   request body at most once; a second body extractor is a compile error.
 /// - `Auth<A>` and `Option<Auth<A, Scopes>>` — document the security scheme, required or optional
 ///   authentication, and the 401/403 responses.
 /// - `Strict<axum::Json<T>>`, `Strict<Path<T>>`, … — a pure axum extractor with the framework's
 ///   `Problem` rejection; documentation comes from the inner type.
-/// - `Extension<T>` and other extractors — documented when the extractor participates in the
-///   framework's probing protocol. An extractor the macro cannot inspect is marked as unverified;
-///   a strict build rejects it rather than pretending to know its parameters.
-/// - `Result<Extractor, E>` — probes the extractor but lets the error type own the rejection
-///   response.
+/// - `Extension<T>`, `HeaderMap`, `Method`, `Uri`, … — known axum extractors with their documented
+///   contribution. A custom extractor is supported by implementing `ExtractArg`; without it, the
+///   operation is marked `x-roundhouse-unverified-extractor` and a strict build rejects it.
+/// - `Result<Extractor, E>` — documents the extractor's successful shape but lets the error type
+///   own the rejection response.
 ///
 /// Extractors that reject a request contribute their failure responses automatically (for
 /// example a malformed JSON body or a failed constraint).
 ///
 /// # Responses
 ///
-/// The return type determines the success response when it can be described unambiguously:
+/// The return type documents itself through `roundhouse::doc::ApiResponse`. The framework provides
+/// impls for the common axum shapes:
 ///
 /// - no return type — `204 No Content`;
 /// - `()` — `200 OK`;
-/// - `Json<T>` — `200` with an `application/json` schema for `T`;
+/// - `Json<T>` — `200` with an `application/json` schema for `T: ApiSchema`;
 /// - `Html<T>` — `200` with a `text/html` schema;
 /// - `String` and `&str` — `200` with `text/plain`;
-/// - `Vec<u8>`, `Bytes` and `Body` — a binary response;
+/// - `Vec<u8>`, `Bytes` and `Body` — a binary response; other `Vec<T>` values are JSON arrays;
 /// - `Attachment<T>`, `File` and `Sse` — the corresponding attachment/file/event-stream response;
 /// - `StatusCode` — the OpenAPI `default` response, because the status is chosen at runtime;
 /// - `(StatusCode, Body)` and similar tuples — the `default` response when a leading status code
@@ -290,8 +293,9 @@ pub fn routes(input: TokenStream) -> TokenStream {
 ///   `E`. Derive `ApiError` / `ApiResponse` on `E`, or use `Problem`, so that `E` has documented
 ///   responses; otherwise the build reports an undocumented error.
 ///
-/// For any other `IntoResponse` type, declare the response in `routes!` with `responses(..)` or
-/// derive `ApiResponse`. An operation with no declared success response is a build error.
+/// A custom response type implements `ApiResponse` and its `SUCCESS` statuses. For any other
+/// `IntoResponse` type, declare the response in `routes!` with `responses(..)`. An operation with
+/// no declared success response is a build error.
 ///
 /// # Limitations
 ///
@@ -336,10 +340,11 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 ///
 /// `ApiSchema` registers the type as a named component (`$ref`) and applies the roundhouse-only
-/// patches. A type that derives only `ToSchema` can still be a JSON request or response body: the
-/// document inlines its `ToSchema` schema and registers the components it references. Derive
-/// `ApiSchema` when the type should be a named component, uses `unique_items` or the `url` to
-/// `uri` format mapping, or has a `validate_with` hook.
+/// patches. It is the trait automatic body and response documentation requires; a type that
+/// derives only `ToSchema` can still be published with an explicit `responses(status = Type)`
+/// declaration or a `doc` hook. Derive `ApiSchema` when the type is a documented JSON body or
+/// response, should be a named component, uses `unique_items` or the `url` to `uri` format
+/// mapping, or has a `validate_with` hook.
 ///
 /// Component names follow utoipa; use `#[schema(as = module::Name)]` when two types share a simple
 /// name.

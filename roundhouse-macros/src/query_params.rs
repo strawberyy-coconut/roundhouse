@@ -123,6 +123,10 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             ) {
                 #(#validations)*
             }
+
+            fn parts_doc() -> ::core::option::Option<#krate::doc::PartsDoc> {
+                ::core::option::Option::Some(#krate::doc::PartsDoc::new::<Self>())
+            }
         }
 
         impl #krate::doc::PartsSchema for #ident {

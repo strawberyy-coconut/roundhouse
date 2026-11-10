@@ -1,23 +1,26 @@
 //! The documentation half: schema derivation, parameter tables and response declarations.
 //!
 //! Most applications use this module through the derives re-exported at the crate root:
-//! `#[derive(ToSchema)]` for schemas, optionally `#[derive(ApiSchema)]` for named components,
-//! roundhouse-only keywords and `validate_with` hooks, plus `#[derive(QueryParams)]`,
-//! `#[derive(PathParams)]`, `#[derive(ApiResponse)]` and `#[derive(ApiError)]` (and
-//! `#[derive(Multipart)]` with the `multipart` feature).
+//! `#[derive(ApiSchema)]` for documented bodies and responses (with `ToSchema` for the shape),
+//! plus `#[derive(QueryParams)]`, `#[derive(PathParams)]`, `#[derive(ApiResponse)]` and
+//! `#[derive(ApiError)]` (and `#[derive(Multipart)]` with the `multipart` feature).
 //!
-//! The traits here are the manual escape hatch for types the derives cannot see:
+//! The traits here are the extension points the macros use:
 //!
-//! - [`ApiSchema`] — a named component plus roundhouse-only patches and runtime hooks; optional
-//!   for ordinary `ToSchema` bodies, which are documented inline.
-//! - [`ApiResponse`] — the documented responses a return type produces; `ApiError` is re-exported
-//!   from the macros.
+//! - [`ExtractArg`] — how an axum extractor contributes parameters, a body, auth or failures, and
+//!   what route-level validation it needs. Implement it for a custom extractor; no macro change is
+//!   required.
+//! - [`ApiSchema`] — the schema a documented body or response requires. It adds a named component
+//!   and roundhouse-only patches and hooks on top of `utoipa::ToSchema`.
+//! - [`ApiResponse`] — the documented responses a return type produces, plus its compile-time
+//!   `SUCCESS` statuses; `ApiError` is re-exported from the macros.
 //! - [`ResponseDoc`] and [`layer`] — hand-written responses and documented layer guarantees.
 //! - [`validate_document`] — the structural check every build runs over the finished document.
 //!
-//! Schemas are derived by `utoipa::ToSchema`. `#[derive(ApiSchema)]` is the optional extension for
-//! named components, roundhouse-only keywords and `validate_with`. Component names follow utoipa:
-//! unique names stay simple, and a collision is disambiguated with `#[schema(as = module::Type)]`.
+//! `axum::Json<T>`, `Form<T>` and JSON responses require `T: ApiSchema` for automatic
+//! documentation. A plain `ToSchema` type remains available through an explicit
+//! `responses(status = Type)` declaration. Component names follow utoipa: unique names stay
+//! simple, and a collision is disambiguated with `#[schema(as = module::Type)]`.
 
 pub mod build;
 pub mod downgrade;
@@ -35,17 +38,19 @@ use std::any::TypeId;
 use utoipa::openapi::schema::Components;
 
 pub use roundhouse_schema::{
-    ApiSchema, Param, ParamIn, PartsSchema, PartsValue, PathNames, PathValidate,
+    ApiSchema, Param, ParamIn, PartsDoc, PartsSchema, PartsValue, PathNames, PathValidate,
 };
 
 pub use utoipa;
 
+mod arg;
 mod body;
 mod model;
 mod params;
 mod probe;
 mod response_doc;
 
+pub use arg::*;
 pub use body::*;
 pub use model::*;
 pub use params::*;

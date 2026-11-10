@@ -340,19 +340,23 @@ mod result_body {
 }
 
 #[test]
-fn the_body_probe_recognises_a_foreign_json_body() {
-    fn assert_api<T: roundhouse::doc::ApiSchema>() {}
-    assert_api::<NewNote>();
+fn the_extractor_trait_recognises_a_documented_json_body() {
+    fn assert_arg<T: roundhouse::doc::ExtractArg>() {}
+    assert_arg::<axum::Json<NewNote>>();
+    assert_arg::<roundhouse::Strict<axum::Json<NewNote>>>();
+}
 
-    use roundhouse::shim::{BodyProbe, ProbeBody};
-    assert!(
-        (&BodyProbe::<axum::Json<NewNote>>::new()).probe_body(),
-        "the probe resolves at the concrete type"
-    );
-    assert!(
-        !(&BodyProbe::<axum::Json<NotASchema>>::new()).probe_body(),
-        "a body without ApiSchema cannot be validated"
-    );
+#[test]
+fn a_body_without_api_schema_still_builds_as_an_unverified_extractor() {
+    // `NotASchema` does not implement `ApiSchema`, so `Json<NotASchema>` falls back to the
+    // unverified-extractor marker instead of publishing a schema it cannot describe.
+    use roundhouse::doc::ArgProbe;
+    use roundhouse::doc::ProbeArg as _;
+
+    let mut components = roundhouse::utoipa::openapi::schema::Components::new();
+    let mut docs = roundhouse::doc::HandlerDocs::default();
+    (&ArgProbe::<axum::Json<NotASchema>>::new()).document(&mut components, &mut docs);
+    assert!(docs.unverified_extractor);
 }
 
 #[derive(Debug, serde::Deserialize)]

@@ -70,7 +70,7 @@
 //! | [`prelude`] | everything a route module normally imports |
 //! | [`router`] | `App`, `Built`, `Fragment`, `Module` |
 //! | [`extract`] | `Json`, `Form`, `Path`, `Query`, `RepeatedQuery`, `Strict`, `Mapped`, `Validation` |
-//! | [`doc`] | `ApiSchema`, parameter tables, response docs, layer docs |
+//! | [`doc`] | `ExtractArg`, `ApiSchema`, `ApiResponse`, parameter tables, layer docs |
 //! | [`auth`] | `Auth<A>`, `AuthScheme`, `Authenticate`, `Authorize` |
 //! | [`problem`] | the RFC 9457 `Problem` body |
 //! | [`attachment`] | `Attachment`, `File`, SSE responses |
@@ -137,7 +137,9 @@ pub use auth::{
 };
 pub use axum::response::sse::{Event, KeepAlive, Sse};
 pub use build_error::{BuildError, Source};
-pub use doc::{ApiError, ApiResponse, ApiSchema, PathNames, QueryParams, validate_document};
+pub use doc::{
+    ApiError, ApiResponse, ApiSchema, ExtractArg, PathNames, QueryParams, validate_document,
+};
 pub use extract::{
     Extension, Form, Json, Mapped, Path, Query, Rejection, RepeatedQuery, Strict, Validation,
 };
@@ -200,7 +202,7 @@ pub mod prelude {
     pub use crate::TempFile;
     pub use crate::attachment::{Attachment, File};
     pub use crate::auth::{Auth, AuthScheme, AuthScopes, Authenticate, Authorize, NoScopes};
-    pub use crate::doc::PathNames;
+    pub use crate::doc::{ExtractArg, PathNames};
     pub use crate::extract::{Extension, Form, Json, Mapped, Path, Query, RepeatedQuery, Strict};
     pub use crate::problem::Problem;
     pub use crate::utoipa;

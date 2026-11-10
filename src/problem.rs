@@ -8,6 +8,8 @@
 pub use roundhouse_problem::{Problem, problem_schema, problem_value};
 
 impl crate::doc::ApiResponse for Problem {
+    const SUCCESS: &'static [u16] = &[];
+
     /// `Problem` is the framework's default error type, so it contributes a `default` response
     /// with the `application/problem+json` schema. A `Result<_, Problem>` therefore documents the
     /// failures it can produce instead of only its success status.

@@ -360,7 +360,11 @@ fn foreign_extractors_are_marked_and_strict_turns_the_marker_into_an_error() {
         .expect("foreign extractors still build by default");
     let document = document(app);
     assert_eq!(
-        document["paths"]["/foreign/request"]["post"]["x-roundhouse-unverified-body"],
+        document["paths"]["/foreign/request"]["post"]["x-roundhouse-unverified-extractor"],
+        true
+    );
+    assert_eq!(
+        document["paths"]["/foreign/response"]["get"]["x-roundhouse-unverified-response"],
         true
     );
 
@@ -368,8 +372,8 @@ fn foreign_extractors_are_marked_and_strict_turns_the_marker_into_an_error() {
         .strict()
         .try_build()
         .err()
-        .expect("strict mode rejects unverified body extractors");
-    assert!(matches!(error, BuildError::UnverifiedBody { .. }));
+        .expect("strict mode rejects unverified extractors");
+    assert!(matches!(error, BuildError::Diagnostic { .. }));
 }
 
 #[test]

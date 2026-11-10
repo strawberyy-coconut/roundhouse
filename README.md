@@ -112,7 +112,8 @@ Root an app with `roundhouse::app!(state)` from the module that declares the tab
 
 ## Schemas
 
-`utoipa::ToSchema` defines schema shape. `#[derive(ApiSchema)]` is optional and adds:
+`utoipa::ToSchema` defines the underlying schema shape. `#[derive(ApiSchema)]` is the trait the
+automatic body and response documentation uses; it adds:
 
 - a named component (`$ref`) for the type;
 - `#[roundhouse(unique_items)]`;
@@ -134,9 +135,37 @@ pub struct Profile {
 }
 ```
 
+`axum::Json<T>`, `Form<T>` and a JSON response require `T: ApiSchema` when the framework documents
+them automatically. A type that only derives `ToSchema` can still be published with an explicit
+`responses(status = Type)` declaration, or with a `doc = |docs| …` hook.
+
 `QueryParams` and `PathParams` derive the parameter documentation for query and path structs.
 `RepeatedQuery<T>` reads repeated query keys (`?tag=a&tag=b`); axum's `Query<T>` cannot represent
 them.
+
+### Extending the document
+
+Extractors stay axum's. To teach roundhouse about a custom extractor, implement
+`roundhouse::doc::ExtractArg` for it. The handler macro asks each argument how it documents itself
+and whether route-level validation has any work to do.
+
+```rust
+impl ExtractArg for Tenant {
+    fn document(components: &mut Components, docs: &mut HandlerDocs) {
+        docs.params.push(
+            Param::new("x-tenant", ParamIn::Header, schema::string())
+                .description("tenant id"),
+        );
+    }
+}
+```
+
+A custom response type implements `roundhouse::doc::ApiResponse`; `SUCCESS` supplies the
+compile-time success statuses and `responses` supplies the documented bodies.
+
+An extractor without an `ExtractArg` impl (or a body type without `ApiSchema`) is still accepted,
+but the operation is marked `x-roundhouse-unverified-extractor`/`-body` and `App::strict()` turns
+that marker into a build error.
 
 Component names come from utoipa. Use `#[schema(as = module::Name)]` when two types would
 otherwise share a component name.

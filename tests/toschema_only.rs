@@ -3,7 +3,7 @@ use roundhouse::prelude::*;
 #[derive(Clone, Default)]
 pub struct State;
 
-#[derive(serde::Serialize, serde::Deserialize, ToSchema)]
+#[derive(serde::Serialize, serde::Deserialize, ToSchema, ApiSchema)]
 pub struct Payload {
     #[schema(min_length = 3)]
     pub name: String,
@@ -66,13 +66,15 @@ async fn toschema_only_body_and_response_work() {
     let built = roundhouse::app!(State).strict().build();
     let doc = serde_json::to_value(built.document()).unwrap();
     assert_eq!(
-        doc["paths"]["/t/x"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["name"]["minLength"],
-        3
+        doc["paths"]["/t/x"]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/Payload"
     );
     assert_eq!(
-        doc["paths"]["/t/y"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"]
-            ["name"]["minLength"],
+        doc["paths"]["/t/y"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/Payload"
+    );
+    assert_eq!(
+        doc["components"]["schemas"]["Payload"]["properties"]["name"]["minLength"],
         3
     );
     let resp = built
@@ -91,13 +93,13 @@ fn to_schema_only_response_enum_and_declared_response_work() {
     let doc = serde_json::to_value(built.document()).unwrap();
     assert_eq!(
         doc["paths"]["/t/more/created"]["post"]["responses"]["201"]["content"]["application/json"]
-            ["schema"]["properties"]["name"]["minLength"],
-        3
+            ["schema"]["$ref"],
+        "#/components/schemas/Payload"
     );
     assert_eq!(
         doc["paths"]["/t/more/declared"]["get"]["responses"]["200"]["content"]["application/json"]
-            ["schema"]["properties"]["name"]["minLength"],
-        3
+            ["schema"]["$ref"],
+        "#/components/schemas/Payload"
     );
 }
 
