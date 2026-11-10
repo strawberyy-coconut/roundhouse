@@ -31,7 +31,7 @@ mod axum_alias {
 
     routes! {
         prefix = "/axum-alias",
-        post("/", create, operation_id = "axum_alias_create"),
+        "/" => { post(create, operation_id = "axum_alias_create") },
     }
 
     #[handler]
@@ -46,7 +46,7 @@ mod axum_alias_unvalidated {
 
     routes! {
         prefix = "/axum-alias-unvalidated",
-        post("/", create, operation_id = "axum_alias_unvalidated_create", validate = false),
+        "/" => { post(create, operation_id = "axum_alias_unvalidated_create", validate = false) },
     }
 
     #[handler]
@@ -61,7 +61,7 @@ mod roundhouse_alias {
 
     routes! {
         prefix = "/roundhouse-alias",
-        post("/", create, operation_id = "roundhouse_alias_create"),
+        "/" => { post(create, operation_id = "roundhouse_alias_create") },
     }
 
     #[handler]
@@ -77,7 +77,7 @@ mod body_alias {
 
     routes! {
         prefix = "/body-alias",
-        post("/", create, operation_id = "body_alias_create"),
+        "/" => { post(create, operation_id = "body_alias_create") },
     }
 
     #[handler]
@@ -176,7 +176,7 @@ mod strict_alias {
 
     routes! {
         prefix = "/strict-alias",
-        post("/", create, operation_id = "strict_alias_create"),
+        "/" => { post(create, operation_id = "strict_alias_create") },
     }
 
     #[handler]
@@ -190,7 +190,7 @@ mod mapped_only {
 
     routes! {
         prefix = "/mapped",
-        post("/", create, operation_id = "mapped_only_create"),
+        "/" => { post(create, operation_id = "mapped_only_create") },
     }
 
     #[handler]

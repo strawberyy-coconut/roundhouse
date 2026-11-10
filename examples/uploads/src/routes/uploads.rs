@@ -5,10 +5,10 @@ use roundhouse::prelude::*;
 use serde::Serialize;
 
 routes! {
-    post("/", upload),
-    get("/download", download),
-    get("/raw", raw),
-    get("/events", events),
+    "/" => { post(upload) },
+    "/download" => { get(download) },
+    "/raw" => { get(raw) },
+    "/events" => { get(events) },
 }
 
 #[derive(Debug, roundhouse::Multipart)]

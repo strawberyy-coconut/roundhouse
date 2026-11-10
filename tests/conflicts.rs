@@ -5,7 +5,7 @@ pub struct State;
 
 mod one {
     use super::*;
-    routes! { prefix = "/dup", get("/x", x) }
+    routes! { prefix = "/dup", "/x" => { get(x) } }
     #[handler]
     pub async fn x() -> &'static str {
         "one"
@@ -14,7 +14,7 @@ mod one {
 
 mod two {
     use super::*;
-    routes! { prefix = "/dup", get("/x", x) }
+    routes! { prefix = "/dup", "/x" => { get(x) } }
     #[handler]
     pub async fn x() -> &'static str {
         "two"

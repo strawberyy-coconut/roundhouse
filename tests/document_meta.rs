@@ -12,7 +12,7 @@ mod routes {
 
     routes! {
         prefix = "/things",
-        get("/", list, operation_id = "things_list", tags = ["things"]),
+        "/" => { get(list, operation_id = "things_list", tags = ["things"]) },
     }
 
     #[handler]

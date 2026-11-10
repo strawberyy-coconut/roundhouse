@@ -65,7 +65,7 @@ mod legacy {
     routes! {
         prefix = "/ignored",
 
-        get("/legacy", legacy, absolute, tags = ["legacy"]),
+        "/legacy" => { get(legacy, absolute, tags = ["legacy"]) },
     }
 
     #[handler]
@@ -80,9 +80,9 @@ mod gated {
     routes! {
         prefix = "/gated",
 
-        get("/on", on),
+        "/on" => { get(on) },
         #[cfg(any())]
-        get("/off", off),
+        "/off" => { get(off) },
     }
 
     #[handler]
@@ -104,8 +104,8 @@ mod layered {
         prefix = "/layered",
         layer = middleware::from_fn(marker),
 
-        get("/ok", ok, operation_id = "layered_ok"),
-        get("/entry", entry, layer = middleware::from_fn(marker)),
+        "/ok" => { get(ok, operation_id = "layered_ok") },
+        "/entry" => { get(entry, layer = middleware::from_fn(marker)) },
     }
 
     #[handler]
@@ -125,7 +125,7 @@ mod route_layered {
            prefix = "/route-layered",
            layer = middleware::from_fn(marker),
            layer_mode = route,
-    get("/ok", ok, operation_id = "route_layered_ok") }
+    "/ok" => { get(ok, operation_id = "route_layered_ok") } }
 
     #[handler]
     pub async fn ok() -> &'static str {
@@ -166,7 +166,7 @@ mod secured {
     routes! {
            prefix = "/secured",
            security = [Bearer],
-    get("/me", me) }
+    "/me" => { get(me) } }
 
     #[handler]
     pub async fn me(_auth: Auth<Bearer>) -> &'static str {
@@ -180,8 +180,8 @@ mod plain {
     routes! {
         prefix = "/plain",
 
-        get("/", get_plain),
-        post("/", post_plain),
+        "/" => { get(get_plain) },
+        "/" => { post(post_plain) },
     }
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -216,7 +216,7 @@ mod split_notes {
         use roundhouse::prelude::*;
 
         routes! {
-            get("/", list),
+            "/" => { get(list) },
         }
 
         /// @summary: List split notes
@@ -230,7 +230,7 @@ mod split_notes {
         use roundhouse::prelude::*;
 
         routes! {
-            get("/{id}", show, operation_id = "split_show"),
+            "/{id}" => { get(show, operation_id = "split_show") },
         }
 
         #[handler]
@@ -244,7 +244,7 @@ mod collision_a {
     use roundhouse::prelude::*;
     use serde::{Deserialize, Serialize};
 
-    routes! { get("/collision-a", show, operation_id = "collision_a_show") }
+    routes! { "/collision-a" => { get(show, operation_id = "collision_a_show") } }
 
     #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
     #[schema(as = surface::collision_a::Collision)]
@@ -262,7 +262,7 @@ mod collision_b {
     use roundhouse::prelude::*;
     use serde::{Deserialize, Serialize};
 
-    routes! { get("/collision-b", show, operation_id = "collision_b_show") }
+    routes! { "/collision-b" => { get(show, operation_id = "collision_b_show") } }
 
     #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
     #[schema(as = surface::collision_b::Collision)]
@@ -282,7 +282,7 @@ mod documented_layer {
     routes! {
            prefix = "/documented",
            doc = ::roundhouse::doc::layer::rate_limit(429),
-    get("/ok", ok, operation_id = "documented_ok") }
+    "/ok" => { get(ok, operation_id = "documented_ok") } }
 
     #[handler]
     pub async fn ok() -> &'static str {
@@ -294,7 +294,7 @@ mod erased {
     use roundhouse::prelude::*;
     use std::sync::Arc;
 
-    routes! { get("/erased", erased) }
+    routes! { "/erased" => { get(erased) } }
 
     /// No `State<T>` anywhere: this is the erased-style handler shape, served with unit app state.
     #[handler]
@@ -309,18 +309,18 @@ mod shapes {
     routes! {
         prefix = "/shapes",
 
-        get("/color", color),
-        get("/event", event),
-        post("/constrained-event", constrained_event),
-        post("/even", even),
-        get("/utoipa", from_utoipa),
-        post("/created", created),
-        post("/contact", contact),
-        post("/envelope", envelope),
-        post("/unvalidated", unvalidated, validate = false),
-        get("/node", node),
-        get("/tree", tree),
-        get("/lying", lying),
+        "/color" => { get(color) },
+        "/event" => { get(event) },
+        "/constrained-event" => { post(constrained_event) },
+        "/even" => { post(even) },
+        "/utoipa" => { get(from_utoipa) },
+        "/created" => { post(created) },
+        "/contact" => { post(contact) },
+        "/envelope" => { post(envelope) },
+        "/unvalidated" => { post(unvalidated, validate = false) },
+        "/node" => { get(node) },
+        "/tree" => { get(tree) },
+        "/lying" => { get(lying) },
     }
 
     #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]

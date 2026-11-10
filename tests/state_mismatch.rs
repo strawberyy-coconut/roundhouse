@@ -12,7 +12,7 @@ pub struct OtherState;
 mod wrong {
     use super::*;
 
-    routes! { prefix = "/wrong", get("/x", x) }
+    routes! { prefix = "/wrong", "/x" => { get(x) } }
 
     #[handler]
     pub async fn x(State(_): State<OtherState>) -> &'static str {

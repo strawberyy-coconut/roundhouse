@@ -13,11 +13,11 @@ mod files {
     routes! {
         prefix = "/files",
         tags = ["files"],
-        post("/upload", upload),
-        get("/download", download),
-        get("/raw", raw),
-        get("/events", events),
-        post("/strict", strict),
+        "/upload" => { post(upload) },
+        "/download" => { get(download) },
+        "/raw" => { get(raw) },
+        "/events" => { get(events) },
+        "/strict" => { post(strict) },
     }
 
     #[derive(Debug, roundhouse::Multipart)]

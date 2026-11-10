@@ -1,11 +1,11 @@
 error: duplicate route `get /a` in this routes! table
- --> tests/ui/duplicate_route.rs:7:5
+ --> tests/ui/duplicate_route.rs:7:15
   |
-7 |     get("/a", second),
-  |     ^^^
+7 |     "/a" => { get(second) },
+  |               ^^^
 
 error: first declared as `get /a`
- --> tests/ui/duplicate_route.rs:6:5
+ --> tests/ui/duplicate_route.rs:6:15
   |
-6 |     get("/a", first),
-  |     ^^^
+6 |     "/a" => { get(first) },
+  |               ^^^

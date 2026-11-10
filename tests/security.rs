@@ -62,9 +62,9 @@ mod guarded {
         prefix = "/guarded",
         security = [Bearer],
 
-        get("/open", open),
-        get("/own", own),
-        get("/optional", optional),
+        "/open" => { get(open) },
+        "/own" => { get(own) },
+        "/optional" => { get(optional) },
     }
 
     #[handler]
@@ -87,7 +87,7 @@ mod entry {
     use super::*;
 
     routes! {
-        get("/entry", entry, security = [Bearer]),
+        "/entry" => { get(entry, security = [Bearer]) },
     }
 
     #[handler]
@@ -129,7 +129,7 @@ mod mismatched {
         prefix = "/mismatched",
         security = [Other],
 
-        get("/x", x),
+        "/x" => { get(x) },
     }
 
     #[handler]

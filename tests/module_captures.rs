@@ -39,9 +39,9 @@ mod dynamic_parent {
         prefix = "/{project_id}/issues",
         tags = ["issues"],
 
-        get("/", list, operation_id = "issues_list"),
-        get("/{issue_id}", show, operation_id = "issues_show"),
-        get("/{issue_id}/matched", matched, operation_id = "issues_matched"),
+        "/" => { get(list, operation_id = "issues_list") },
+        "/{issue_id}" => { get(show, operation_id = "issues_show") },
+        "/{issue_id}/matched" => { get(matched, operation_id = "issues_matched") },
     }
 
     #[derive(Clone, Default, Deserialize, PathParams)]
@@ -81,7 +81,7 @@ mod unconsumed {
 
     routes! {
            prefix = "/{org}/members",
-    get("/", list, operation_id = "unconsumed_list") }
+    "/" => { get(list, operation_id = "unconsumed_list") } }
 
     #[handler]
     pub async fn list() -> &'static str {
@@ -94,7 +94,7 @@ mod unknown_parameter {
 
     routes! {
            prefix = "/{project_id}/issues",
-    get("/{issue_id}", show, operation_id = "unknown_parameter_show") }
+    "/{issue_id}" => { get(show, operation_id = "unknown_parameter_show") } }
 
     #[derive(Clone, Default, Deserialize, PathParams)]
     pub struct Extra {
@@ -113,7 +113,7 @@ mod duplicate_module_leaf {
 
     routes! {
            prefix = "/{id}",
-    get("/{id}", show, operation_id = "duplicate_module_leaf_show") }
+    "/{id}" => { get(show, operation_id = "duplicate_module_leaf_show") } }
 
     #[handler]
     pub async fn show() -> &'static str {
@@ -126,7 +126,7 @@ mod catch_all_module {
 
     routes! {
            prefix = "/{*rest}",
-    get("/x", broken, operation_id = "catch_all_module_broken") }
+    "/x" => { get(broken, operation_id = "catch_all_module_broken") } }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -139,7 +139,7 @@ mod old_syntax_module {
 
     routes! {
            prefix = "/:id",
-    get("/x", broken, operation_id = "old_syntax_module_broken") }
+    "/x" => { get(broken, operation_id = "old_syntax_module_broken") } }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -152,7 +152,7 @@ mod malformed_module {
 
     routes! {
            prefix = "/{id",
-    get("/x", broken, operation_id = "malformed_module_broken") }
+    "/x" => { get(broken, operation_id = "malformed_module_broken") } }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -165,7 +165,7 @@ mod param_suffix_module {
 
     routes! {
            prefix = "/{bar}-foo",
-    get("/x", broken, operation_id = "param_suffix_module_broken") }
+    "/x" => { get(broken, operation_id = "param_suffix_module_broken") } }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -178,7 +178,7 @@ mod malformed_route {
 
     routes! {
            prefix = "/malformed",
-    get("/{id", broken, operation_id = "malformed_route_broken") }
+    "/{id" => { get(broken, operation_id = "malformed_route_broken") } }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -191,7 +191,7 @@ mod empty_capture_route {
 
     routes! {
            prefix = "/empty",
-    get("/{}", broken, operation_id = "empty_capture_route_broken") }
+    "/{}" => { get(broken, operation_id = "empty_capture_route_broken") } }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -204,7 +204,7 @@ mod param_suffix_route {
 
     routes! {
            prefix = "/suffix",
-    get("/{bar}-foo", broken, operation_id = "param_suffix_route_broken") }
+    "/{bar}-foo" => { get(broken, operation_id = "param_suffix_route_broken") } }
 
     #[handler]
     pub async fn broken() -> &'static str {
@@ -217,7 +217,7 @@ mod catch_all_leaf {
 
     routes! {
            prefix = "/{project_id}/files",
-    get("/{*rest}", get_file, operation_id = "catch_all_leaf_get") }
+    "/{*rest}" => { get(get_file, operation_id = "catch_all_leaf_get") } }
 
     #[handler]
     pub async fn get_file(Path(rest): Path<std::collections::HashMap<String, String>>) -> String {
@@ -249,7 +249,7 @@ mod absolute_under_policy {
     routes! {
         prefix = "/ignored",
         tags = ["ignored"],
-        get("/abs", abs, absolute, operation_id = "absolute_under_policy_abs"),
+        "/abs" => { get(abs, absolute, operation_id = "absolute_under_policy_abs") },
     }
 
     #[handler]
@@ -264,7 +264,7 @@ mod layered_capture {
     routes! {
            prefix = "/{project_id}/issues",
            layer = middleware::from_fn(full_uri),
-    get("/{issue_id}", show, operation_id = "layered_capture_show") }
+    "/{issue_id}" => { get(show, operation_id = "layered_capture_show") } }
 
     #[handler]
     pub async fn show() -> &'static str {
@@ -286,7 +286,7 @@ mod route_layered_parent {
         use roundhouse::prelude::*;
 
         routes! {
-            get("/{issue_id}", show, operation_id = "route_layered_show"),
+            "/{issue_id}" => { get(show, operation_id = "route_layered_show") },
         }
 
         #[handler]
@@ -309,7 +309,7 @@ mod shared {
 
         routes! {
                    prefix = "/shared/{id}",
-        get("/", get_thing, operation_id = "shared_get") }
+        "/" => { get(get_thing, operation_id = "shared_get") } }
 
         #[handler]
         pub async fn get_thing() -> &'static str {
@@ -322,7 +322,7 @@ mod shared {
 
         routes! {
                    prefix = "/shared/{id}",
-        post("/", post_thing, operation_id = "shared_post") }
+        "/" => { post(post_thing, operation_id = "shared_post") } }
 
         #[handler]
         pub async fn post_thing() -> &'static str {
@@ -344,7 +344,7 @@ mod conflicts {
 
         routes! {
                    prefix = "/conflict",
-        get("/{a}", a, operation_id = "conflict_param") }
+        "/{a}" => { get(a, operation_id = "conflict_param") } }
 
         #[handler]
         pub async fn a() -> &'static str {
@@ -357,7 +357,7 @@ mod conflicts {
 
         routes! {
                    prefix = "/conflict",
-        get("/{*rest}", rest, operation_id = "conflict_catch_all") }
+        "/{*rest}" => { get(rest, operation_id = "conflict_catch_all") } }
 
         #[handler]
         pub async fn rest() -> &'static str {
@@ -378,7 +378,7 @@ mod scoped_below {
         use roundhouse::prelude::*;
 
         routes! {
-            get("/", list, operation_id = "scoped_below_list"),
+            "/" => { get(list, operation_id = "scoped_below_list") },
         }
 
         #[handler]
@@ -395,8 +395,8 @@ mod validated {
     routes! {
         prefix = "/{project_id}/reports",
 
-        get("/{report_id}", show, operation_id = "validated_show"),
-        get("/{report_id}/lying", lying, operation_id = "validated_lying"),
+        "/{report_id}" => { get(show, operation_id = "validated_show") },
+        "/{report_id}/lying" => { get(lying, operation_id = "validated_lying") },
     }
 
     #[derive(Clone, Default, Deserialize, PathParams)]

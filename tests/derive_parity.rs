@@ -55,7 +55,7 @@ mod query_names {
 
     routes! {
            prefix = "/query-names",
-    get("/list", list, operation_id = "query_names_list") }
+    "/list" => { get(list, operation_id = "query_names_list") } }
 
     #[derive(Deserialize, QueryParams)]
     #[serde(rename_all = "camelCase")]
@@ -101,7 +101,7 @@ mod query_arrays {
 
     routes! {
            prefix = "/query-arrays",
-    get("/filter", filter, operation_id = "query_arrays_filter") }
+    "/filter" => { get(filter, operation_id = "query_arrays_filter") } }
 
     #[derive(Deserialize, QueryParams)]
     pub struct Filter {
@@ -151,7 +151,7 @@ mod query_container_default {
 
     routes! {
            prefix = "/query-default",
-    get("/page", page, operation_id = "query_default_page") }
+    "/page" => { get(page, operation_id = "query_default_page") } }
 
     #[derive(Deserialize, QueryParams)]
     #[serde(default)]
@@ -189,7 +189,7 @@ mod query_skip {
 
     routes! {
            prefix = "/query-skip",
-    get("/list", list, operation_id = "query_skip_list") }
+    "/list" => { get(list, operation_id = "query_skip_list") } }
 
     #[derive(Deserialize, QueryParams)]
     pub struct Skipping {
@@ -224,7 +224,7 @@ mod query_flatten {
 
     routes! {
            prefix = "/query-flatten",
-    get("/list", list, operation_id = "query_flatten_list") }
+    "/list" => { get(list, operation_id = "query_flatten_list") } }
 
     #[derive(Deserialize, QueryParams)]
     pub struct Filter {
@@ -275,7 +275,7 @@ mod path_names {
 
     routes! {
            prefix = "/path-names",
-    get("/{projectId}", show, operation_id = "path_names_show") }
+    "/{projectId}" => { get(show, operation_id = "path_names_show") } }
 
     #[derive(Deserialize, PathParams)]
     #[serde(rename_all = "camelCase")]
@@ -309,7 +309,7 @@ mod path_uuid {
 
     routes! {
            prefix = "/path-uuid",
-    get("/{id}", show, operation_id = "path_uuid_show") }
+    "/{id}" => { get(show, operation_id = "path_uuid_show") } }
 
     #[handler]
     pub async fn show(Path(id): Path<uuid::Uuid>) -> String {
@@ -341,7 +341,7 @@ mod body_container_default {
 
     routes! {
            prefix = "/body-default",
-    post("/", create, operation_id = "body_default_create") }
+    "/" => { post(create, operation_id = "body_default_create") } }
 
     #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
     #[serde(default)]
@@ -388,7 +388,7 @@ mod custom_extractor {
 
     routes! {
            prefix = "/tenant",
-    get("/", list, operation_id = "tenant_list") }
+    "/" => { get(list, operation_id = "tenant_list") } }
 
     pub struct Tenant(pub String);
 
@@ -435,7 +435,7 @@ mod foreign_extension {
 
     routes! {
            prefix = "/foreign-extension",
-    get("/", x, operation_id = "foreign_extension_x") }
+    "/" => { get(x, operation_id = "foreign_extension_x") } }
 
     #[handler]
     pub async fn x(_value: axum::extract::Extension<std::sync::Arc<usize>>) -> String {

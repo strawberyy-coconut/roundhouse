@@ -4,11 +4,8 @@ use serde::Serialize;
 use crate::auth::DemoBearer;
 
 routes! {
-    get("/admin/audit", audit),
-    get(
-        "/admin/optional",
-        optional
-    ),
+    "/admin/audit" => { get(audit) },
+    "/admin/optional" => { get(optional) },
 }
 
 #[derive(Serialize, ToSchema, ApiSchema)]

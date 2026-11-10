@@ -8,7 +8,7 @@ use crate::schemes::BearerAuth;
 routes! {
     prefix = "/guarded",
     security = [BearerAuth],
-    get("/whoami", whoami),
+    "/whoami" => { get(whoami) },
 }
 
 #[derive(Serialize, ToSchema, ApiSchema)]

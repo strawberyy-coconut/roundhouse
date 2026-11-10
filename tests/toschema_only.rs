@@ -14,8 +14,8 @@ mod more {
 
     routes! {
         prefix = "/more",
-        post("/created", created, operation_id = "toschema_created"),
-        get("/declared", declared, operation_id = "toschema_declared"),
+        "/created" => { post(created, operation_id = "toschema_created") },
+        "/declared" => { get(declared, operation_id = "toschema_declared") },
     }
 
     #[derive(ApiResponse)]
@@ -48,8 +48,8 @@ mod more {
 
 routes! {
     prefix = "/t",
-    post("/x", create, operation_id = "toschema_create"),
-    get("/y", get, operation_id = "toschema_get"),
+    "/x" => { post(create, operation_id = "toschema_create") },
+    "/y" => { get(get, operation_id = "toschema_get") },
     ...more,
 }
 

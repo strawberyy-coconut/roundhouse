@@ -2,7 +2,7 @@ use roundhouse::prelude::*;
 
 routes! {
     tags = ["ops"],
-    get("/healthz", healthz),
+    "/healthz" => { get(healthz) },
 }
 
 /// @summary: Liveness probe

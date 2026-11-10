@@ -11,7 +11,7 @@ mod routes {
 
     routes! {
         prefix = "/validity",
-        get("/items/{id}", show),
+        "/items/{id}" => { get(show) },
     }
 
     #[handler]
@@ -60,7 +60,7 @@ mod invalid_pattern {
 
     routes! {
         prefix = "/invalid-pattern",
-        post("/", create, operation_id = "invalid_pattern_create"),
+        "/" => { post(create, operation_id = "invalid_pattern_create") },
     }
 
     #[derive(serde::Serialize, serde::Deserialize, ToSchema, ApiSchema)]

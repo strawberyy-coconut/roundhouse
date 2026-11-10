@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 routes! {
-    post("/", create),
+    "/" => { post(create) },
 }
 
 /// The success response for `POST /notes`: exactly one variant, one status, one body.

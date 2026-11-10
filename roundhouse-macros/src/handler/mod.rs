@@ -381,7 +381,7 @@ fn declared_response_statements(
 enum ResponseBody {
     Empty,
     Problem,
-    Json(Type),
+    Json(Box<Type>),
 }
 
 fn response_line(line: &DocLine) -> syn::Result<(u16, ResponseBody)> {
@@ -424,9 +424,9 @@ fn response_line(line: &DocLine) -> syn::Result<(u16, ResponseBody)> {
                     "`Json<T>` needs exactly one type argument in `@responses:`",
                 )
             })?;
-            ResponseBody::Json(inner)
+            ResponseBody::Json(Box::new(inner))
         }
-        _ => ResponseBody::Json(ty),
+        _ => ResponseBody::Json(Box::new(ty)),
     };
     Ok((status, body))
 }

@@ -2,7 +2,7 @@ use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 
 routes! {
-    get("/a/thing", thing, operation_id = "thing_a"),
+    "/a/thing" => { get(thing, operation_id = "thing_a") },
 }
 
 #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]

@@ -3,5 +3,5 @@ error[E0080]: evaluation panicked: roundhouse: Path<T> in handler `show` does no
    |
  9 | / routes! {
 10 | |     prefix = "/ui",
-11 | |  get("/{id}", show) }
-   | |_____________________^ evaluation of `_::_` failed here
+11 | |  "/{id}" => { get(show) } }
+   | |___________________________^ evaluation of `_::_` failed here

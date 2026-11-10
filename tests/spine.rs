@@ -61,9 +61,9 @@ mod notes {
     routes! {
         prefix = "/notes",
         tags = ["notes"],
-        get("/", list),
-        post("/", create),
-        get("/{id}", show),
+        "/" => { get(list) },
+        "/" => { post(create) },
+        "/{id}" => { get(show) },
     }
 
     /// @summary: List notes
@@ -96,7 +96,7 @@ mod health {
 
     routes! {
         tags = ["ops"],
-        get("/healthz", healthz, tags = ["ops"]),
+        "/healthz" => { get(healthz, tags = ["ops"]) },
     }
 
     #[handler]

@@ -3,12 +3,9 @@ use roundhouse::prelude::*;
 
 routes! {
     prefix = "/entry",
-    get(
-        "/ok",
-        ok,
+    "/ok" => { get(ok,
         operation_id = "entry_ok",
-        layer = middleware::from_fn(crate::headers::entry),
-    ),
+        layer = middleware::from_fn(crate::headers::entry),) },
 }
 
 /// @summary: A route with its own entry layer

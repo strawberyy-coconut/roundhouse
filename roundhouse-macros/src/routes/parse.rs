@@ -61,28 +61,6 @@ impl Entry {
         }
     }
 
-    /// A flat `get("/path", handler, option = ..)` entry.
-    ///
-    /// Kept as a compatibility spelling while the path-group form is the documented style.
-    pub(super) fn parse_flat(input: ParseStream<'_>) -> Result<Self> {
-        let attrs = Attribute::parse_outer(input)?;
-        let method: Ident = input.parse()?;
-        if !input.peek(syn::token::Paren) {
-            return Err(syn::Error::new(
-                input.span(),
-                "the compact entry form was removed; write `\"/path\" => { get(handler) }`",
-            ));
-        }
-        let content;
-        syn::parenthesized!(content in input);
-        let path: LitStr = content.parse()?;
-        content.parse::<Token![,]>()?;
-        let handler: Path = content.parse()?;
-        let mut entry = Entry::new(attrs, method, path, handler);
-        parse_entry_options(&content, &mut entry)?;
-        Ok(entry)
-    }
-
     /// An entry inside `"/path" => { get(handler, option = ..) }`: the group supplies the path.
     pub(super) fn parse_grouped(input: ParseStream<'_>, path: LitStr) -> Result<Self> {
         let attrs = Attribute::parse_outer(input)?;
@@ -156,13 +134,15 @@ impl Body {
                     entry.attrs.splice(0..0, attrs.clone());
                 }
                 body.groups.push(group);
-            } else {
-                let mut entry = match &shared_path {
-                    Some(path) => Entry::parse_grouped(input, path.clone())?,
-                    None => Entry::parse_flat(input)?,
-                };
+            } else if let Some(path) = &shared_path {
+                let mut entry = Entry::parse_grouped(input, path.clone())?;
                 entry.attrs.splice(0..0, attrs);
                 body.entries.push(entry);
+            } else {
+                return Err(syn::Error::new(
+                    input.span(),
+                    "route entries must be inside a path group; write `\"/path\" => { get(handler) }`",
+                ));
             }
 
             if input.peek(Token![,]) {

@@ -111,7 +111,7 @@ mod json_body {
 
     routes! {
            prefix = "/json",
-    post("/", create, operation_id = "shim_json_create") }
+    "/" => { post(create, operation_id = "shim_json_create") } }
 
     #[handler]
     pub async fn create(axum::Json(body): axum::Json<NewNote>) -> axum::Json<NewNote> {
@@ -125,7 +125,7 @@ mod json_opt_out {
     routes! {
         prefix = "/json-opt-out",
 
-        post("/", create, operation_id = "shim_json_opt_out_create", validate = false)
+        "/" => { post(create, operation_id = "shim_json_opt_out_create", validate = false) }
     }
 
     #[handler]
@@ -139,7 +139,7 @@ mod owned_json {
 
     routes! {
            prefix = "/owned-json",
-    post("/", create, operation_id = "shim_owned_json_create") }
+    "/" => { post(create, operation_id = "shim_owned_json_create") } }
 
     #[handler]
     pub async fn create(Json(body): Json<NewNote>) -> Json<NewNote> {
@@ -152,7 +152,7 @@ mod path_param {
 
     routes! {
            prefix = "/path",
-    get("/{id}", show, operation_id = "shim_path_show") }
+    "/{id}" => { get(show, operation_id = "shim_path_show") } }
 
     #[handler]
     pub async fn show(axum::extract::Path(path): axum::extract::Path<ItemPath>) -> String {
@@ -165,7 +165,7 @@ mod query_param {
 
     routes! {
            prefix = "/query",
-    get("/", list, operation_id = "shim_query_list") }
+    "/" => { get(list, operation_id = "shim_query_list") } }
 
     #[handler]
     pub async fn list(axum::extract::Query(filter): axum::extract::Query<Filter>) -> String {
@@ -178,7 +178,7 @@ mod auth_with_handler {
 
     routes! {
            prefix = "/auth",
-    get("/", whoami, operation_id = "shim_auth_whoami", security = [Counter]) }
+    "/" => { get(whoami, operation_id = "shim_auth_whoami", security = [Counter]) } }
 
     #[handler]
     pub async fn whoami(_auth: Auth<Counter>) -> &'static str {
@@ -191,7 +191,7 @@ mod auth_without_handler {
 
     routes! {
            prefix = "/auth-open",
-    get("/", open, operation_id = "shim_auth_open", security = [Counter]) }
+    "/" => { get(open, operation_id = "shim_auth_open", security = [Counter]) } }
 
     #[handler]
     pub async fn open() -> &'static str {
@@ -204,7 +204,7 @@ mod auth_with_state {
 
     routes! {
            prefix = "/auth-state",
-    get("/", calls, operation_id = "shim_auth_calls", security = [Counter]) }
+    "/" => { get(calls, operation_id = "shim_auth_calls", security = [Counter]) } }
 
     #[handler]
     pub async fn calls(State(state): State<AuthState>, _auth: Auth<Counter>) -> String {
@@ -217,7 +217,7 @@ mod auth_and_body {
 
     routes! {
            prefix = "/auth-body",
-    post("/", create, operation_id = "shim_auth_create", security = [Counter]) }
+    "/" => { post(create, operation_id = "shim_auth_create", security = [Counter]) } }
 
     #[handler]
     pub async fn create(_auth: Auth<Counter>, axum::Json(body): axum::Json<NewNote>) -> String {
@@ -230,7 +230,7 @@ mod strict_validated {
 
     routes! {
            prefix = "/strict-validated",
-    post("/", create, operation_id = "shim_strict_validated") }
+    "/" => { post(create, operation_id = "shim_strict_validated") } }
 
     #[handler]
     pub async fn create(axum::Json(_body): axum::Json<NewNote>) -> StatusCode {
@@ -244,7 +244,7 @@ mod strict_unvalidated {
     routes! {
         prefix = "/strict-unvalidated",
 
-        post("/", create, operation_id = "shim_strict_unvalidated", validate = false)
+        "/" => { post(create, operation_id = "shim_strict_unvalidated", validate = false) }
     }
 
     #[handler]
@@ -258,7 +258,7 @@ mod strict_response {
 
     routes! {
            prefix = "/strict-response",
-    get("/", read, operation_id = "shim_strict_response") }
+    "/" => { get(read, operation_id = "shim_strict_response") } }
 
     #[handler]
     pub async fn read() -> axum::Json<NewNote> {
@@ -273,7 +273,7 @@ mod raw_json {
 
     routes! {
            prefix = "/raw-json",
-    post("/", create, operation_id = "shim_raw_json_create") }
+    "/" => { post(create, operation_id = "shim_raw_json_create") } }
 
     #[handler]
     pub async fn create(axum::Json(_body): axum::Json<RawNote>) -> StatusCode {
@@ -287,7 +287,7 @@ mod raw_json_opt_out {
     routes! {
         prefix = "/raw-json-opt-out",
 
-        post("/", create, operation_id = "shim_raw_json_opt_out", validate = false)
+        "/" => { post(create, operation_id = "shim_raw_json_opt_out", validate = false) }
     }
 
     #[handler]
@@ -301,7 +301,7 @@ mod strict_json {
 
     routes! {
            prefix = "/strict-json",
-    post("/", create, operation_id = "shim_strict_json_create") }
+    "/" => { post(create, operation_id = "shim_strict_json_create") } }
 
     #[handler]
     pub async fn create(Strict(axum::Json(_body)): Strict<axum::Json<NewNote>>) -> StatusCode {
@@ -314,7 +314,7 @@ mod strict_path {
 
     routes! {
            prefix = "/strict-path",
-    get("/{id}", show, operation_id = "shim_strict_path_show") }
+    "/{id}" => { get(show, operation_id = "shim_strict_path_show") } }
 
     #[handler]
     pub async fn show(
@@ -329,7 +329,7 @@ mod result_body {
 
     routes! {
            prefix = "/result",
-    post("/", create, operation_id = "shim_result_create") }
+    "/" => { post(create, operation_id = "shim_result_create") } }
 
     #[handler]
     pub async fn create(
@@ -684,8 +684,8 @@ mod default_rejections {
 
     routes! {
         prefix = "/defaults",
-        get("/items/{id}", show, operation_id = "defaults_show"),
-        get("/search", search, operation_id = "defaults_search"),
+        "/items/{id}" => { get(show, operation_id = "defaults_show") },
+        "/search" => { get(search, operation_id = "defaults_search") },
     }
 
     #[handler]
@@ -734,7 +734,7 @@ mod unvalidated_json {
 
     routes! {
         prefix = "/unvalidated-json",
-        post("/", create, operation_id = "shim_unvalidated_json_create", validate = false),
+        "/" => { post(create, operation_id = "shim_unvalidated_json_create", validate = false) },
     }
 
     #[handler]
@@ -748,7 +748,7 @@ mod optional_json {
 
     routes! {
         prefix = "/optional-json",
-        post("/", create, operation_id = "shim_optional_json_create", validate = false),
+        "/" => { post(create, operation_id = "shim_optional_json_create", validate = false) },
     }
 
     #[handler]

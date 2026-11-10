@@ -68,8 +68,8 @@ impl ApiResponse for Csv {
 
 routes! {
     prefix = "/extensible",
-    get("/tenant", tenant, operation_id = "extensible_tenant"),
-    get("/csv", csv, operation_id = "extensible_csv"),
+    "/tenant" => { get(tenant, operation_id = "extensible_tenant") },
+    "/csv" => { get(csv, operation_id = "extensible_csv") },
 }
 
 #[handler]

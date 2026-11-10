@@ -1,7 +1,7 @@
 use roundhouse::prelude::*;
 
 routes! {
-    get("/metrics", metrics, hidden),
+    "/metrics" => { get(metrics, hidden) },
 }
 
 /// Served, but deliberately absent from the OpenAPI document.

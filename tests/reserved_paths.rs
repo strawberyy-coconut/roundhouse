@@ -11,7 +11,7 @@ mod document_path {
 
     routes! {
            prefix = "/",
-    get("/openapi.json", x, operation_id = "document_path_x") }
+    "/openapi.json" => { get(x, operation_id = "document_path_x") } }
 
     #[handler]
     pub async fn x() -> &'static str {
@@ -36,7 +36,7 @@ mod docs_path {
 
     routes! {
            prefix = "/",
-    get("/docs", x, operation_id = "docs_path_x") }
+    "/docs" => { get(x, operation_id = "docs_path_x") } }
 
     #[handler]
     pub async fn x() -> &'static str {
@@ -73,7 +73,7 @@ mod merged {
 
     routes! {
            prefix = "/merged",
-    get("/x", x, operation_id = "merged_x") }
+    "/x" => { get(x, operation_id = "merged_x") } }
 
     #[handler]
     pub async fn x() -> &'static str {

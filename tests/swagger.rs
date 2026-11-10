@@ -14,7 +14,7 @@ mod routes {
 
     routes! {
         prefix = "/v1",
-        get("/hello", hello),
+        "/hello" => { get(hello) },
     }
 
     #[handler]
@@ -132,7 +132,7 @@ mod collision {
 
     routes! {
         prefix = "/docs/swagger/assets",
-        get("/swagger-ui.css", swagger_ui_css, operation_id = "collision_swagger_ui_css"),
+        "/swagger-ui.css" => { get(swagger_ui_css, operation_id = "collision_swagger_ui_css") },
     }
 
     #[handler]

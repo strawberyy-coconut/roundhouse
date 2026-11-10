@@ -51,10 +51,10 @@ mod query_rules {
 
     routes! {
         prefix = "/rename-rules",
-        get("/lower", lower, operation_id = "rename_rules_lower"),
-        get("/upper", upper, operation_id = "rename_rules_upper"),
-        get("/kebab", kebab, operation_id = "rename_rules_kebab"),
-        get("/pascal", pascal, operation_id = "rename_rules_pascal"),
+        "/lower" => { get(lower, operation_id = "rename_rules_lower") },
+        "/upper" => { get(upper, operation_id = "rename_rules_upper") },
+        "/kebab" => { get(kebab, operation_id = "rename_rules_kebab") },
+        "/pascal" => { get(pascal, operation_id = "rename_rules_pascal") },
     }
 
     #[derive(Deserialize, QueryParams)]
@@ -150,7 +150,7 @@ mod path_upper {
 
     routes! {
         prefix = "/path-upper",
-        get("/{PER_PAGE}", show, operation_id = "path_upper_show"),
+        "/{PER_PAGE}" => { get(show, operation_id = "path_upper_show") },
     }
 
     #[derive(Deserialize, PathParams)]

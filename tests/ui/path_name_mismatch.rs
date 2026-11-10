@@ -8,7 +8,7 @@ pub struct Wrong {
 
 routes! {
     prefix = "/ui",
- get("/{id}", show) }
+ "/{id}" => { get(show) } }
 
 #[handler]
 pub async fn show(Path(Wrong { other }): Path<Wrong>) -> String {

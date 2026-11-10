@@ -2,7 +2,7 @@ use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 
 routes! {
-    post("/events", create),
+    "/events" => { post(create) },
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]

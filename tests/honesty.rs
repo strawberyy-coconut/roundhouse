@@ -22,7 +22,7 @@ mod declared {
     routes! {
         prefix = "/declared",
 
-        get("/x", x, operation_id = "declared_x"),
+        "/x" => { get(x, operation_id = "declared_x") },
     }
 
     /// @responses:
@@ -44,7 +44,7 @@ mod typed {
     routes! {
         prefix = "/typed",
 
-        get("/x", x, operation_id = "typed_x"),
+        "/x" => { get(x, operation_id = "typed_x") },
     }
 
     /// @responses:
@@ -66,7 +66,7 @@ mod override_response {
     routes! {
         prefix = "/override-response",
 
-        get("/x", x, operation_id = "override_x"),
+        "/x" => { get(x, operation_id = "override_x") },
     }
 
     /// @responses(override):
@@ -83,7 +83,7 @@ mod conflict_response {
     routes! {
         prefix = "/conflict-response",
 
-        get("/x", x, operation_id = "conflict_x"),
+        "/x" => { get(x, operation_id = "conflict_x") },
     }
 
     /// @responses:
@@ -99,7 +99,7 @@ mod problem_error {
 
     routes! {
            prefix = "/problem-error",
-    get("/x", x, operation_id = "problem_error_x") }
+    "/x" => { get(x, operation_id = "problem_error_x") } }
 
     #[allow(clippy::result_large_err)]
     #[handler]
@@ -113,7 +113,7 @@ mod dynamic_status {
 
     routes! {
            prefix = "/dynamic-status",
-    post("/x", x, operation_id = "dynamic_status_x") }
+    "/x" => { post(x, operation_id = "dynamic_status_x") } }
 
     #[handler]
     pub async fn x() -> (StatusCode, Json<Payload>) {
@@ -143,7 +143,7 @@ mod blind_error {
 
     routes! {
            prefix = "/blind-error",
-    get("/x", x, operation_id = "blind_error_x") }
+    "/x" => { get(x, operation_id = "blind_error_x") } }
 
     #[handler]
     pub async fn x() -> Result<Json<Payload>, BlindError> {
@@ -156,7 +156,7 @@ mod extension {
 
     routes! {
            prefix = "/extension",
-    get("/x", x, operation_id = "extension_x") }
+    "/x" => { get(x, operation_id = "extension_x") } }
 
     #[handler]
     pub async fn x(
@@ -179,8 +179,8 @@ mod foreign {
     routes! {
         prefix = "/foreign",
 
-        get("/response", response, operation_id = "foreign_response"),
-        post("/request", request, operation_id = "foreign_request"),
+        "/response" => { get(response, operation_id = "foreign_response") },
+        "/request" => { post(request, operation_id = "foreign_request") },
     }
 
     #[handler]
@@ -213,7 +213,7 @@ mod blind_response {
 
     routes! {
            prefix = "/blind-response",
-    get("/x", x, operation_id = "blind_response_x") }
+    "/x" => { get(x, operation_id = "blind_response_x") } }
 
     #[handler]
     pub async fn x() -> BlindResponse {
@@ -226,7 +226,7 @@ mod cross_duplicate_route_a {
 
     routes! {
            prefix = "/cross-dup",
-    get("/x", a, operation_id = "cross_dup_a") }
+    "/x" => { get(a, operation_id = "cross_dup_a") } }
 
     #[handler]
     pub async fn a() -> &'static str {
@@ -239,7 +239,7 @@ mod cross_duplicate_route_b {
 
     routes! {
            prefix = "/cross-dup",
-    get("/x", b, operation_id = "cross_dup_b") }
+    "/x" => { get(b, operation_id = "cross_dup_b") } }
 
     #[handler]
     pub async fn b() -> &'static str {
@@ -252,7 +252,7 @@ mod cross_duplicate_operation_a {
 
     routes! {
            prefix = "/cross-op-a",
-    get("/", a, operation_id = "shared_operation") }
+    "/" => { get(a, operation_id = "shared_operation") } }
 
     #[handler]
     pub async fn a() -> &'static str {
@@ -265,7 +265,7 @@ mod cross_duplicate_operation_b {
 
     routes! {
            prefix = "/cross-op-b",
-    get("/", b, operation_id = "shared_operation") }
+    "/" => { get(b, operation_id = "shared_operation") } }
 
     #[handler]
     pub async fn b() -> &'static str {
@@ -279,7 +279,7 @@ mod metadata {
     routes! {
         prefix = "/metadata",
 
-        get("/x", x, operation_id = "metadata_x", deprecated, public),
+        "/x" => { get(x, operation_id = "metadata_x", deprecated, public) },
     }
 
     #[handler]
@@ -294,7 +294,7 @@ mod default_status {
     routes! {
         prefix = "/default-status",
 
-        get("/x", x, operation_id = "default_status_x"),
+        "/x" => { get(x, operation_id = "default_status_x") },
     }
 
     #[handler]
@@ -356,7 +356,7 @@ fn a_declared_response_that_contradicts_the_handler_needs_override() {
         error,
         BuildError::ConflictingResponse { status: 200, .. }
     ));
-    assert!(error.to_string().contains("add `override`"));
+    assert!(error.to_string().contains("@responses(override):"));
 }
 
 #[test]

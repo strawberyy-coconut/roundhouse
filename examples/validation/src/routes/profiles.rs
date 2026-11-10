@@ -6,12 +6,9 @@ use crate::error::ApiError;
 routes! {
     prefix = "/profiles",
     tags = ["profiles"],
-    post("/", create),
-    post(
-        "/unchecked",
-        unchecked,
-        validate = false,
-    ),
+    "/" => { post(create) },
+    "/unchecked" => { post(unchecked,
+        validate = false,) },
 }
 
 /// @summary: Create a profile

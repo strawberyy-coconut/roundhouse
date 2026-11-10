@@ -5,12 +5,12 @@ use roundhouse::utoipa::openapi::schema::{ObjectBuilder, Type};
 use serde::{Deserialize, Serialize};
 
 routes! {
-    post("/even", even),
-    get("/utoipa", external),
-    any("/echo", echo),
-    get("/erased", erased),
+    "/even" => { post(even) },
+    "/utoipa" => { get(external) },
+    "/echo" => { any(echo) },
+    "/erased" => { get(erased) },
     #[cfg(feature = "extras")]
-    get("/extras", extras),
+    "/extras" => { get(extras) },
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]

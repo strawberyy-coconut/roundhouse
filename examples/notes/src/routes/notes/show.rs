@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 routes! {
-    get("/{id}", show),
+    "/{id}" => { get(show) },
 }
 
 /// @summary: Read a note

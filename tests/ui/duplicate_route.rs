@@ -3,8 +3,8 @@ use roundhouse::prelude::*;
 routes! {
     prefix = "/x",
 
-    get("/a", first),
-    get("/a", second),
+    "/a" => { get(first) },
+    "/a" => { get(second) },
 }
 
 #[handler]

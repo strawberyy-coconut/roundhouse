@@ -30,7 +30,7 @@ impl Authenticate for Bearer {
 
 routes! {
     prefix = "/x",
- get("/", show, security = [Bearer]) }
+ "/" => { get(show, security = [Bearer]) } }
 
 #[handler]
 async fn show(State(_state): State<HandlerState>) -> &'static str {

@@ -17,9 +17,7 @@ mod manual {
     routes! {
         prefix = "/manual",
 
-        get(
-            "/items/{id}",
-            show,
+        "/items/{id}" => { get(show,
             operation_id = "manual_show",
             doc = |docs| {
                 docs.unverified_extractor = false;
@@ -31,8 +29,7 @@ mod manual {
                     )
                     .description("written by hand"),
                 );
-            },
-        ),
+            },) },
     }
 
     #[handler]
@@ -56,8 +53,8 @@ mod foreign {
     routes! {
         prefix = "/foreign-schema",
 
-        get("/response", response, operation_id = "foreign_schema_response"),
-        post("/request", request, operation_id = "foreign_schema_request"),
+        "/response" => { get(response, operation_id = "foreign_schema_response") },
+        "/request" => { post(request, operation_id = "foreign_schema_request") },
     }
 
     #[handler]
@@ -76,7 +73,7 @@ mod mounted {
 
     routes! {
            prefix = "/inner",
-    get("/x/{id}", x) }
+    "/x/{id}" => { get(x) } }
 
     #[handler]
     pub async fn x(Path(id): Path<u64>) -> String {
@@ -110,9 +107,7 @@ mod manual_conflict {
     routes! {
         prefix = "/manual-conflict",
 
-        get(
-            "/items/{id}",
-            show,
+        "/items/{id}" => { get(show,
             operation_id = "manual_conflict_show",
             doc = |docs| {
                 docs.params.push(roundhouse::Param::new(
@@ -127,8 +122,7 @@ mod manual_conflict {
                         roundhouse::utoipa::openapi::schema::KnownFormat::Int64,
                     ),
                 ));
-            },
-        ),
+            },) },
     }
 
     #[handler]
@@ -154,9 +148,7 @@ mod manual_unknown {
     routes! {
         prefix = "/manual-unknown",
 
-        get(
-            "/items",
-            show,
+        "/items" => { get(show,
             operation_id = "manual_unknown_show",
             doc = |docs| {
                 docs.params.push(roundhouse::Param::new(
@@ -164,8 +156,7 @@ mod manual_unknown {
                     roundhouse::ParamIn::Path,
                     roundhouse::doc::schema::string(),
                 ));
-            },
-        ),
+            },) },
     }
 
     #[handler]

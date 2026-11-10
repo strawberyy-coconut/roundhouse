@@ -3,8 +3,8 @@ error[E0271]: type mismatch resolving `<Authed<Bearer> as ShimPolicy>::State == 
    |
 31 | / routes! {
 32 | |     prefix = "/x",
-33 | |  get("/", show, security = [Bearer]) }
-   | |______________________________________^ expected `HandlerState`, found `SchemeState`
+33 | |  "/" => { get(show, security = [Bearer]) } }
+   | |____________________________________________^ expected `HandlerState`, found `SchemeState`
    |
    = note: required for `roundhouse::shim::Authed<Bearer>` to implement `roundhouse::shim::ShimPolicyFor<HandlerState>`
 note: required by a bound in `show_missing_roundhouse_handler_attribute::__roundhouse_shim`
@@ -19,11 +19,11 @@ error[E0277]: the trait bound `fn(roundhouse::extract::ValidationContext, axum::
    |
 31 | / routes! {
 32 | |     prefix = "/x",
-33 | |  get("/", show, security = [Bearer]) }
-   | |                                      ^
-   | |                                      |
-   | |______________________________________`fn(roundhouse::extract::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, <roundhouse::shim::Authed<Bearer> as roundhouse::shim::ShimPolicy>::Auth) -> impl Future<Output = axum::http::Response<Body>> {show_missing_roundhouse_handler_attribute::__roundhouse_shim::<roundhouse::shim::Authed<Bearer>>}` doesn't satisfy the trait bound
-   |                                        unsatisfied trait bound
+33 | |  "/" => { get(show, security = [Bearer]) } }
+   | |                                            ^
+   | |                                            |
+   | |____________________________________________`fn(roundhouse::extract::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, <roundhouse::shim::Authed<Bearer> as roundhouse::shim::ShimPolicy>::Auth) -> impl Future<Output = axum::http::Response<Body>> {show_missing_roundhouse_handler_attribute::__roundhouse_shim::<roundhouse::shim::Authed<Bearer>>}` doesn't satisfy the trait bound
+   |                                              unsatisfied trait bound
    |
    = help: the trait `Handler<(axum_core::extract::private::ViaParts, roundhouse::extract::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, AuthEnforce<Bearer>), HandlerState>` is not implemented for fn item `fn(roundhouse::extract::ValidationContext, axum::extract::State<HandlerState>, axum::extract::State<HandlerState>, <roundhouse::shim::Authed<Bearer> as roundhouse::shim::ShimPolicy>::Auth) -> impl Future<Output = axum::http::Response<Body>> {show_missing_roundhouse_handler_attribute::__roundhouse_shim::<roundhouse::shim::Authed<Bearer>>}`
    = note: Consider using `#[axum::debug_handler]` to improve the error message
@@ -45,8 +45,8 @@ error[E0308]: mismatched types
    |
 31 | / routes! {
 32 | |     prefix = "/x",
-33 | |  get("/", show, security = [Bearer]) }
-   | |______________________________________^ expected `MethodRouter<SchemeState>`, found `MethodRouter<HandlerState>`
+33 | |  "/" => { get(show, security = [Bearer]) } }
+   | |____________________________________________^ expected `MethodRouter<SchemeState>`, found `MethodRouter<HandlerState>`
    |
    = note: expected struct `MethodRouter<SchemeState>`
               found struct `MethodRouter<HandlerState>`

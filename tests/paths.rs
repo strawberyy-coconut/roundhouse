@@ -21,7 +21,7 @@ mod scalar {
 
     routes! {
            prefix = "/scalar",
-    get("/users/{id}", show, operation_id = "scalar_show") }
+    "/users/{id}" => { get(show, operation_id = "scalar_show") } }
 
     #[handler]
     pub async fn show(Path(id): Path<u64>) -> String {
@@ -34,7 +34,7 @@ mod foreign {
 
     routes! {
            prefix = "/foreign",
-    get("/users/{id}", show, operation_id = "foreign_show") }
+    "/users/{id}" => { get(show, operation_id = "foreign_show") } }
 
     #[handler]
     pub async fn show(axum::extract::Path(id): axum::extract::Path<u64>) -> String {
@@ -52,7 +52,7 @@ mod derived {
 
     routes! {
            prefix = "/derived",
-    get("/posts/{post_id}", show, operation_id = "derived_show") }
+    "/posts/{post_id}" => { get(show, operation_id = "derived_show") } }
 
     #[handler]
     pub async fn show(Path(PostId { post_id }): Path<PostId>) -> String {
@@ -65,7 +65,7 @@ mod capture_in_prefix {
 
     routes! {
            prefix = "/orgs/{org}",
-    get("/members", list, operation_id = "prefix_capture_list") }
+    "/members" => { get(list, operation_id = "prefix_capture_list") } }
 
     #[handler]
     pub async fn list() -> &'static str {
@@ -78,7 +78,7 @@ mod duplicate_capture {
 
     routes! {
            prefix = "/duplicate",
-    get("/x/{id}/{id}", show, operation_id = "duplicate_capture_show") }
+    "/x/{id}/{id}" => { get(show, operation_id = "duplicate_capture_show") } }
 
     #[handler]
     pub async fn show() -> &'static str {
@@ -99,7 +99,7 @@ mod default_ids {
 
         routes! {
                    prefix = "/a",
-        get("/{id}", show) }
+        "/{id}" => { get(show) } }
 
         #[handler]
         pub async fn show() -> &'static str {
@@ -112,7 +112,7 @@ mod default_ids {
 
         routes! {
                    prefix = "/b",
-        get("/{id}", show) }
+        "/{id}" => { get(show) } }
 
         #[handler]
         pub async fn show() -> &'static str {
@@ -201,7 +201,7 @@ mod asserted_path {
     routes! {
         prefix = "/asserted",
 
-        get("/{id}", show, path = "/asserted/{id}"),
+        "/{id}" => { get(show, path = "/asserted/{id}") },
     }
 
     #[handler]
@@ -216,7 +216,7 @@ mod wrong_path_assertion {
     routes! {
         prefix = "/moved",
 
-        get("/x", show, path = "/old/x"),
+        "/x" => { get(show, path = "/old/x") },
     }
 
     #[handler]

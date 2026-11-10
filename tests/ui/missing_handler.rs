@@ -2,7 +2,7 @@ use roundhouse::prelude::*;
 
 routes! {
     prefix = "/ui",
- get("/x", show) }
+ "/x" => { get(show) } }
 
 pub async fn show() -> &'static str {
     "x"

@@ -56,13 +56,11 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         let name = field_name(field, &field_serde, container.rename_all)?;
         let name_lit = LitStr::new(&name, field_ident.span());
         let required = is_option(ty).is_none() && !field_serde.default && !container.default;
-        let description = match crate::api_schema::description_lit(
-            &field.attrs,
-            field_ident.span(),
-        )? {
-            Some(description) => quote!(.description(#description)),
-            None => quote!(),
-        };
+        let description =
+            match crate::api_schema::description_lit(&field.attrs, field_ident.span())? {
+                Some(description) => quote!(.description(#description)),
+                None => quote!(),
+            };
         let schema_expr = crate::api_schema::field_schema_expr(ty, &schema.constraints);
         validations.push(crate::api_schema::field_validation(
             index,

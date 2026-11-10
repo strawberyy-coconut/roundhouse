@@ -5,10 +5,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 routes! {
-    get(
-        "/authors/{author_id}/posts/{post_id}",
-        show_author_post
-    ),
+    "/authors/{author_id}/posts/{post_id}" => { get(show_author_post) },
 }
 
 /// @summary: Read one author's post

@@ -29,7 +29,9 @@
 //! routes! {
 //!     prefix = "/v1",
 //!     tags = ["hello"],
-//!     get("/hello/{name}", hello),
+//!     "/hello/{name}" => {
+//!         get(hello),
+//!     },
 //! }
 //!
 //! #[handler]

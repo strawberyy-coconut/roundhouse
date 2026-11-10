@@ -1,7 +1,7 @@
 use roundhouse::prelude::*;
 
 routes! {
-    get("/healthz", healthz),
+    "/healthz" => { get(healthz) },
 }
 
 /// @summary: Liveness probe

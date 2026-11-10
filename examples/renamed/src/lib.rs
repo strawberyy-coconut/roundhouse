@@ -13,7 +13,7 @@ pub mod routes {
 
     routes! {
         prefix = "/renamed",
-        get("/x", x, operation_id = "renamed_x"),
+        "/x" => { get(x, operation_id = "renamed_x") },
     }
 
     #[derive(serde::Serialize, ToSchema, ApiSchema)]

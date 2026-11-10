@@ -4,7 +4,7 @@ use crate::domain::Note;
 use crate::state::AppState;
 
 routes! {
-    get("/", list),
+    "/" => { get(list) },
 }
 
 /// @summary: List notes

@@ -1,7 +1,7 @@
 use roundhouse::prelude::*;
 
 routes! {
-    get("/legacy", legacy, absolute, tags = ["legacy"]),
+    "/legacy" => { get(legacy, absolute, tags = ["legacy"]) },
 }
 
 /// `absolute` ignores every ancestor module prefix, including `/api/blog`.

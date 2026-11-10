@@ -5,13 +5,13 @@ use serde::Serialize;
 use crate::schemes::{ApiKeyAuth, BearerAuth, ReadPosts, WritePosts};
 
 routes! {
-    get("/public", public),
-    get("/private", private),
-    get("/scoped", scoped),
-    get("/write", write),
-    get("/optional", optional),
-    get("/admin", admin),
-    get("/projects/{project_id}", project),
+    "/public" => { get(public) },
+    "/private" => { get(private) },
+    "/scoped" => { get(scoped) },
+    "/write" => { get(write) },
+    "/optional" => { get(optional) },
+    "/admin" => { get(admin) },
+    "/projects/{project_id}" => { get(project) },
 }
 
 #[derive(Serialize, ToSchema, ApiSchema)]

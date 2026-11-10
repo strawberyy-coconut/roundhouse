@@ -80,10 +80,10 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                 Some((Kind::Description, rest, false))
             } else if let Some(rest) = trimmed.strip_prefix("@responses(override):") {
                 Some((Kind::Responses, rest, true))
-            } else if let Some(rest) = trimmed.strip_prefix("@responses:") {
-                Some((Kind::Responses, rest, false))
             } else {
-                None
+                trimmed
+                    .strip_prefix("@responses:")
+                    .map(|rest| (Kind::Responses, rest, false))
             };
 
             if let Some((kind, rest, override_existing)) = tag {
@@ -188,10 +188,7 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
     if let Some(summary) = &mut tags.summary {
         *summary = summary_lines.join(" ");
         if summary.is_empty() {
-            return Err(syn::Error::new(
-                current_span,
-                "`@summary:` needs some text",
-            ));
+            return Err(syn::Error::new(current_span, "`@summary:` needs some text"));
         }
     }
     if let Some(description) = &mut tags.description {

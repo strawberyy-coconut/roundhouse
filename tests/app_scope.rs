@@ -10,7 +10,7 @@ mod routes {
 
     routes! {
         prefix = "/app-scope",
-        get("/x", x),
+        "/x" => { get(x) },
     }
 
     #[handler]

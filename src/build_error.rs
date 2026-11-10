@@ -227,7 +227,7 @@ impl fmt::Display for BuildError {
                 f,
                 "error: operation `{operation_id}` declares a different response for status {status} than \
                  its handler derives\n  {source}\n\
-                 hint: make the declared type match, or add `override` to the entry"
+                 hint: make the declared type match, or write `@responses(override):` on the handler"
             ),
             BuildError::InvalidPrefix {
                 prefix,

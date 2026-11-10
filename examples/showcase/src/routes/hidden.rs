@@ -5,7 +5,7 @@ routes! {
     prefix = "/internal",
     hidden,
     tags = ["internal"],
-    get("/health", health),
+    "/health" => { get(health) },
 }
 
 #[derive(Serialize, ToSchema, ApiSchema)]

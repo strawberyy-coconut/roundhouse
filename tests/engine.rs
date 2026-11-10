@@ -70,7 +70,7 @@ mod lying {
 
     routes! {
         prefix = "/lying",
-        get("/x", x, operation_id = "lying_x"),
+        "/x" => { get(x, operation_id = "lying_x") },
     }
 
     #[derive(Serialize, ToSchema, ApiSchema)]
@@ -92,8 +92,8 @@ mod schema_mode {
 
     routes! {
         prefix = "/schema",
-        post("/notes", create, operation_id = "schema_create_note"),
-        post("/notes/bulk", create_bulk, operation_id = "schema_create_bulk"),
+        "/notes" => { post(create, operation_id = "schema_create_note") },
+        "/notes/bulk" => { post(create_bulk, operation_id = "schema_create_bulk") },
     }
 
     #[handler]
