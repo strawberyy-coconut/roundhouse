@@ -124,6 +124,7 @@ pub mod prefix;
 pub mod problem;
 #[doc(hidden)]
 pub mod registry;
+pub mod response;
 pub mod router;
 #[doc(hidden)]
 pub mod shim;
@@ -153,6 +154,7 @@ pub use multipart::TempFile;
 pub use multipart::{FilePart, Multipart, MultipartForm};
 pub use problem::Problem;
 pub use registry::Module;
+pub use response::{Created, NoContent};
 pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
 pub use router::{App, Built, DocumentRejections, Fragment, MergeRecord, ResolvedRoute};
 pub use utoipa::{PartialSchema, ToSchema};
@@ -209,6 +211,7 @@ pub mod prelude {
     pub use crate::doc::{ExtractArg, PathNames};
     pub use crate::extract::{Extension, Form, Json, Mapped, Path, Query, RepeatedQuery, Strict};
     pub use crate::problem::Problem;
+    pub use crate::response::{Created, NoContent};
     pub use crate::utoipa;
     pub use crate::validate::{ValidationError, ValidationErrors};
     pub use crate::{ApiError, ApiResponse, ApiSchema, ToSchema, app};

@@ -43,6 +43,8 @@ pub(super) fn ok_successes(ty: &Type) -> Option<Vec<u16>> {
         Some(
             "Json" | "Attachment" | "File" | "Sse" | "Html" | "String" | "Vec" | "Bytes" | "Body",
         ) => Some(vec![200]),
+        Some("Created") => Some(vec![201]),
+        Some("NoContent") => Some(vec![204]),
         Some("StatusCode") => Some(vec![0]),
         Some("Option" | "Infallible") => Some(Vec::new()),
         _ => {
