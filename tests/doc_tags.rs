@@ -140,6 +140,24 @@ mod hooked {
     }
 }
 
+mod problem_response {
+    use super::*;
+
+    /// @responses:
+    ///   400: Problem
+    #[handler]
+    pub async fn bad() -> axum::http::StatusCode {
+        axum::http::StatusCode::BAD_REQUEST
+    }
+
+    routes! {
+        prefix = "/problem",
+        "/" => {
+            get(bad),
+        },
+    }
+}
+
 fn document(module: &'static roundhouse::Module) -> serde_json::Value {
     let built = roundhouse::App::new(State)
         .include(module)
@@ -222,4 +240,12 @@ fn a_doc_hook_description_survives_the_declared_response_merge() {
         document["paths"]["/hooked"]["get"]["responses"]["200"]["description"],
         "From the doc hook"
     );
+}
+
+#[test]
+fn at_responses_special_cases_problem_bodies() {
+    let document = document(&problem_response::MODULE);
+    let response = &document["paths"]["/problem"]["get"]["responses"]["400"];
+    assert!(response["content"]["application/problem+json"]["schema"].is_object());
+    assert_eq!(response["description"], "Bad Request");
 }
