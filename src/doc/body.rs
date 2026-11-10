@@ -28,11 +28,7 @@ pub fn register_to_schema<T: utoipa::ToSchema + ?Sized>(components: &mut Compone
             // `schemas()` has no Rust type identity for each entry. Identical shapes are the same
             // shared type; a different shape under the same name is a real collision.
             if existing != &schema {
-                crate::doc::registration::record_collision(
-                    &name,
-                    "<registered schema>",
-                    type_name,
-                );
+                crate::doc::registration::record_collision(&name, "<registered schema>", type_name);
             }
             continue;
         }
@@ -70,10 +66,10 @@ pub fn register_self<T: utoipa::ToSchema + ?Sized>(components: &mut Components) 
         return;
     }
     match crate::doc::registration::claim::<T>(&name, components) {
-        crate::doc::registration::Claim::Already
-        | crate::doc::registration::Claim::Collision => return,
-        crate::doc::registration::Claim::Claimed
-        | crate::doc::registration::Claim::Inactive => {}
+        crate::doc::registration::Claim::Already | crate::doc::registration::Claim::Collision => {
+            return;
+        }
+        crate::doc::registration::Claim::Claimed | crate::doc::registration::Claim::Inactive => {}
     }
     if components.schemas.contains_key(&name) {
         return;

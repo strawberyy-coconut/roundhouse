@@ -114,7 +114,12 @@ fn validate_refs(value: &serde_json::Value) -> Result<(), String> {
     let schemas = value
         .pointer("/components/schemas")
         .and_then(|value| value.as_object())
-        .map(|object| object.keys().cloned().collect::<std::collections::HashSet<_>>())
+        .map(|object| {
+            object
+                .keys()
+                .cloned()
+                .collect::<std::collections::HashSet<_>>()
+        })
         .unwrap_or_default();
     validate_ref_values(value, &schemas)
 }

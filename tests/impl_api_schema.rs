@@ -49,8 +49,8 @@ fn a_toschema_only_generated_type_can_be_documented() {
     assert!(document["components"]["schemas"]["Row"].is_object());
     assert!(document["components"]["schemas"]["Nested"].is_object());
     assert_eq!(
-        document["paths"]["/generated"]["get"]["responses"]["200"]["content"]["application/json"]
-            ["schema"]["$ref"],
+        document["paths"]["/generated"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+            ["$ref"],
         "#/components/schemas/Row"
     );
 }

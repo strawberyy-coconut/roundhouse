@@ -129,10 +129,7 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                         ));
                     }
                     Kind::Path if !allowed.path => {
-                        return Err(syn::Error::new(
-                            span,
-                            "`@path:` is only valid on a handler",
-                        ));
+                        return Err(syn::Error::new(span, "`@path:` is only valid on a handler"));
                     }
                     _ => {}
                 }

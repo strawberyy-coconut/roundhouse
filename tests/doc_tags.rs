@@ -159,8 +159,8 @@ mod problem_response {
 }
 
 mod summary_boundary {
-    use super::*;
     use super::things::Thing;
+    use super::*;
 
     /// @summary: A short summary.
     ///

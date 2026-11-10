@@ -345,7 +345,10 @@ fn path_statements(tags: &DocTags) -> syn::Result<Vec<TokenStream>> {
         let name = name.trim();
         let description = description.trim();
         if name.is_empty() {
-            return Err(syn::Error::new(line.span, "`@path:` needs a parameter name"));
+            return Err(syn::Error::new(
+                line.span,
+                "`@path:` needs a parameter name",
+            ));
         }
         if description.is_empty() {
             return Err(syn::Error::new(

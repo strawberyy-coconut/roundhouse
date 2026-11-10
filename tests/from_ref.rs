@@ -44,10 +44,7 @@ impl AuthScheme for Bearer {
 }
 
 impl Authenticate for Bearer {
-    async fn authenticate(
-        parts: &mut Parts,
-        _state: &AppState,
-    ) -> Result<(), Problem> {
+    async fn authenticate(parts: &mut Parts, _state: &AppState) -> Result<(), Problem> {
         if parts
             .headers
             .get(header::AUTHORIZATION)
