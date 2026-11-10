@@ -282,21 +282,51 @@ should verify signatures, expiry, audience and issuer with a maintained library 
 `Problem` is the error body for malformed JSON, rejected extractors, failed constraints, unmatched
 routes (`404`) and unsupported methods (`405`).
 
+The intended shape is one outcome enum on the `Ok` side and one crate-wide infrastructure type on
+the `Err` side:
+
+- **Outcomes** are the statuses an endpoint can actually return. Model them as an
+  `#[derive(ApiResponse)]` enum: `Found(Json<Note>)`, `NotFound { id }`, `Conflict`, and so on.
+- **Infrastructure** is the shared failure surface: storage, network, serialization. Derive
+  `ApiError` once for the crate and use it as the `Err` side of every fallible handler.
+- `Result<Outcome, InternalError>` documents both sides independently, so each route advertises
+  its real outcomes plus the common `500`.
+- Avoid a shared *domain* error enum on every handler: it makes every route document errors it
+  cannot produce. Avoid a per-endpoint error enum as well; the outcome enum is the right place
+  for endpoint-specific failures.
+
 `#[derive(ApiError)]` and `#[derive(ApiResponse)]` generate `IntoResponse` plus the documented
 responses for their variants:
 
 ```rust
-#[derive(Debug, thiserror::Error, ApiError)]
-pub enum NoteError {
-    /// @description: The requested note does not exist.
-    #[error("note {0} was not found")]
-    #[status(404, problem = "NoteNotFound")]
-    NotFound(i64),
+// The endpoint's outcomes.
+#[derive(ApiResponse)]
+pub enum ShowNote {
+    #[status(200, description = "The stored note.")]
+    Found(Json<Note>),
 
-    /// @description: The submitted note failed validation.
-    #[error("the note was invalid")]
-    #[status(422)]
-    Invalid(#[from] ValidationErrors),
+    #[status(404, problem = "NoteNotFound")]
+    NotFound { id: i64 },
+}
+
+// The crate-wide infrastructure error.
+#[derive(Debug, thiserror::Error, ApiError)]
+pub enum InternalError {
+    #[error("storage failed: {0}")]
+    #[status(500)]
+    Storage(#[from] std::io::Error),
+}
+
+#[handler]
+pub async fn show(
+    State(app): State<AppState>,
+    Path(id): Path<NoteId>,
+) -> Result<ShowNote, InternalError> {
+    Ok(app
+        .get(id)
+        .map(Json)
+        .map(ShowNote::Found)
+        .unwrap_or(ShowNote::NotFound { id }))
 }
 ```
 

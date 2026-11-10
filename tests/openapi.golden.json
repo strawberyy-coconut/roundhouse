@@ -140,7 +140,7 @@
             }
           },
           "404": {
-            "description": "NoteNotFound",
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -364,7 +364,7 @@
             }
           },
           "404": {
-            "description": "NoteNotFound",
+            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {

@@ -3,7 +3,7 @@ pub mod error;
 pub mod routes;
 pub mod state;
 
-pub use error::ApiError;
+pub use error::InternalError;
 pub use state::AppState;
 
 use roundhouse::openapi::Info;

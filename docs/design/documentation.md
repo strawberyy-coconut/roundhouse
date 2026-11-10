@@ -143,13 +143,29 @@ unverified; any other unknown shape reaches the undeclared-success check.
 
 `Result<_, Problem>` documents a `default` problem response. `ApiError`/`ApiResponse` derives
 register the responses of an error enum, so `Result<Json<T>, NoteError>` documents both sides.
+
+### Choosing the error shape
+
+`Result<T, E>` documents `T` and `E` independently, which makes the split matter:
+
+- **Outcome enum on the `Ok` side.** `enum ShowNote { Found(Json<Note>), NotFound { id } }`
+  describes exactly the statuses the endpoint can return. Endpoint-specific failures belong here,
+  not in the error side.
+- **One crate-wide infrastructure error on the `Err` side.** `enum InternalError { Storage(#[from]
+  std::io::Error) }` gives every fallible handler the shared `500` without repeating
+  infrastructure variants.
+- **Do not use a shared domain error enum on every handler.** The operation would document every
+  domain failure whether or not that route can produce it.
+- **Do not create a per-endpoint error enum just to narrow the document.** That is what the
+  outcome enum is for; keep the error side for infrastructure.
+
 A `Result` type alias is visible through the same blanket `ApiResponse for Result<T, E>` impl as
 long as both sides implement `ApiResponse`; the macro's compile-time success check remains
 syntactic and is skipped for aliases, so the build-time check is authoritative.
 
 Variant `@description:` tags supply response descriptions. `#[status(description = "…")]` remains
-the explicit override. `ApiError` also uses the text as the default `Problem` title unless
-`problem = "…"` overrides it.
+the explicit override. `ApiError` uses that text as the `Problem` title as well; `problem = "…"`
+only sets the RFC 9457 `type` URI (`https://roundhouse.rs/problems/…`).
 
 Generic `ApiResponse`/`ApiError` enums copy their generics and `where` clause into each impl and add
 only the bounds a field shape needs: `Json<T>` needs `T: ApiSchema` for docs and `Json<T>:

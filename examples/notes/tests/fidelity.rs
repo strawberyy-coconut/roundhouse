@@ -146,6 +146,24 @@ async fn create_is_created_and_documented() {
 }
 
 #[tokio::test]
+async fn outcomes_and_infrastructure_are_documented_separately() {
+    let app = discovered();
+    let document = serde_json::to_value(app.document()).unwrap();
+    let responses = &document["paths"]["/notes/{id}"]["get"]["responses"];
+
+    assert!(responses["200"].is_object());
+    assert_eq!(
+        responses["404"]["description"],
+        "The requested note does not exist."
+    );
+    assert!(responses["500"].is_object());
+    assert!(
+        responses.get("422").is_none(),
+        "the read endpoint cannot produce a 422: {responses}"
+    );
+}
+
+#[tokio::test]
 async fn openapi_is_served() {
     let app = discovered();
     let response = app.oneshot_get("/openapi.json").await;

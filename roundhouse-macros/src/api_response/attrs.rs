@@ -174,7 +174,14 @@ pub(super) fn field_info(
 pub(super) fn bindings(fields: &Fields, variant: &Ident, infos: &[FieldInfo]) -> TokenStream {
     let used: Vec<bool> = infos
         .iter()
-        .map(|info| info.body || info.header.is_some() || info.location || info.from)
+        .map(|info| {
+            // A `#[from]` field is consumed only when it is the `ValidationErrors` special case.
+            // Any other `#[from]` is thiserror's `From` input and is not read by the generated
+            // response arm; binding it would warn about an unused variable in user code.
+            let from_validation = info.from
+                && crate::util::outer_ident(&info.ty).as_deref() == Some("ValidationErrors");
+            info.body || info.header.is_some() || info.location || from_validation
+        })
         .collect();
     match fields {
         Fields::Unit => quote!(Self::#variant),

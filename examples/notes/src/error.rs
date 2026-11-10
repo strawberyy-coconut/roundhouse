@@ -1,17 +1,18 @@
 use roundhouse::prelude::*;
 
-/// Every failure the API can produce, with the status and problem `type` the document promises.
+/// The crate-wide infrastructure error.
+///
+/// Endpoint outcomes live on the `Ok` side (see `ShowNote` and `CreateNote`); this type is only
+/// for failures the endpoint cannot describe as a domain result. `Result<T, InternalError>` then
+/// documents the outcome statuses plus one shared `500`, instead of every domain error on every
+/// route.
 #[derive(Debug, thiserror::Error, ApiError)]
-pub enum ApiError {
-    #[error("note {id} was not found")]
-    #[status(404, problem = "NoteNotFound")]
-    NoteNotFound { id: i64 },
-
-    #[error("invalid input")]
-    #[status(422)]
-    Validation(#[from] ValidationErrors),
-
+pub enum InternalError {
     #[error("internal error: {0}")]
     #[status(500)]
     Internal(String),
+
+    #[error("note storage failed: {0}")]
+    #[status(500)]
+    Storage(#[from] std::io::Error),
 }

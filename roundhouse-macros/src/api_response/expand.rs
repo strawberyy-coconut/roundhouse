@@ -109,7 +109,9 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             .clone()
             .or(tags.description)
             .unwrap_or_else(|| canonical_reason(status).to_string());
-        let problem_title = attrs.problem.clone().unwrap_or_else(|| description.clone());
+        // `problem = "slug"` names the RFC 9457 `type`; it does not replace the human title.
+        // The title stays the variant description (or the canonical reason).
+        let problem_title = description.clone();
 
         let response_body = if from_validation {
             let field = fields

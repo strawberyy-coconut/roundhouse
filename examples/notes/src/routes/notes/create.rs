@@ -1,7 +1,7 @@
 use roundhouse::prelude::*;
 
 use crate::domain::{NewNote, Note};
-use crate::error::ApiError;
+use crate::error::InternalError;
 use crate::state::AppState;
 
 routes! {
@@ -23,7 +23,7 @@ pub enum CreateNote {
 pub async fn create(
     State(app): State<AppState>,
     Json(body): Json<NewNote>,
-) -> Result<CreateNote, ApiError> {
+) -> Result<CreateNote, InternalError> {
     let note = app.create(body.title, body.body);
     Ok(CreateNote::Created { body: Json(note) })
 }
