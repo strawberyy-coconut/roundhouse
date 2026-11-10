@@ -33,7 +33,9 @@ payload.
 
 ```rust
 routes! {
-    post("/import", import, validate = false),
+    "/import" => {
+        post(import, validate = false),
+    },
 }
 ```
 
@@ -85,6 +87,15 @@ Doing this before extraction is deliberate. The engine sees the bytes the client
 `axum::Json<T>` is validated without requiring `T: Serialize` for the extractor itself, and
 malformed JSON has the same `Problem` shape as a constraint failure. The flag prevents a
 `Strict<Json<T>>` later in the chain from validating the same bytes twice.
+
+The cost is that the request body is buffered and parsed once by the validator, then parsed again
+by axum's extractor. That is a deliberate trade-off: it keeps the `Serialize` bound off the
+handler and validates before any extractor can consume the body. `Validation::Off` is the
+app-wide escape hatch when the cost is unacceptable.
+
+A later optimization may skip the raw layer when the body schema has no enforceable keywords, or
+offer a validate-after-extraction mode for `Serialize` body types. Neither changes the default
+until a benchmark justifies it.
 
 ### 3. The shim
 
@@ -224,6 +235,8 @@ It requires `schema-engine`; without the feature `try_build` returns
 
 - Only JSON request bodies are validated from raw bytes. Forms are validated after
   deserialisation; multipart is enforced by its extractor.
+- A JSON body is currently parsed twice when schema mode is on: once for validation and once by
+  the extractor. The alternative is documented above.
 - Response validation is JSON-only and needs the body in memory.
 - Constraints are declarative. Cross-field, database or async rules belong in `validate_with`
   or the handler, and are not inferred from the document.

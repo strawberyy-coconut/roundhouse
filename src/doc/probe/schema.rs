@@ -170,7 +170,7 @@ impl<T> ProbeToSchemaJsonResponse for &&ToSchemaJsonResponseProbe<T> {
     }
 }
 
-/// A concrete-type probe for a `responses(status = Type)` declaration.
+/// A concrete-type probe for an `@responses: status: Type` declaration.
 pub struct JsonResponseDocProbe<T>(std::marker::PhantomData<T>);
 
 impl<T> JsonResponseDocProbe<T> {

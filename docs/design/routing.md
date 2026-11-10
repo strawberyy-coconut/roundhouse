@@ -40,18 +40,30 @@ diagnostics into errors.
 
 - `pub const MODULE: Module` — the root of that table's tree;
 - `__roundhouse_fragment()` — the explicit fragment `app!(state)` roots the app at;
-- one `RouteRecord` per entry, plus generated route/response/layer/doc functions;
+- one `RouteRecord` per entry, plus generated route/layer/doc functions;
 - a marker-type alias per handler, and const assertions tied to the entry's spans.
 
 There can be at most one `routes!` per module, because it owns those names. Nested groups and
 child modules exist so a large table does not have to be one invocation.
 
-The syntax has three shapes, all parsed into the same tree:
+Every entry lives inside a path group:
 
-- flat entries: `get("/notes/{id}", show, summary = "..")`;
-- compact entries: `get "/notes/{id}" => show`;
-- path groups: `"/notes" => { get(list), post(create) }` share one leaf path, while
-  `"/notes" [tags = ["notes"]] { get "/" => list }` is a prefix group.
+```rust
+routes! {
+    "/notes" => {
+        get(list),
+        post(create),
+    },
+    "/notes/{id}" => {
+        get(show),
+        delete(destroy),
+    },
+}
+```
+
+A group may carry module policy in brackets, for example `"/notes" [tags = ["notes"]] { ... }`.
+The flat `get("/path", handler)` and compact `get "/path" => handler` forms were removed in 0.3;
+there is one way to declare a route.
 
 `...module` spreads another table's `MODULE` at that point in the tree. That is the only
 composition mechanism: there is no runtime route registration and no inventory/linker scan.
@@ -67,7 +79,7 @@ They fail `cargo check`, not the app build.
 | Duplicate route | Two entries with the same method and normalised template; `{id}` and `{post_id}` are the same shape |
 | `any` conflict | An `any` entry next to a concrete method on the same template |
 | Duplicate operation id | Two explicit ids, or two entries that would derive the same id from method and handler name |
-| Undeclared success | A return shape the macro can classify as producing no 2xx/3xx response, unless the entry declares `responses(..)` |
+| Undeclared success | A return shape the macro can classify as producing no 2xx/3xx response, unless the handler declares a success in `@responses:` |
 | Path capture subset | A `Path<T: PathNames>` whose `NAMES` omits a capture in the leaf template |
 | Missing `#[handler]` | The marker type does not exist, reported once through a type alias |
 | Attribute syntax | Unknown options, non-type security schemes, removed attributes (see `tests/ui/`) |
@@ -164,16 +176,28 @@ App global layers
                 handler
 ```
 
-`App::router()` returns a plain `axum::Router<S>` by wrapping the assembled router as a
-fallback service. `App::merge()` is the other escape hatch: the merged routes are served but
-cannot be discovered for the document, so the document is marked `x-roundhouse-merged` and the
-merge is recorded in `Built::merges()`.
+`App::into_router()` returns the ready `axum::Router<()>`; state has already been applied, so it
+needs no second `with_state` call. `App::router()` remains for one release as a deprecated
+`Router<S>` wrapper around a fallback service. `App::merge()` is the other escape hatch: the merged
+routes are served but cannot be discovered for the document, so the document is marked
+`x-roundhouse-merged` and the merge is recorded in `Built::merges()`.
+
+### Why `FromRef` substates are not supported
+
+The app state is exact. `State<T>` must equal the state passed to `App::new`, and an auth scheme's
+`AuthScheme::State` must equal it too. This is not only a resolve check: each route is built as a
+`MethodRouter<S>` at the handler's state and downcast during assembly. Allowing a `FromRef`
+substate would require the route macro to know the app state, which it does not.
+
+Use `Extension<Arc<Sub>>`, an app-level accessor, or split the application when a handler needs a
+smaller state. A state mismatch is a `BuildError::StateMismatch` with these alternatives in its
+message.
 
 ## Built
 
 `Built` is the resolved artifact:
 
-- `router()` — the ready `axum::Router`;
+- `router()` — the ready `axum::Router<()>`;
 - `routes()` — the resolved table, sorted by path then method, with each declaration's source;
 - `document()` — the always-built OpenAPI 3.1 document;
 - `openapi_30()` — a best-effort 3.0.3 shape;
@@ -195,6 +219,8 @@ The document is always built even when it is not served. `App::openapi(..)` cont
   shape to fall back to.
 - **`App::merge` is an escape hatch, not composition.** Declared routes and merged routes have
   different guarantees. The ledger exists so CI can see the difference.
+- **State is exact, not structural.** `FromRef` substates are a documented non-goal; the build
+  error points at the supported alternatives.
 
 ## Future
 

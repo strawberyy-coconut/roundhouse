@@ -13,8 +13,8 @@ be a runtime-checked copy with fewer guarantees, so it is not on the roadmap.
 | `ApiSchema` | derive | Register a documented body/response and its patches |
 | `QueryParams` | derive | Query parameter table, parts schema, hooks |
 | `PathParams` | derive | Path capture names, parts schema, hooks |
-| `ApiResponse` | derive | `IntoResponse` plus documented responses for an enum |
-| `ApiError` | derive | `ApiResponse` with a 4xx/5xx-only error contract |
+| `ApiResponse` | derive | `IntoResponse` plus documented responses for an enum (generic enums supported) |
+| `ApiError` | derive | `ApiResponse` with a 4xx/5xx-only error contract (generic enums supported) |
 | `Multipart` | derive | Multipart field table, extraction and body schema |
 
 `Multipart` is compiled only with the `multipart` feature; the rest are always present.
@@ -37,7 +37,6 @@ routes! { prefix = "/api", "/notes" => { get(list), post(create) } }
              fn __roundhouse_route_N() -> Box<dyn Any + Send + Sync>
              fn __roundhouse_layer_N(..)                 (optional)
              fn __roundhouse_entry_doc_N(..)             (optional)
-             fn __roundhouse_responses_N(components) -> Vec<ResponseDoc>
              const __ROUNDHOUSE_ROUTE_N: RouteRecord
            per group: a hidden const child Module
 ```
@@ -54,8 +53,20 @@ interpreting the marker path as a module and cascading.
 `#[cfg(..)]` and other outer attributes on an entry are copied to every generated item for that
 entry, and to every entry in a group. They are not interpreted by the macro.
 
-The macro never parses a function body. `#[handler]` reads the signature only; routing metadata
-cannot be inferred from what the function does.
+The macro never parses a function body. `#[handler]` reads the signature and doc attributes only;
+routing metadata cannot be inferred from what the function does.
+
+## Doc tags
+
+`#[handler]` also reads explicit doc tags:
+
+- `@summary:` and `@description:` fill `HandlerDocs.summary` / `.description`;
+- `@responses:` fills `HandlerDocs.declared_responses` and `DECLARED_SUCCESS`;
+- `@responses(override):` sets the declared-response override.
+
+The tag parser lives in `doc_tags.rs` and is shared with the `ApiResponse` derive and the
+parameter derives. Untagged prose is ignored for OpenAPI. See [Doc tags](doc-tags.md) for the
+grammar and precedence.
 
 ## `#[handler]`
 
@@ -139,16 +150,16 @@ The derives keep their own rules on top:
 
 - **Module scope only.** `routes!` emits items, so it cannot be invoked inside a function.
 - **One `routes!` per module.** It owns `MODULE` and `__roundhouse_fragment()`.
-- **Free functions, no generics.** `#[handler]` rejects generic handlers and cannot be applied
-  to a method in an `impl` block.
+- **Free functions, no generics on handlers.** `#[handler]` rejects generic handlers and cannot
+  be applied to a method in an `impl` block. Response and error enums may be generic.
 - **The handler must be reachable by path.** A local closure or a function alias without the
   marker is not a handler.
 - **`doc` and `layer` are expressions.** They are type-checked in the emitted context: `doc`
   must coerce to `fn(&mut HandlerDocs)`, `layer` must be a tower layer over the relevant
   router.
 - **`any` is served, not documented.** There is no honest single operation for it.
-- **No second syntax.** The DSL is the API. New options are added to the parser and documented
-  in the macro docs; there is no parallel builder to keep in sync.
+- **Two layers, one API.** `routes!` is the routing DSL: paths, methods and policy. Doc tags are
+  the prose and response-metadata layer. There is no parallel builder to keep in sync.
 
 ## Why the macro is mandatory
 

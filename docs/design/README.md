@@ -24,6 +24,8 @@ User-facing documentation lives elsewhere:
   or response, and where a `doc` hook is the right tool instead.
 - [Macros](macros.md) — why `routes!` is the product, how the expansion is organised, and
   the diagnostic philosophy.
+- [Doc tags](doc-tags.md) — the explicit `@summary:`, `@description:` and `@responses:` metadata
+  layer, its precedence rules and its limits.
 
 ## Conventions
 
@@ -38,6 +40,6 @@ When a change alters one of these documents, update the relevant note in the sam
 If a decision is superseded, keep the history in the document rather than silently
 rewriting it: the reason a path was rejected is part of the design.
 
-The notes describe the current `0.2` line. Version-specific behaviour that changes is
+The notes describe the current `0.3` line. Version-specific behaviour that changes is
 called out explicitly; everything else should be read as "this is how the current code
 behaves".

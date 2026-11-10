@@ -176,7 +176,7 @@ impl fmt::Display for BuildError {
             } => write!(
                 f,
                 "error: operation `{operation_id}` declares no success response\n  {source}\n\
-                 hint: return a concrete response type or declare `responses(200)` in the table"
+                 hint: return a concrete response type or declare `@responses:` on the handler"
             ),
             BuildError::UnverifiedBody {
                 operation_id,
@@ -192,7 +192,7 @@ impl fmt::Display for BuildError {
             } => write!(
                 f,
                 "error: operation `{operation_id}` returns a response type the document cannot verify\n  {source}\n\
-                 hint: return a concrete response type or declare `responses(..)` in the table"
+                 hint: return a concrete response type or declare `@responses:` on the handler"
             ),
             BuildError::SchemeKindConflict {
                 name,

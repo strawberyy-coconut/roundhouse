@@ -67,7 +67,7 @@ where
     json_response::<T>(components, status)
 }
 
-/// One JSON response, for a `responses(200 = Post)` declaration.
+/// One JSON response, for an `@responses: 200: Post` declaration.
 pub fn json_response_doc<T: ApiSchema>(components: &mut Components, status: u16) -> ResponseDoc {
     T::register(components);
     let mut response = ResponseDoc::json(status, T::schema());
@@ -77,7 +77,7 @@ pub fn json_response_doc<T: ApiSchema>(components: &mut Components, status: u16)
     response
 }
 
-/// A `responses(status = Type)` declaration for a plain `ToSchema` type.
+/// An `@responses: status: Type` declaration for a plain `ToSchema` type.
 pub fn json_response_doc_to_schema<T: utoipa::ToSchema>(
     components: &mut Components,
     status: u16,

@@ -15,6 +15,7 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 | A tower layer that terminates requests | `App::layer_documented` or a `doc = ..` hook |
 | Metadata the declarations cannot derive | `App::document(..)` |
 | A one-off operation addition | `doc = |docs| ..` on the `routes!` entry |
+| Operation prose or response declarations | `@summary:`, `@description:`, `@responses:` in the handler doc block |
 
 ## Custom extractors: `ExtractArg`
 
@@ -149,8 +150,14 @@ For an enum of responses, `#[derive(ApiResponse)]` / `#[derive(ApiError)]` gener
 `#[location]` and `#[from]` attributes. That is usually less code than a hand-written impl.
 
 A type that only implements `IntoResponse` still compiles, but contributes no responses. The
-build reports it as undocumented, and `strict()` rejects it. Use `responses(..)` in the route
-table if you cannot change the type.
+build reports it as undocumented, and `strict()` rejects it. Use `@responses:` on the handler if
+you cannot change the type.
+
+Generic enums are supported. The derive copies the enum's generics and `where` clause, then adds
+the bounds each field shape needs. `Json<T>` needs `T: ApiSchema` for documentation and
+`Json<T>: IntoResponse` at runtime; a bare body needs `T: ApiSchema + IntoResponse`; a header or
+location needs `T: ApiSchema + TryInto<HeaderValue>`. The built-in `Created<T>` and `NoContent`
+wrappers cover the common cases without a derive.
 
 ## Schemas: `ApiSchema`
 
@@ -174,9 +181,10 @@ documentation requires it.
 A `ToSchema`-only type is still usable explicitly:
 
 ```rust
-routes! {
-    get("/report", report, responses(200 = Report)),
-}
+/// @responses:
+///   200: Report
+#[handler]
+async fn report(...) -> ... { ... }
 ```
 
 The response declaration accepts either trait. For a body, use a `doc` hook with the schema
@@ -184,9 +192,11 @@ helper:
 
 ```rust
 routes! {
-    post("/import", import, doc = |docs| {
-        docs.body = Some(roundhouse::doc::json_body_to_schema::<Import>());
-    }),
+    "/import" => {
+        post(import, doc = |docs| {
+            docs.body = Some(roundhouse::doc::json_body_to_schema::<Import>());
+        }),
+    },
 }
 ```
 
@@ -196,11 +206,13 @@ implements `ApiSchema`. Explicit documentation and automatic enforcement are the
 ## Query and path types
 
 `#[derive(QueryParams)]` and `#[derive(PathParams)]` generate the parameter table, the parts
-schema and the value conversion used by the engine:
+schema and the value conversion used by the engine. A field's `@description:` supplies the
+parameter description; `#[schema(description = "...")]` takes priority:
 
 ```rust
 #[derive(serde::Deserialize, roundhouse::QueryParams)]
 pub struct Filter {
+    /// @description: Free-text search.
     #[schema(min_length = 1)]
     pub search: Option<String>,
     pub tags: Vec<String>,
@@ -239,7 +251,9 @@ or on a module or entry:
 ```rust
 routes! {
     doc = roundhouse::doc::layer::timeout(504),
-    get("/slow", slow),
+    "/slow" => {
+        get(slow),
+    },
 }
 ```
 
@@ -253,20 +267,22 @@ one call. A `doc` hook without the layer would be a lie.
 ## One-off operation additions
 
 `doc = |docs| { .. }` on a `routes!` entry runs after the handler's inferred documentation and
-before the document checks. It can add parameters, a body or responses:
+before the document checks. It can set summary/description, add parameters, a body or responses:
 
 ```rust
 routes! {
-    get("/legacy", legacy, doc = |docs| {
-        docs.params.push(
-            roundhouse::doc::Param::new(
-                "x-api-version",
-                roundhouse::doc::ParamIn::Header,
-                roundhouse::doc::schema::string(),
-            )
-            .description("legacy clients only"),
-        );
-    }),
+    "/legacy" => {
+        get(legacy, doc = |docs| {
+            docs.params.push(
+                roundhouse::doc::Param::new(
+                    "x-api-version",
+                    roundhouse::doc::ParamIn::Header,
+                    roundhouse::doc::schema::string(),
+                )
+                .description("legacy clients only"),
+            );
+        }),
+    },
 }
 ```
 

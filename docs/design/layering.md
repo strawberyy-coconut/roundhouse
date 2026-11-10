@@ -15,8 +15,9 @@ roundhouse
 ```
 
 `roundhouse` is the application facade. It owns the app builder, route resolution, router
-assembly, document assembly, the extractor wrappers and auth. It re-exports the derives and
-`routes!` at the crate root and in the prelude.
+assembly, document assembly, the extractor wrappers, the reusable `Created<T>` / `NoContent`
+response wrappers and auth. It re-exports the derives and `routes!` at the crate root and in the
+prelude.
 
 `roundhouse-schema` has no axum dependency. It can be used by a build script, an SDK or a
 test that never starts a server. The facade re-exports its public items, so application code
@@ -77,6 +78,11 @@ extractor types are policy helpers that compose axum rather than replace it:
   keys;
 - `Mapped<T>` — maps a foreign extractor's rejection to `Problem` without claiming a schema;
 - `Strict<T>` — enforces the operation's schema during extraction.
+
+`Created<T>` and `NoContent` are response wrappers, not a second response model: they implement
+axum's `IntoResponse` and roundhouse's `ApiResponse`. `ApiSchema::description` is a defaulted trait
+method, so adding it does not break downstream implementors, and no new crate or dependency is
+introduced.
 
 A handler can therefore use `axum::extract::Path` directly and still be documented and
 validated.

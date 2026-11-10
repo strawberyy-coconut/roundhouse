@@ -25,9 +25,12 @@
 //! routes! {
 //!     prefix = "/v1",
 //!     tags = ["greetings"],
-//!     get("/hello/{name}", hello, summary = "Say hello"),
+//!     "/hello/{name}" => {
+//!         get(hello),
+//!     },
 //! }
 //!
+//! /// @summary: Say hello.
 //! #[handler]
 //! async fn hello(Path(name): Path<String>) -> Json<Greeting> {
 //!     Json(Greeting { message: format!("hello {name}") })
@@ -64,23 +67,13 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 ///
 /// # Syntax
 ///
-/// The flat form names each path explicitly:
-///
-/// ```ignore
-/// routes! {
-///     get("/notes", list),
-///     post("/notes", create, summary = "Create a note"),
-///     get("/notes/{id}", show, tags = ["notes"]),
-/// }
-/// ```
-///
-/// The grouped form shares one path across several methods:
+/// Every entry lives inside a path group:
 ///
 /// ```ignore
 /// routes! {
 ///     "/notes" => {
 ///         get(list),
-///         post(create, summary = "Create a note"),
+///         post(create),
 ///     },
 ///     "/notes/{id}" => {
 ///         get(show),
@@ -89,7 +82,7 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// }
 /// ```
 ///
-/// A module declares its prefix and shared policy before the entries, and a string followed by a
+/// A module declares its prefix and shared policy before the groups, and a string followed by a
 /// block is a nested module with its own prefix and options. `...module` composes another
 /// module's tree at the point it appears:
 ///
@@ -103,25 +96,27 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 ///     tags = ["api"],
 ///     ...notes,
 ///     "/blog" [tags = ["blog"]] {
-///         get "/" => blog::list,
-///         post "/" => blog::create, responses(201 = Post),
+///         "/" => {
+///             get(blog::list),
+///             post(blog::create),
+///         },
 ///     },
 /// }
 /// ```
-///
-/// The compact entry form `get "/path" => handler` is equivalent to `get("/path", handler)`.
 ///
 /// The supported verbs are `get`, `post`, `put`, `patch`, `delete`, `head`, `options`, `trace`
 /// and `any`. `any` is served but cannot be represented as one OpenAPI operation, so it is
 /// omitted from the document with a build diagnostic. Commas between entries are optional.
 ///
-/// An entry may carry outer attributes, most commonly `#[cfg(..)]`. In the grouped form the
-/// attribute applies to every entry in that group:
+/// A group may carry outer attributes, most commonly `#[cfg(..)]`. In a path group the attribute
+/// applies to every entry in that group:
 ///
 /// ```ignore
 /// routes! {
 ///     #[cfg(feature = "admin")]
-///     get("/admin", admin),
+///     "/admin" => {
+///         get(admin),
+///     },
 /// }
 /// ```
 ///
@@ -135,9 +130,26 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// check: a parent module prefix may add captures that the entry cannot see. The full resolved
 /// path is validated again when the app is built.
 ///
+/// # Handler doc tags
+///
+/// Operation prose and response declarations live on the handler's doc block:
+///
+/// ```ignore
+/// /// @summary: Create a note.
+/// /// @description: Persists the note and returns it.
+/// /// @responses:
+/// ///   201: Note
+/// #[handler]
+/// async fn create(...) -> ... { ... }
+/// ```
+///
+/// `@summary:` and `@description:` set the operation text; `@responses:` declares `status: Type`,
+/// bare `status`, or `default: Type` lines. `@responses(override):` permits replacing an inferred
+/// response. Untagged doc prose is ignored for OpenAPI. See the crate documentation for the full
+/// grammar.
+///
 /// # Entry options
 ///
-/// - `summary = "..."` / `description = "..."` — the operation's OpenAPI summary and description.
 /// - `operation_id = "..."` — an explicit operation id. When omitted, an id is derived from the
 ///   method, module path and handler name. Explicit ids must be unique within a document.
 /// - `tags = ["tag", ...]` — operation tags, appended to the tags inherited from enclosing
@@ -146,18 +158,13 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 ///   inherited from enclosing modules. One scheme is enforced by the generated handler shim as an
 ///   extractor; several form one AND requirement on the guard layer. Entries are types (`Bearer`),
 ///   not strings. A handler that already takes `Auth<A>` is not authenticated a second time.
-/// - `responses(status, status = Type, ...)` — declare responses that the handler's return type
-///   cannot express. A bare status documents an empty response; `status = Type` documents a JSON
-///   body of `Type`. Declarations add to or refine the inferred responses.
-/// - `override` — permit a `responses(..)` declaration to replace an inferred response with a
-///   different status/body. Without it, a contradictory declaration is a build error.
 /// - `path = "/v1/notes/{id}"` — assert the resolved path this entry declares, including every
 ///   parent module prefix. Useful for keeping a library's public URL stable.
 /// - `layer = expression` — a tower layer applied to this route's `MethodRouter`.
 /// - `doc = expression` — a hook of type `fn(&mut roundhouse::doc::HandlerDocs)` that runs after
-///   the handler's inferred documentation and before document checks. It can add hand-written
-///   parameters, bodies or responses; the additions still go through conflict and capture
-///   validation.
+///   the handler's inferred documentation and before document checks. It can set summary or
+///   description and add hand-written parameters, bodies or responses; the additions still go
+///   through conflict and capture validation.
 /// - `hidden` — serve the route but omit it from the document.
 /// - `absolute` — the path owns the full URL. Module prefixes, tags, security, layers and hidden
 ///   flags do not apply; a `security` declared on the entry itself still does.
@@ -202,7 +209,7 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// - two entries with the same `operation_id`, or two entries that would derive the same id from
 ///   their method and handler name;
 /// - an entry whose return type the macro can classify as producing no success response, unless
-///   the entry declares one with `responses(..)`.
+///   the handler declares one with `@responses:`.
 ///
 /// Checks that need the composed tree — collisions across separate modules, resolved prefix
 /// joins, a handler state that disagrees with the app — remain `BuildError`s from
@@ -216,13 +223,12 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// routes! {
 ///     prefix = "/api",
 ///     tags = ["notes"],
-///     get("/notes/{id}", show, operation_id = "get_note"),
-///     post(
-///         "/notes",
-///         create,
-///         summary = "Create a note",
-///         responses(201 = Note, 422),
-///     ),
+///     "/notes/{id}" => {
+///         get(show, operation_id = "get_note"),
+///     },
+///     "/notes" => {
+///         post(create),
+///     },
 ///     "/notes/{id}/revisions" => {
 ///         get(revisions),
 ///         delete(clear_revisions, deprecated),
@@ -295,13 +301,16 @@ pub fn routes(input: TokenStream) -> TokenStream {
 ///   responses; otherwise the build reports an undocumented error.
 ///
 /// A custom response type implements `ApiResponse` and its `SUCCESS` statuses. For any other
-/// `IntoResponse` type, declare the response in `routes!` with `responses(..)`. An operation with
+/// `IntoResponse` type, declare the response on the handler with `@responses:`. An operation with
 /// no declared success response is a build error.
 ///
 /// # Limitations
 ///
 /// Handlers cannot be generic, and the attribute cannot be applied to a method inside an `impl`
 /// block. Use `#[handler]` on a free function.
+///
+/// The handler's doc block may carry `@summary:`, `@description:` and `@responses:` tags. Untagged
+/// prose stays rustdoc-only.
 ///
 /// # Example
 ///
@@ -342,8 +351,8 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// `ApiSchema` registers the type as a named component (`$ref`) and applies the roundhouse-only
 /// patches. It is the trait automatic body and response documentation requires; a type that
-/// derives only `ToSchema` can still be published with an explicit `responses(status = Type)`
-/// declaration or a `doc` hook. Derive `ApiSchema` when the type is a documented JSON body or
+/// derives only `ToSchema` can still be published with an explicit `@responses:` declaration on
+/// the handler or a `doc` hook. Derive `ApiSchema` when the type is a documented JSON body or
 /// response, should be a named component, uses `unique_items` or the `url` to `uri` format
 /// mapping, or has a `validate_with` hook.
 ///
@@ -568,9 +577,10 @@ pub fn derive_multipart(input: TokenStream) -> TokenStream {
 /// # Variant attributes
 ///
 /// - `#[status(code)]` — required. `#[status(code, description = "..")]` overrides the canonical
-///   reason phrase. `#[status(code, problem = "slug")]` documents an error variant as an RFC 9457
-///   problem with type `https://roundhouse.rs/problems/{slug}`. `#[response(status = code)]` is
-///   an equivalent spelling.
+///   reason phrase and the variant's `@description:` doc tag. `#[status(code, problem = "slug")]`
+///   documents an error variant as an RFC 9457 problem with type
+///   `https://roundhouse.rs/problems/{slug}`. `#[response(status = code)]` is an equivalent
+///   spelling.
 ///
 /// # Field attributes
 ///
@@ -582,10 +592,18 @@ pub fn derive_multipart(input: TokenStream) -> TokenStream {
 /// - `#[from]` — accept a `ValidationErrors` field and turn it into a problem response with this
 ///   variant's status.
 ///
+/// A variant's `@description:` doc tag supplies the response description unless the status
+/// attribute provides one explicitly.
+///
 /// A variant without a body and a status below 400 produces an empty response with that status.
 /// A variant without a body and a status of 400 or above produces a `roundhouse::Problem`.
 ///
-/// The derive is for enums only, and generic enums are not supported.
+/// The derive is for enums only. Generic enums are supported: the derive copies the enum's
+/// generics and `where` clause, then adds only the bounds each documented field needs. A `Json<T>`
+/// body needs `T: ApiSchema` for documentation and `Json<T>: IntoResponse` at runtime; a bare body
+/// needs `T: ApiSchema + IntoResponse`; a header or `#[location]` needs `T: ApiSchema +
+/// TryInto<HeaderValue>`. `Created<T>` and `NoContent` cover the common created/no-content cases
+/// without a derive.
 #[proc_macro_derive(
     ApiResponse,
     attributes(status, response, body, header, location, from)

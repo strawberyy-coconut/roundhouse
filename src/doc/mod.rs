@@ -19,7 +19,7 @@
 //!
 //! `axum::Json<T>`, `Form<T>` and JSON responses require `T: ApiSchema` for automatic
 //! documentation. A plain `ToSchema` type remains available through an explicit
-//! `responses(status = Type)` declaration. Component names follow utoipa: unique names stay
+//! `@responses: status: Type` declaration. Component names follow utoipa: unique names stay
 //! simple, and a collision is disambiguated with `#[schema(as = module::Type)]`.
 
 pub mod build;

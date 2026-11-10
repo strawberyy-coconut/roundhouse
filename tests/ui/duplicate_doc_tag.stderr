@@ -1,0 +1,5 @@
+error: duplicate doc tag; each tag may appear once per doc block
+ --> tests/ui/duplicate_doc_tag.rs:4:1
+  |
+4 | /// @summary: Two.
+  | ^^^^^^^^^^^^^^^^^^

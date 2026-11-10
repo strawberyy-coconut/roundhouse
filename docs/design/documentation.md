@@ -3,7 +3,9 @@
 The document and the router come from the same declarations. There is no side-car annotation
 file and no second description to keep in sync: a `routes!` entry supplies the path, method and
 policy; `#[handler]` derives the request, response and security contribution from the signature;
-the document builder turns those contributions into an operation.
+explicit `@summary:`, `@description:` and `@responses:` doc tags supply the prose and response
+declarations the signature cannot express; the document builder turns those contributions into an
+operation.
 
 ## From signature to operation
 
@@ -18,7 +20,7 @@ the document builder turns those contributions into an operation.
     doc::build::build_with_observations
         ├─ merge layer docs and guards
         ├─ merge parameters, fill template captures
-        ├─ merge inferred + declared responses
+        ├─ merge inferred responses, then `@responses:` declarations
         ├─ build security requirements and schemes
         └─ validate_document
             │
@@ -40,7 +42,8 @@ marker implements `roundhouse::doc::HandlerMeta`:
 | `PATH_NAMES` | `Path<T>` where `T: PathNames` |
 | `REQUIRED_AUTH` | `Auth<A>` (not `Option<Auth<A>>`) |
 | `INFERRED_SUCCESS` | A small return-type classification, or `None` when unknown |
-| `docs(components)` | One statement per argument plus the response statements |
+| `DECLARED_SUCCESS` | Success statuses declared by `@responses:` |
+| `docs(components)` | Doc tags, one statement per argument plus the response statements |
 | `docs_with(components, validate)` | `docs()` plus the body-verification pass |
 
 `routes!` registers a generated shim (`__roundhouse_shim::<P>`), not the function. The shim has
@@ -140,6 +143,19 @@ unverified; any other unknown shape reaches the undeclared-success check.
 
 `Result<_, Problem>` documents a `default` problem response. `ApiError`/`ApiResponse` derives
 register the responses of an error enum, so `Result<Json<T>, NoteError>` documents both sides.
+A `Result` type alias is visible through the same blanket `ApiResponse for Result<T, E>` impl as
+long as both sides implement `ApiResponse`; the macro's compile-time success check remains
+syntactic and is skipped for aliases, so the build-time check is authoritative.
+
+Variant `@description:` tags supply response descriptions. `#[status(description = "…")]` remains
+the explicit override. `ApiError` also uses the text as the default `Problem` title unless
+`problem = "…"` overrides it.
+
+Generic `ApiResponse`/`ApiError` enums copy their generics and `where` clause into each impl and add
+only the bounds a field shape needs: `Json<T>` needs `T: ApiSchema` for docs and `Json<T>:
+IntoResponse` at runtime, a bare body needs `T: IntoResponse` and `T: ApiSchema`, and a header or
+location needs `T: TryInto<HeaderValue>` and the schema bound. The built-in `Created<T>` and
+`NoContent` wrappers cover the common created/no-content cases without a derive.
 
 ## `ApiSchema` vs `ToSchema`
 
@@ -148,11 +164,12 @@ register the responses of an error enum, so `Result<Json<T>, NoteError>` documen
 - it registers the type as a named component (`$ref`);
 - it applies the roundhouse-only patches (`unique_items`, the `url` → `uri` format mapping);
 - it carries `validate_with` hooks (`validate_at`);
+- it exposes the type's `@description:` through `description()`, used for single-body responses;
 - it is the bound automatic body and JSON response documentation requires.
 
 A type that only derives `ToSchema` can still be documented explicitly:
 
-- `responses(200 = Type)` in `routes!` accepts either trait;
+- `@responses:` with `200: Type` on the handler accepts either trait;
 - a `doc = |docs| ..` hook can set a body or response by hand;
 - `roundhouse::doc::json_body_to_schema::<T>` builds a `BodyDoc` in that hook.
 
@@ -171,7 +188,8 @@ Component names follow utoipa. Two types with the same simple name need
    `x-roundhouse-hidden`.
 2. **Omit `any`.** An `any` method set cannot be one operation; a diagnostic is recorded.
 3. **Compute `HandlerDocs`.** `(record.docs)(components, record.validate)` runs the marker's
-   statements, then the entry's `doc` hook runs.
+   statements (including `@summary`, `@description` and `@responses`), then the entry's `doc`
+   hook runs.
 4. **Merge layer docs.** Parameters, body, responses, auth and schemes from module/global
    `LayerDoc`s are added. A layer body only fills an absent body.
 5. **Merge guards.** Security guards installed by construction are promoted into requirements
@@ -188,9 +206,11 @@ Component names follow utoipa. Two types with the same simple name need
    responses are merged by status. Identical shapes merge their headers. Two different
    4xx/5xx shapes collapse to a `Problem`, because that is what every failure path produces.
    Two different success bodies keep the first and emit a diagnostic.
-9. **Apply `responses(..)`.** Declarations add statuses or refine inferred ones. Replacing a
-   different shape without `override` is `BuildError::ConflictingResponse`; with `override`, the
-   operation is marked `x-roundhouse-overridden-response`.
+9. **Apply `@responses:` declarations.** Declarations add statuses or refine inferred ones.
+   Replacing a different shape without `@responses(override):` is
+   `BuildError::ConflictingResponse`; with the override, the operation is marked
+   `x-roundhouse-overridden-response`. A non-canonical description is preserved when the status
+   and shape match.
 10. **Require a success.** An operation with no `default` and no 2xx/3xx response is
     `BuildError::UndeclaredSuccess`.
 11. **Build security.** Requirements are ANDed in declaration order. `Option<Auth<A>>` adds the
@@ -232,7 +252,7 @@ roundhouse adds a small set of `x-roundhouse-*` keys rather than inventing respo
 | `x-roundhouse-unverified-body` | The body comes from an extractor whose schema could not be verified |
 | `x-roundhouse-unverified-response` | A `Json`/`Vec` response shape could not be verified (for example a `ToSchema`-only type) |
 | `x-roundhouse-unverified-extractor` | An argument's documentation could not be inferred |
-| `x-roundhouse-overridden-response` | A `responses(..)` declaration replaced an inferred shape |
+| `x-roundhouse-overridden-response` | An `@responses(override):` declaration replaced an inferred shape |
 
 ## The document artifact
 

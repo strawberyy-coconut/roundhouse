@@ -15,9 +15,12 @@ pub struct Hello {
 routes! {
     prefix = "/v1",
     tags = ["hello"],
-    get("/hello/{name}", hello),
+    "/hello/{name}" => {
+        get(hello),
+    },
 }
 
+/// @summary: Say hello.
 #[handler]
 pub async fn hello(Path(name): Path<String>) -> Json<Hello> {
     Json(Hello { message: format!("hello {name}") })
@@ -49,7 +52,7 @@ including the `name` path parameter that `Path<String>` cannot name by itself.
 
 ## Route tables
 
-A table can declare routes directly, group them by path, and compose other tables:
+A table groups methods under a path and composes other tables:
 
 ```rust
 routes! {
@@ -57,39 +60,64 @@ routes! {
     tags = ["api"],
     layer = tower_http::trace::TraceLayer::new_for_http(),
 
-    get("/health", health, summary = "Liveness probe"),
+    "/health" => {
+        get(health),
+    },
 
     "/notes" => {
-        get(list, summary = "List notes"),
-        post(create, summary = "Create a note", responses(201 = Note)),
+        get(list),
+        post(create),
     },
 
     "/notes/{id}" => {
         get(show),
-        delete(destroy, responses(204)),
+        delete(destroy),
     },
 
     "/admin" [security = [Bearer]] {
-        get "/audit" => audit,
+        "/audit" => {
+            get(audit),
+        },
     },
 
     ...shared,
 }
 ```
 
-The supported methods are `get`, `post`, `put`, `patch`, `delete`, `head`, `options`, `trace`
-and `any`. Paths use `{capture}` and `{*rest}` syntax.
+The path-group form is the only entry form. The supported methods are `get`, `post`, `put`,
+`patch`, `delete`, `head`, `options`, `trace` and `any`. Paths use `{capture}` and `{*rest}`
+syntax.
+
+Operation prose and response declarations come from doc tags on the handler:
+
+```rust
+/// @summary: Create a note.
+/// @description: Persists the note and returns the stored representation.
+/// @responses:
+///   201: Note
+///   409: Problem
+#[handler]
+pub async fn create(...) -> ... { ... }
+```
+
+- Untagged doc prose is ignored for OpenAPI; it remains rustdoc-only.
+- `@summary:` is valid on handlers.
+- `@description:` is valid on handlers, response variants, response body types and query/path
+  fields.
+- `@responses:` declares `status: Type`, bare `status`, or `default: Type` lines.
+- `@responses(override):` replaces an inferred response.
+- `Json<T>` in `@responses:` is unwrapped to `T` for the body schema.
+
+The full tag grammar and precedence rules are in
+[`docs/design/doc-tags.md`](docs/design/doc-tags.md).
 
 ### Entry options
 
 | Option | Effect |
 |---|---|
-| `summary = "..."`, `description = "..."` | Set the operation's OpenAPI summary and description. |
 | `operation_id = "..."` | Choose the operation id. Without it, an id is derived from the method, module path and handler name. |
 | `tags = ["..."]` | Add tags to the operation. |
 | `security = [Scheme]` | Require a scheme for this operation. The scheme is enforced by the route shim. |
-| `responses(status, status = Type)` | Add or refine documented responses. A bare status is an empty response; `status = Type` is a JSON body. |
-| `override` | Allow `responses(..)` to replace an inferred response instead of reporting a conflict. |
 | `path = "/full/path"` | Assert the final resolved path, including module prefixes. |
 | `layer = expression` | Apply a tower layer to this route. |
 | `doc = expression` | Run a hook over the operation's `HandlerDocs` before document checks. |
@@ -101,7 +129,7 @@ and `any`. Paths use `{capture}` and `{*rest}` syntax.
 
 ### Module options
 
-`prefix` is declared before a table's first entry; a path group uses its path as the prefix.
+`prefix` is declared before a table's first entry; a path group uses its path as the prefix. Every route entry lives inside a path group.
 `tags`, `security`, `layer`, `layer_mode`, `hidden` and `doc` can be declared before a table's
 first entry or in the brackets of a path group. `layer_mode = full` applies a module layer to the
 whole subtree; `layer_mode = route` uses `route_layer`.
@@ -137,11 +165,12 @@ pub struct Profile {
 
 `axum::Json<T>`, `Form<T>` and a JSON response require `T: ApiSchema` when the framework documents
 them automatically. A type that only derives `ToSchema` can still be published with an explicit
-`responses(status = Type)` declaration, or with a `doc = |docs| …` hook.
+`@responses:` declaration on the handler, or with a `doc = |docs| …` hook.
 
 `QueryParams` and `PathParams` derive the parameter documentation for query and path structs.
-`RepeatedQuery<T>` reads repeated query keys (`?tag=a&tag=b`); axum's `Query<T>` cannot represent
-them.
+A field's `@description:` tag supplies the parameter description; `#[schema(description = "…")]`
+takes priority. `RepeatedQuery<T>` reads repeated query keys (`?tag=a&tag=b`); axum's `Query<T>`
+cannot represent them.
 
 ### Extending the document
 
@@ -259,15 +288,21 @@ responses for their variants:
 ```rust
 #[derive(Debug, thiserror::Error, ApiError)]
 pub enum NoteError {
+    /// @description: The requested note does not exist.
     #[error("note {0} was not found")]
     #[status(404, problem = "NoteNotFound")]
     NotFound(i64),
 
+    /// @description: The submitted note failed validation.
     #[error("the note was invalid")]
     #[status(422)]
     Invalid(#[from] ValidationErrors),
 }
 ```
+
+Variant `@description:` tags become the documented response description; `#[status(description =
+"…")]` remains the explicit override. Response and error enums may be generic. `Created<T>` and
+`NoContent` are built-in wrappers for the common created/no-content responses.
 
 `App::document_rejections(false)` disables automatic extractor rejection responses, leaving only
 the responses supplied by handlers and declarations.
@@ -312,7 +347,8 @@ std::fs::write("target/openapi.json", built.openapi_json())?;
 
 `Built::document()` returns the `OpenApi` value, `Built::openapi_30()` returns a 3.0.3-shaped
 document, `Built::routes()` returns the resolved route table with source locations, and
-`Built::diagnostics()` returns non-fatal observations.
+`Built::diagnostics()` returns non-fatal observations. `Built::router()` and
+`App::into_router()` return the ready `axum::Router<()>`; application state is already applied.
 
 `App::server(..)` and `App::servers(..)` add OpenAPI server entries. `App::document(..)` runs a
 hook over the finished document for metadata the declarations cannot derive, such as tag
@@ -338,6 +374,9 @@ are unique, every security requirement names a declared scheme, and every operat
 response.
 
 ## Install
+
+Upgrading from 0.2? See [`MIGRATING-0.3.md`](MIGRATING-0.3.md) for the route-table and doc-tag
+changes.
 
 ```sh
 cargo add roundhouse
