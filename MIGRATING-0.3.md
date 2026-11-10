@@ -124,9 +124,23 @@ unchanged.
 
 ## State and `FromRef`
 
-`State<T>` must still equal the state passed to `App::new`. `FromRef` substates remain
-unsupported; the build error now points at `Extension<Arc<Sub>>`, an app-level accessor, or
-splitting the app.
+The app state is still exact at `App::new`, but a `routes!` table can now name it and handlers can
+take substates:
+
+```rust
+routes! {
+    state = AppState,
+    prefix = "/notes",
+    "/" => { get(list) },
+}
+
+#[handler]
+async fn list(State(db): State<Db>) -> Json<Vec<Note>> { ... }
+```
+
+`Db` must implement `FromRef<AppState>`; `State<AppState>` itself still works. Inline groups
+inherit the table state. A spread module is a separate `routes!` expansion and declares its own
+state when it uses substates. `AuthScheme::State` must still equal the table state.
 
 ## Generic responses
 

@@ -108,10 +108,17 @@ pub struct HandlerDocs {
             a plain `async fn` has no handler documentation to derive"
 )]
 pub trait HandlerMeta: Send + Sync + 'static {
-    /// The state type read from `State<T>`, or `()` for a stateless handler.
+    /// The default router state when the `routes!` table does not declare `state = ...`.
+    ///
+    /// This is the first `State<T>` argument, the auth scheme's state, or `()`. A table's
+    /// `state = ...` overrides it; the handler's `State<T>` arguments then use
+    /// `T: FromRef<TableState>`.
     type State: 'static;
 
-    /// Whether a `State<T>` extractor appeared in the signature.
+    /// Whether a default state was inferred from `State<T>` or `Auth<A>`.
+    ///
+    /// A table can declare a state for a stateless handler as well; this flag describes only the
+    /// fallback derived from the signature.
     const HAS_STATE: bool;
 
     /// Capture names declared by the handler's `Path<T>` extractor, in template order.

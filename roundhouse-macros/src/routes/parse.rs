@@ -14,6 +14,7 @@ pub(super) enum LayerMode {
 #[derive(Default)]
 pub(super) struct ModuleOptions {
     pub(super) prefix: Option<LitStr>,
+    pub(super) state: Option<Type>,
     pub(super) tags: Vec<LitStr>,
     pub(super) security: Vec<Type>,
     pub(super) layer: Option<Expr>,
@@ -194,7 +195,7 @@ fn parse_root_options(input: ParseStream<'_>) -> Result<ModuleOptions> {
         let is_flag = name == "hidden";
         let is_key = matches!(
             name.as_str(),
-            "prefix" | "tags" | "security" | "layer" | "layer_mode" | "doc"
+            "prefix" | "state" | "tags" | "security" | "layer" | "layer_mode" | "doc"
         );
         if !is_flag && !is_key {
             break;
@@ -336,6 +337,10 @@ fn parse_module_key(input: ParseStream<'_>, options: &mut ModuleOptions, key: Id
         "prefix" => {
             input.parse::<Token![=]>()?;
             options.prefix = Some(input.parse()?);
+        }
+        "state" => {
+            input.parse::<Token![=]>()?;
+            options.state = Some(input.parse()?);
         }
         "tags" => {
             input.parse::<Token![=]>()?;

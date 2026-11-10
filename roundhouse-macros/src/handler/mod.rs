@@ -77,7 +77,8 @@ pub fn expand(item: ItemFn) -> TokenStream {
     let marker_type = format_ident!("{}_missing_roundhouse_handler_attribute", name);
     let vis = item.vis.clone();
 
-    let mut state_type: Option<Type> = None;
+    let mut state_args: Vec<Type> = Vec::new();
+    let mut auth_state: Option<Type> = None;
     let mut path_type: Option<Type> = None;
     let mut statements: Vec<TokenStream> = Vec::new();
     let mut required_auth: Vec<TokenStream> = Vec::new();
@@ -90,8 +91,8 @@ pub fn expand(item: ItemFn) -> TokenStream {
         let ty = &argument.ty;
 
         if let Some((auth, _scopes, optional)) = auth_types(ty) {
-            if state_type.is_none() {
-                state_type = Some(syn::parse_quote!(
+            if auth_state.is_none() {
+                auth_state = Some(syn::parse_quote!(
                     <#auth as #krate::auth::AuthScheme>::State
                 ));
             }
@@ -110,7 +111,9 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 path_type = single_generic(&strip_wrappers(ty));
             }
             ExtractorKind::State => {
-                state_type = single_generic(&strip_wrappers(ty));
+                if let Some(state) = single_generic(&strip_wrappers(ty)) {
+                    state_args.push(state);
+                }
             }
             _ => {}
         }
@@ -159,11 +162,28 @@ pub fn expand(item: ItemFn) -> TokenStream {
         Some(ty) => quote!(<#ty as #krate::doc::PathNames>::NAMES),
         None => quote!(&[]),
     };
-    let state_ty = match &state_type {
+
+    // The declared `State<T>` arguments are only a default: `routes!` may supply the router state
+    // with `state = ...`. A single handler with several distinct substates cannot infer which one
+    // is the app state, so the first one is the fallback and the table state is the supported way
+    // to disambiguate.
+    let default_state = state_args.first().cloned().or(auth_state);
+    let state_ty = match &default_state {
         Some(ty) => quote!(#ty),
         None => quote!(()),
     };
-    let has_state = state_type.is_some();
+    let has_state = default_state.is_some();
+
+    let mut substate_bounds: Vec<TokenStream> = Vec::new();
+    let mut seen_substates: Vec<String> = Vec::new();
+    for state in &state_args {
+        let text = quote!(#state).to_string();
+        if seen_substates.contains(&text) {
+            continue;
+        }
+        seen_substates.push(text);
+        substate_bounds.push(quote!(#state: #krate::shim::SubstateOf<S>));
+    }
 
     // The shim that routes! registers instead of the handler itself. It has the handler's own
     // extractors, plus the policy's auth extractor and a ValidationContext. The handler function
@@ -236,36 +256,25 @@ pub fn expand(item: ItemFn) -> TokenStream {
         }
         None => quote!(::core::option::Option::None),
     };
-    // A handler that declares `State<S>` fixes the router state. For an authenticated route that
-    // must equal the scheme's `AuthScheme::State`; `ShimPolicyFor` turns a mismatch into a
-    // compile error with a targeted diagnostic. A stateless handler lets the policy provide the
-    // state instead, so it can sit under any scheme.
-    let (state_param, policy_bound) = if has_state {
-        (
-            quote!(__rh_state: #krate::axum::extract::State<#state_ty>),
-            quote!(P: #krate::shim::ShimPolicyFor<#state_ty>),
-        )
-    } else {
-        (
-            quote!(__rh_state: #krate::axum::extract::State<P::State>),
-            quote!(P: #krate::shim::ShimPolicy),
-        )
-    };
-
+    // The shim is generic over the router state. `routes!` chooses `S` from the table's
+    // `state = ...` option, or falls back to `HandlerMeta::State`. A handler's `State<T>`
+    // arguments then use axum's `FromRef` contract through `SubstateOf`.
     quote! {
         #item
 
         impl #marker_type {
-            /// The generated route entry point. `routes!` instantiates the policy.
+            /// The generated route entry point. `routes!` instantiates the policy and state.
             #[doc(hidden)]
             #[allow(dead_code, clippy::too_many_arguments)]
-            #vis async fn __roundhouse_shim<P>(
+            #vis async fn __roundhouse_shim<P, S>(
                 __rh_ctx: #krate::shim::ValidationContext,
-                #state_param,
+                __rh_state: #krate::axum::extract::State<S>,
                 #(#shim_params),*
             ) -> #krate::axum::response::Response
             where
-                #policy_bound,
+                P: #krate::shim::ShimPolicyFor<S>,
+                S: ::core::clone::Clone + ::core::marker::Send + ::core::marker::Sync + 'static,
+                #(#substate_bounds,)*
             {
                 let _ = (&__rh_auth, &__rh_state);
                 #(#shim_unwraps)*

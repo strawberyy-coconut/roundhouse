@@ -130,13 +130,46 @@ The full tag grammar and precedence rules are in
 ### Module options
 
 `prefix` is declared before a table's first entry; a path group uses its path as the prefix. Every route entry lives inside a path group.
-`tags`, `security`, `layer`, `layer_mode`, `hidden` and `doc` can be declared before a table's
-first entry or in the brackets of a path group. `layer_mode = full` applies a module layer to the
-whole subtree; `layer_mode = route` uses `route_layer`.
+`state`, `tags`, `security`, `layer`, `layer_mode`, `hidden` and `doc` can be declared before a
+table's first entry or in the brackets of a path group. `layer_mode = full` applies a module layer
+to the whole subtree; `layer_mode = route` uses `route_layer`.
 
 Root an app with `roundhouse::app!(state)` from the module that declares the table, or
 `roundhouse::app!(state, routes)` to start at another module's table. `App::include` and
 `App::fragment` compose roots directly.
+
+### State and `FromRef` substates
+
+The app state is exact at the `App::new` boundary. A table names it once, and handlers may take
+substates through axum's `FromRef`:
+
+```rust
+#[derive(Clone)]
+pub struct AppState { db: Db }
+
+#[derive(Clone)]
+pub struct Db;
+
+impl FromRef<AppState> for Db {
+    fn from_ref(state: &AppState) -> Self {
+        state.db.clone()
+    }
+}
+
+routes! {
+    state = AppState,
+    prefix = "/notes",
+    "/" => { get(list) },
+}
+
+#[handler]
+pub async fn list(State(db): State<Db>) -> Json<Vec<Note>> { ... }
+```
+
+Inline path groups inherit the table's `state`; a group can override it. A spread module is a
+separate `routes!` expansion, so it declares its own `state` when it uses substates. A table
+without `state = ...` keeps the old default: a single `State<T>` argument, the auth scheme's state,
+or `()`. `Auth<A>` remains exact: `AuthScheme::State` must equal the table state.
 
 ## Schemas
 

@@ -24,6 +24,21 @@ use axum::extract::FromRequestParts;
 
 pub use crate::extract::ValidationContext;
 
+/// A state type that can be extracted from a handler's declared router state.
+///
+/// `#[handler]` emits this bound for every `State<T>` argument. `routes!` instantiates the shim
+/// with the table's `state = ...` type (or the handler's inferred default), so a substate only
+/// needs axum's ordinary `FromRef` implementation.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be extracted from the handler's router state `{S}`",
+    label = "`{Self}` does not implement `axum::extract::FromRef<{S}>`",
+    note = "implement `FromRef<{S}>` for `{Self}` (or derive `FromRef` on the app state), and set the `routes!` table's `state = {S}`"
+)]
+pub trait SubstateOf<S>: axum::extract::FromRef<S> {}
+
+impl<S, T> SubstateOf<S> for T where T: axum::extract::FromRef<S> {}
+
 /// The policy a generated shim is instantiated with.
 ///
 /// `Auth` is the extractor the shim adds for the route's security requirement; `()` means "the

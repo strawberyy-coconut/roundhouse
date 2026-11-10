@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, quote_spanned};
-use syn::{Ident, LitStr, Result};
+use syn::{Ident, LitStr, Result, Type};
 
 use crate::util::{auth_slice, last_segment, marker_type, string_slice};
 
@@ -22,6 +22,7 @@ pub fn expand(input: RoutesInput) -> TokenStream {
         true,
         input.options.prefix.as_ref(),
         &input.options,
+        None,
         &input.body,
         &mut ids,
         &mut definitions,
@@ -38,11 +39,13 @@ pub fn expand(input: RoutesInput) -> TokenStream {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_module(
     name: &Ident,
     public: bool,
     prefix: Option<&LitStr>,
     options: &ModuleOptions,
+    inherited_state: Option<&Type>,
     body: &Body,
     ids: &mut usize,
     definitions: &mut TokenStream,
@@ -50,12 +53,13 @@ pub(super) fn emit_module(
     let krate = crate::util::krate();
     let module_id = *ids;
     *ids += 1;
+    let state = options.state.as_ref().or(inherited_state);
 
     let mut routes = Vec::new();
     for entry in &body.entries {
         let id = *ids;
         *ids += 1;
-        let ExpandedEntry { defs, record } = expand_entry(entry, id);
+        let ExpandedEntry { defs, record } = expand_entry(entry, id, state);
         definitions.extend(defs);
         let attrs = &entry.attrs;
         routes.push(quote!(#(#attrs)* #record));
@@ -74,6 +78,7 @@ pub(super) fn emit_module(
             false,
             prefix,
             &group.options,
+            state,
             &group.body,
             ids,
             definitions,
@@ -177,7 +182,11 @@ pub(super) fn method_variant(method: &Ident) -> Result<TokenStream> {
     })
 }
 
-pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
+pub(super) fn expand_entry(
+    entry: &Entry,
+    index: usize,
+    table_state: Option<&Type>,
+) -> ExpandedEntry {
     let krate = crate::util::krate();
     if !entry.path.value().starts_with('/') {
         return ExpandedEntry {
@@ -224,34 +233,44 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
         [scheme] => Some(scheme),
         _ => None,
     };
-    let shim_state = match single_scheme {
-        Some(scheme) => quote!(<#scheme as #krate::auth::AuthScheme>::State),
-        None => quote!(<#marker_type as #krate::doc::HandlerMeta>::State),
+    let default_state = quote!(<#marker_type as #krate::doc::HandlerMeta>::State);
+    let shim_state = match table_state {
+        Some(state) => quote!(#state),
+        None => match single_scheme {
+            Some(scheme) => quote!(<#scheme as #krate::auth::AuthScheme>::State),
+            None => default_state.clone(),
+        },
     };
     let policy = match (single_scheme, entry.validate) {
         (Some(scheme), _) => quote!(#krate::shim::Authed::<#scheme>),
         (None, _) => quote!(#krate::shim::Plain::<#shim_state>),
     };
-    let state = match single_scheme {
-        Some(_) => quote!(
+    let state = match table_state {
+        Some(state) => quote!(
             || ::core::option::Option::Some(
-                ::core::any::TypeId::of::<#shim_state>(),
+                ::core::any::TypeId::of::<#state>(),
             )
         ),
-        None => quote!(|| #krate::doc::handler_state::<#marker_type>()),
+        None => match single_scheme {
+            Some(_) => quote!(
+                || ::core::option::Option::Some(
+                    ::core::any::TypeId::of::<#shim_state>(),
+                )
+            ),
+            None => quote!(|| #krate::doc::handler_state::<#marker_type>()),
+        },
     };
-    let state_name = match single_scheme {
-        Some(_) => quote!(|| ::core::any::type_name::<#shim_state>()),
-        None => quote!(
-            || ::core::any::type_name::<
-                <#marker_type as #krate::doc::HandlerMeta>::State,
-            >()
-        ),
+    let state_name = match table_state {
+        Some(state) => quote!(|| ::core::any::type_name::<#state>()),
+        None => match single_scheme {
+            Some(_) => quote!(|| ::core::any::type_name::<#shim_state>()),
+            None => quote!(|| ::core::any::type_name::<#default_state>()),
+        },
     };
     let handler_alias = format_ident!("__RoundhouseHandler{index}");
     // Through an alias so a missing `#[handler]` reports one "type not found" error rather than
     // also interpreting the marker as a module path.
-    let route_handler = quote!(#handler_alias::__roundhouse_shim::<#policy>);
+    let route_handler = quote!(#handler_alias::__roundhouse_shim::<#policy, #shim_state>);
     let shim_auth = match single_scheme {
         Some(scheme) => quote!(&[<#scheme as #krate::auth::AuthScheme>::NAME]),
         None => quote!(&[]),

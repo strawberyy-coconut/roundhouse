@@ -182,16 +182,42 @@ needs no second `with_state` call. `App::router()` remains for one release as a 
 routes are served but cannot be discovered for the document, so the document is marked
 `x-roundhouse-merged` and the merge is recorded in `Built::merges()`.
 
-### Why `FromRef` substates are not supported
+### State and `FromRef` substates
 
-The app state is exact. `State<T>` must equal the state passed to `App::new`, and an auth scheme's
-`AuthScheme::State` must equal it too. This is not only a resolve check: each route is built as a
-`MethodRouter<S>` at the handler's state and downcast during assembly. Allowing a `FromRef`
-substate would require the route macro to know the app state, which it does not.
+The app state is exact at the boundary: `App::new` must be built with the same state the route
+table declares. Inside the table, handlers may take substates through axum's ordinary `FromRef`
+contract:
 
-Use `Extension<Arc<Sub>>`, an app-level accessor, or split the application when a handler needs a
-smaller state. A state mismatch is a `BuildError::StateMismatch` with these alternatives in its
-message.
+```rust
+routes! {
+    state = AppState,
+    prefix = "/notes",
+    "/" => { get(list) },
+}
+
+#[handler]
+async fn list(State(db): State<Db>) -> Json<Vec<Note>> {
+    // Db: FromRef<AppState>
+    Json(db.list())
+}
+```
+
+An inline group inherits the table's `state` and may override it. A spread module is a separate
+`routes!` expansion and declares its own state when it uses substates. Without `state = ...`, the
+default remains the handler's first `State<T>`, the auth scheme's state, or `()`.
+
+The shim is generic over the chosen state: `routes!` instantiates it with `State<S>` and a
+`ShimPolicyFor<S>` bound, and each `State<T>` argument contributes `T: SubstateOf<S>` (a hidden
+alias for `FromRef`). This is why a table-level declaration is enough; the handler macro never
+needs to know the app state.
+
+The declaration is required because `#[handler]` expands before `App::new` and a `RouteRecord` is a
+`const`; the shim's router state must be monomorphized when the table is expanded. A `state = ...`
+on the app root cannot reach a separately expanded module, and `App::new`'s inferred type is not
+visible to a proc macro. The table is the smallest scope that knows the router state.
+
+`Auth<A>` remains exact: `AuthScheme::State` must equal the table state. A state mismatch is a
+`BuildError::StateMismatch` from `App::try_build()`.
 
 ## Built
 
@@ -219,8 +245,9 @@ The document is always built even when it is not served. `App::openapi(..)` cont
   shape to fall back to.
 - **`App::merge` is an escape hatch, not composition.** Declared routes and merged routes have
   different guarantees. The ledger exists so CI can see the difference.
-- **State is exact, not structural.** `FromRef` substates are a documented non-goal; the build
-  error points at the supported alternatives.
+- **State is exact at the boundary, structural inside it.** A table names the app state once;
+  `State<T>` arguments may then use `FromRef`. The table state still has to equal `App::new`'s
+  state, and the build error names both when they differ.
 
 ## Future
 

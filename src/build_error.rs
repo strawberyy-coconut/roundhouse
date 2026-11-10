@@ -283,9 +283,8 @@ impl fmt::Display for BuildError {
             } => write!(
                 f,
                 "error: route `{operation_id}` needs `{expected}`; app was built with `{actual}`\n  {source}\n\
-                 hint: roundhouse requires the handler's `State<T>` to equal the app state; `FromRef` \
-                 substates are not supported. Use `Extension<Arc<Sub>>`, an app-level accessor, or \
-                 split the app"
+                 hint: set the `routes!` table's `state = ...` to the app state; a `State<T>` \
+                 argument may then be a substate with `T: FromRef<AppState>`"
             ),
             BuildError::EmptyApp => write!(
                 f,

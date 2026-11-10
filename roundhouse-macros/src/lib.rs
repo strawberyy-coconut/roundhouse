@@ -185,6 +185,10 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// same options in its brackets:
 ///
 /// - `prefix = "/path"` — the module's URL segment (root table only; a group uses its path).
+/// - `state = AppState` — the router state for every entry in this table. A handler's `State<T>`
+///   arguments then need `T: FromRef<AppState>`; `State<AppState>` itself still works. Inline
+///   groups inherit the state unless they declare their own. A spread module is a separate
+///   `routes!` expansion and declares its own state when it uses substates.
 /// - `tags = ["tag", ...]` — tags added to every non-`absolute` route below the module.
 /// - `security = [Scheme, ...]` — scheme types installed as an `Auth<Scheme>` guard on every
 ///   non-`absolute` route below the module, and published in the document. Several schemes form
@@ -260,7 +264,9 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// documentation and validation through `roundhouse::doc::ExtractArg`; the macro asks the
 /// concrete type and marks an extractor without an implementation as unverified.
 ///
-/// - `State<T>` — sets the app state type. Every handler in one app must agree on it.
+/// - `State<T>` — extracted from the route table's `state = S` using `T: FromRef<S>`. Without a
+///   table state, a single `State<T>` is the default router state. The app state is still exact at
+///   the `App::new` boundary; the table only names it.
 /// - `Path<T>` — records the capture names from `T: roundhouse::PathNames` and the schema for a
 ///   scalar `Path<T>`. With a scalar type the names are unknown, so the compile-time check is
 ///   skipped and the build validates the document instead.
