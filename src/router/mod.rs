@@ -14,8 +14,8 @@
 //! success responses during expansion, so `cargo check` catches those. The composed tree is
 //! resolved at build time: collisions across modules, prefix joins, state mismatches and the
 //! final document need the aggregate view. Use [`App::try_build`] in a test or a check binary so
-//! CI can fail without starting a server. [`App::router`] returns a plain `axum::Router<S>` for
-//! embedding in a larger axum application.
+//! CI can fail without starting a server. [`App::into_router`] returns the ready `axum::Router<()>`
+//! for embedding in a larger axum application.
 //!
 //! ```no_run
 //! # use roundhouse::prelude::*;

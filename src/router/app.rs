@@ -27,8 +27,8 @@ pub(crate) type ValidationDefaults = (
 
 /// The application builder.
 ///
-/// `App::router()` returns a real `axum::Router`; `App::build()` gives the same router plus the
-/// resolved table and the cached OpenAPI document.
+/// `App::into_router()` returns the ready `axum::Router<()>`; `App::build()` gives the same router
+/// plus the resolved table and the cached OpenAPI document.
 pub struct App<S> {
     pub(crate) state: S,
     pub(crate) roots: Vec<&'static Module>,
