@@ -187,14 +187,19 @@ A type that only derives `ToSchema` can still be documented explicitly:
 
 - `@responses:` with `200: Type` on the handler accepts either trait;
 - a `doc = |docs| ..` hook can set a body or response by hand;
-- `roundhouse::doc::json_body_to_schema::<T>` builds a `BodyDoc` in that hook.
+- `roundhouse::doc::json_body_to_schema::<T>` builds a `BodyDoc` in that hook;
+- for generated types, `roundhouse::impl_api_schema!(Type);` implements the adapter. It inserts
+  the type's own component and registers everything reachable through `ToSchema::schemas()`.
 
 What it cannot do is be inferred from `Json<T>` automatically. `Json<T>: ApiResponse` requires
 `T: ApiSchema`, so a plain `ToSchema` return type lands on the unverified fallback and `strict()`
-rejects it. That is intentional: the document would otherwise promise the unpatched shape.
+rejects it. That is intentional: the document would otherwise promise the unpatched shape. A
+blanket `impl<T: ToSchema> ApiSchema for T` is impossible because it overlaps the derive and the
+primitive implementations.
 
-Component names follow utoipa. Two types with the same simple name need
-`#[schema(as = module::Name)]`.
+Component names follow utoipa. Two different Rust types that register the same name are a
+`BuildError::ComponentCollision`; `#[schema(as = module::Name)]` disambiguates them (utoipa formats
+the component name with dots: `module.Name`).
 
 ## Building the operation
 

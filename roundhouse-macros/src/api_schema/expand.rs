@@ -64,6 +64,12 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 components: &mut #krate::utoipa::openapi::schema::Components,
             ) {
                 let name = <Self as #krate::utoipa::ToSchema>::name().into_owned();
+                match #krate::doc::registration::claim::<Self>(&name, components) {
+                    #krate::doc::registration::Claim::Already
+                    | #krate::doc::registration::Claim::Collision => return,
+                    #krate::doc::registration::Claim::Claimed
+                    | #krate::doc::registration::Claim::Inactive => {}
+                }
                 if components.schemas.contains_key(&name) {
                     return;
                 }

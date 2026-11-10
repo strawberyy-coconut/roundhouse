@@ -200,6 +200,16 @@ pub struct Profile {
 them automatically. A type that only derives `ToSchema` can still be published with an explicit
 `@responses:` declaration on the handler, or with a `doc = |docs| …` hook.
 
+For generated types that cannot carry the derive, use the opt-in adapter:
+
+```rust
+roundhouse::impl_api_schema!(generated::Row, generated::OtherRow);
+```
+
+It requires `ToSchema` on the type and publishes the component plus everything reachable through
+`ToSchema::schemas()`. A blanket `impl<T: ToSchema> ApiSchema for T` is not possible; it would
+overlap the derive and the primitive implementations.
+
 `QueryParams` and `PathParams` derive the parameter documentation for query and path structs.
 A field's `@description:` tag supplies the parameter description; `#[schema(description = "…")]`
 takes priority. `RepeatedQuery<T>` reads repeated query keys (`?tag=a&tag=b`); axum's `Query<T>`
@@ -229,8 +239,9 @@ An extractor without an `ExtractArg` impl (or a body type without `ApiSchema`) i
 but the operation is marked `x-roundhouse-unverified-extractor`/`-body` and `App::strict()` turns
 that marker into a build error.
 
-Component names come from utoipa. Use `#[schema(as = module::Name)]` when two types would
-otherwise share a component name.
+Component names come from utoipa. Two different Rust types that claim one component name are a
+`BuildError::ComponentCollision`; use `#[schema(as = module::Name)]` on one of them. Utoipa formats
+the name with dots (`module.Name`) in the document.
 
 ## Validation
 

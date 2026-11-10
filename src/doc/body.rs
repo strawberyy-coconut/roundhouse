@@ -22,8 +22,21 @@ pub fn json_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
 pub fn register_to_schema<T: utoipa::ToSchema + ?Sized>(components: &mut Components) {
     let mut referenced = Vec::new();
     <T as utoipa::ToSchema>::schemas(&mut referenced);
+    let type_name = std::any::type_name::<T>();
     for (name, schema) in referenced {
-        components.schemas.entry(name).or_insert(schema);
+        if let Some(existing) = components.schemas.get(&name) {
+            // `schemas()` has no Rust type identity for each entry. Identical shapes are the same
+            // shared type; a different shape under the same name is a real collision.
+            if existing != &schema {
+                crate::doc::registration::record_collision(
+                    &name,
+                    "<registered schema>",
+                    type_name,
+                );
+            }
+            continue;
+        }
+        components.schemas.insert(name, schema);
     }
 }
 
@@ -55,6 +68,12 @@ pub fn register_self<T: utoipa::ToSchema + ?Sized>(components: &mut Components) 
             | "Value"
     ) {
         return;
+    }
+    match crate::doc::registration::claim::<T>(&name, components) {
+        crate::doc::registration::Claim::Already
+        | crate::doc::registration::Claim::Collision => return,
+        crate::doc::registration::Claim::Claimed
+        | crate::doc::registration::Claim::Inactive => {}
     }
     if components.schemas.contains_key(&name) {
         return;

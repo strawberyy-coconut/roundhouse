@@ -118,6 +118,13 @@ pub enum BuildError {
         location: ParamIn,
         source: Source,
     },
+    /// Two Rust types register one component name.
+    ComponentCollision {
+        name: String,
+        first_type: &'static str,
+        second_type: &'static str,
+        source: Source,
+    },
     /// A path template cannot be served.
     InvalidTemplate { reason: String, source: Source },
     /// An explicit `path = "..."` assertion does not match the resolved path.
@@ -262,6 +269,17 @@ impl fmt::Display for BuildError {
                 "error: conflicting parameter `{name}` ({})\n  {source}\n\
                  hint: two extractors document the same parameter with different schemas",
                 location.as_str()
+            ),
+            BuildError::ComponentCollision {
+                name,
+                first_type,
+                second_type,
+                source,
+            } => write!(
+                f,
+                "error: component `{name}` is registered by two Rust types\n  \
+                 first:  {first_type}\n  second: {second_type}\n  {source}\n\
+                 hint: use `#[schema(as = module::Name)]` on one type"
             ),
             BuildError::InvalidTemplate { reason, source } => {
                 write!(f, "error: invalid route template\n  {reason}\n  {source}")

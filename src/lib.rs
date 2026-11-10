@@ -172,6 +172,44 @@ pub use roundhouse_macros::{
     ApiError, ApiResponse, ApiSchema, PathParams, QueryParams, handler, routes,
 };
 
+/// Implement `roundhouse::doc::ApiSchema` for a type that already implements `ToSchema`.
+///
+/// This is for generated types that cannot carry `#[derive(ToSchema, ApiSchema)]`. The adapter
+/// publishes the type as a component and registers everything reachable through
+/// `ToSchema::schemas()`.
+///
+/// ```ignore
+/// roundhouse::impl_api_schema!(generated::Row, generated::OtherRow);
+/// ```
+///
+/// A blanket `impl<T: ToSchema> ApiSchema for T` is not possible: it would overlap the derive and
+/// the primitive implementations.
+#[macro_export]
+macro_rules! impl_api_schema {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl $crate::doc::ApiSchema for $ty {
+                fn schema() -> $crate::utoipa::openapi::RefOr<
+                    $crate::utoipa::openapi::schema::Schema,
+                > {
+                    $crate::doc::schema::r#ref(
+                        <$ty as $crate::utoipa::ToSchema>::name().into_owned(),
+                    )
+                }
+
+                fn register(
+                    components: &mut $crate::utoipa::openapi::schema::Components,
+                ) {
+                    // `ToSchema::schemas()` lists referenced types, not necessarily the type
+                    // itself, so insert this component first and then walk its references.
+                    $crate::doc::register_self::<$ty>(components);
+                    $crate::doc::register_to_schema::<$ty>(components);
+                }
+            }
+        )*
+    };
+}
+
 /// Start an app from the fragment declared in the calling module.
 ///
 /// ```ignore
@@ -214,7 +252,7 @@ pub mod prelude {
     pub use crate::response::{Created, NoContent};
     pub use crate::utoipa;
     pub use crate::validate::{ValidationError, ValidationErrors};
-    pub use crate::{ApiError, ApiResponse, ApiSchema, ToSchema, app};
+    pub use crate::{ApiError, ApiResponse, ApiSchema, ToSchema, app, impl_api_schema};
     #[cfg(feature = "multipart")]
     pub use crate::{FilePart, Multipart};
     pub use crate::{PathParams, QueryParams, handler, routes};

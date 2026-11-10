@@ -48,6 +48,8 @@ mod body;
 mod model;
 mod params;
 mod probe;
+#[doc(hidden)]
+pub mod registration;
 mod response_doc;
 
 pub use arg::*;

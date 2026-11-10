@@ -111,6 +111,18 @@ pub struct Filter {
 
 `#[schema(description = "...")]` takes priority.
 
+## Components
+
+Two different Rust types that register the same component name are now a
+`BuildError::ComponentCollision`. Disambiguate with `#[schema(as = module::Name)]`; utoipa formats
+the component name with dots (`module.Name`).
+
+Generated `ToSchema`-only types can opt into the schema adapter without a hand-written impl:
+
+```rust
+roundhouse::impl_api_schema!(generated::Row);
+```
+
 ## Routers
 
 `App::router()` is deprecated. Use:
