@@ -61,16 +61,18 @@ mod notes {
     routes! {
         prefix = "/notes",
         tags = ["notes"],
-        get("/", list, summary = "List notes"),
-        post("/", create, summary = "Create a note"),
-        get("/{id}", show, summary = "Read a note"),
+        get("/", list),
+        post("/", create),
+        get("/{id}", show),
     }
 
+    /// @summary: List notes
     #[handler]
     pub async fn list(State(state): State<TestState>) -> Json<Vec<Note>> {
         Json(state.list())
     }
 
+    /// @summary: Create a note
     #[handler]
     pub async fn create(
         State(state): State<TestState>,
@@ -79,6 +81,7 @@ mod notes {
         Ok(Json(state.create(body.title)))
     }
 
+    /// @summary: Read a note
     #[handler]
     pub async fn show(
         State(state): State<TestState>,

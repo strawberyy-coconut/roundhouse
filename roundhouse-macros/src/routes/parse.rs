@@ -1,8 +1,8 @@
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
-use syn::{Attribute, Expr, Ident, LitInt, LitStr, Path, Result, Token, Type};
+use syn::{Attribute, Expr, Ident, LitStr, Path, Result, Token, Type};
 
-use crate::util::{parse_security_types, parse_u16};
+use crate::util::parse_security_types;
 
 #[derive(Clone, Copy, Default)]
 pub(super) enum LayerMode {
@@ -28,12 +28,9 @@ pub(super) struct Entry {
     pub(super) path: LitStr,
     pub(super) assert_path: Option<LitStr>,
     pub(super) handler: Path,
-    pub(super) summary: Option<LitStr>,
-    pub(super) description: Option<LitStr>,
     pub(super) operation_id: Option<LitStr>,
     pub(super) tags: Vec<LitStr>,
     pub(super) security: Vec<Type>,
-    pub(super) responses: Vec<(u16, Option<Type>)>,
     pub(super) layer: Option<Expr>,
     pub(super) doc: Option<Expr>,
     pub(super) hidden: bool,
@@ -41,7 +38,6 @@ pub(super) struct Entry {
     pub(super) validate: bool,
     pub(super) deprecated: bool,
     pub(super) public: bool,
-    pub(super) response_override: bool,
 }
 
 impl Entry {
@@ -52,12 +48,9 @@ impl Entry {
             path,
             assert_path: None,
             handler,
-            summary: None,
-            description: None,
             operation_id: None,
             tags: Vec::new(),
             security: Vec::new(),
-            responses: Vec::new(),
             layer: None,
             doc: None,
             hidden: false,
@@ -65,34 +58,29 @@ impl Entry {
             validate: true,
             deprecated: false,
             public: false,
-            response_override: false,
         }
     }
 
-    /// A top-level entry: `get("/path", handler, option = ..)` or `get "/path" => handler`.
+    /// A flat `get("/path", handler, option = ..)` entry.
+    ///
+    /// Kept as a compatibility spelling while the path-group form is the documented style.
     pub(super) fn parse_flat(input: ParseStream<'_>) -> Result<Self> {
         let attrs = Attribute::parse_outer(input)?;
         let method: Ident = input.parse()?;
-
-        if input.peek(syn::token::Paren) {
-            // `get("/path", handler, option = ..)`
-            let content;
-            syn::parenthesized!(content in input);
-            let path: LitStr = content.parse()?;
-            content.parse::<Token![,]>()?;
-            let handler: Path = content.parse()?;
-            let mut entry = Entry::new(attrs, method, path, handler);
-            parse_entry_options(&content, &mut entry, false)?;
-            Ok(entry)
-        } else {
-            // `get "/path" => handler, option = ..`
-            let path: LitStr = input.parse()?;
-            input.parse::<Token![=>]>()?;
-            let handler: Path = input.parse()?;
-            let mut entry = Entry::new(attrs, method, path, handler);
-            parse_entry_options(input, &mut entry, true)?;
-            Ok(entry)
+        if !input.peek(syn::token::Paren) {
+            return Err(syn::Error::new(
+                input.span(),
+                "the compact entry form was removed; write `\"/path\" => { get(handler) }`",
+            ));
         }
+        let content;
+        syn::parenthesized!(content in input);
+        let path: LitStr = content.parse()?;
+        content.parse::<Token![,]>()?;
+        let handler: Path = content.parse()?;
+        let mut entry = Entry::new(attrs, method, path, handler);
+        parse_entry_options(&content, &mut entry)?;
+        Ok(entry)
     }
 
     /// An entry inside `"/path" => { get(handler, option = ..) }`: the group supplies the path.
@@ -103,7 +91,7 @@ impl Entry {
         syn::parenthesized!(content in input);
         let handler: Path = content.parse()?;
         let mut entry = Entry::new(attrs, method, path, handler);
-        parse_entry_options(&content, &mut entry, false)?;
+        parse_entry_options(&content, &mut entry)?;
         Ok(entry)
     }
 }
@@ -246,48 +234,8 @@ fn parse_root_options(input: ParseStream<'_>) -> Result<ModuleOptions> {
     Ok(options)
 }
 
-const ENTRY_KEYS: &[&str] = &[
-    "summary",
-    "description",
-    "operation_id",
-    "path",
-    "tags",
-    "security",
-    "responses",
-    "layer",
-    "doc",
-    "hidden",
-    "absolute",
-    "public",
-    "deprecated",
-    "override",
-    "validate",
-];
-
-fn parse_entry_options(
-    content: ParseStream<'_>,
-    entry: &mut Entry,
-    stop_at_unknown: bool,
-) -> Result<()> {
+fn parse_entry_options(content: ParseStream<'_>, entry: &mut Entry) -> Result<()> {
     while content.peek(Token![,]) {
-        if stop_at_unknown {
-            let fork = content.fork();
-            fork.parse::<Token![,]>()?;
-            if fork.is_empty() {
-                content.parse::<Token![,]>()?;
-                break;
-            }
-            let key: Ident = match fork.call(Ident::parse_any) {
-                Ok(key) => key,
-                Err(_) => break,
-            };
-            // A known option is ours. An unknown identifier followed by `=` is still an option
-            // (report it as unknown); anything else starts the next entry.
-            if !ENTRY_KEYS.contains(&key.to_string().as_str()) && !fork.peek(Token![=]) {
-                break;
-            }
-        }
-
         content.parse::<Token![,]>()?;
         if content.is_empty() {
             break;
@@ -301,12 +249,18 @@ fn parse_entry_options(
 fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> Result<()> {
     match key.to_string().as_str() {
         "summary" => {
-            content.parse::<Token![=]>()?;
-            entry.summary = Some(content.parse()?);
+            return Err(syn::Error::new(
+                key.span(),
+                "operation summaries come from the handler's `/// @summary:` doc tag \
+                 (or a `doc =` hook for a per-route override)",
+            ));
         }
         "description" => {
-            content.parse::<Token![=]>()?;
-            entry.description = Some(content.parse()?);
+            return Err(syn::Error::new(
+                key.span(),
+                "operation descriptions come from the handler's `/// @description:` doc tag \
+                 (or a `doc =` hook for a per-route override)",
+            ));
         }
         "operation_id" => {
             content.parse::<Token![=]>()?;
@@ -325,9 +279,11 @@ fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> R
             entry.security = parse_security_types(content)?;
         }
         "responses" => {
-            let responses;
-            syn::parenthesized!(responses in content);
-            entry.responses = parse_responses(&responses)?;
+            return Err(syn::Error::new(
+                key.span(),
+                "response declarations live on the handler; write `/// @responses:` in its doc \
+                 block",
+            ));
         }
         "layer" => {
             content.parse::<Token![=]>()?;
@@ -341,7 +297,12 @@ fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> R
         "absolute" => entry.absolute = true,
         "public" => entry.public = true,
         "deprecated" => entry.deprecated = true,
-        "override" => entry.response_override = true,
+        "override" => {
+            return Err(syn::Error::new(
+                key.span(),
+                "replace `override` with `@responses(override):` on the handler",
+            ));
+        }
         "validate" => {
             content.parse::<Token![=]>()?;
             let value: syn::LitBool = content.parse()?;
@@ -444,25 +405,4 @@ fn parse_string_list(input: ParseStream<'_>) -> Result<Vec<LitStr>> {
         .parse_terminated(|input| input.parse::<LitStr>(), Token![,])?
         .into_iter()
         .collect())
-}
-
-fn parse_responses(input: ParseStream<'_>) -> Result<Vec<(u16, Option<Type>)>> {
-    let mut responses = Vec::new();
-    while !input.is_empty() {
-        let literal: LitInt = input.parse()?;
-        let status = parse_u16(&literal)?;
-        let body = if input.peek(Token![=]) {
-            input.parse::<Token![=]>()?;
-            Some(input.parse::<Type>()?)
-        } else {
-            None
-        };
-        responses.push((status, body));
-        if input.peek(Token![,]) {
-            input.parse::<Token![,]>()?;
-        } else {
-            break;
-        }
-    }
-    Ok(responses)
 }

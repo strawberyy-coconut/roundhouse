@@ -5,9 +5,10 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 routes! {
-    get("/{id}", show, summary = "Read a note"),
+    get("/{id}", show),
 }
 
+/// @summary: Read a note
 #[handler]
 pub async fn show(
     State(app): State<AppState>,

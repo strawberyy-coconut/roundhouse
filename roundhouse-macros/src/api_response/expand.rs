@@ -43,6 +43,10 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
     let mut success_statuses: Vec<u16> = Vec::new();
 
     for variant in &data.variants {
+        let tags = crate::doc_tags::parse(
+            &variant.attrs,
+            crate::doc_tags::AllowedTags::DESCRIPTION_ONLY,
+        )?;
         let attrs = variant
             .attrs
             .iter()
@@ -101,6 +105,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         let description = attrs
             .description
             .clone()
+            .or(tags.description)
             .unwrap_or_else(|| canonical_reason(status).to_string());
         let problem_title = attrs.problem.clone().unwrap_or_else(|| description.clone());
 

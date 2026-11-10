@@ -22,6 +22,17 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let ident = input.ident.clone();
     let container_serde = serde_container(&input.attrs)?;
     let _container_schema = schema_attrs(&input.attrs)?;
+    let tags = crate::doc_tags::parse(
+        &input.attrs,
+        crate::doc_tags::AllowedTags::DESCRIPTION_ONLY,
+    )?;
+    let description = match tags.description {
+        Some(description) => {
+            let description = LitStr::new(&description, ident.span());
+            quote!(::core::option::Option::Some(#description))
+        }
+        None => quote!(::core::option::Option::None),
+    };
 
     let mut generics = input.generics.clone();
     for param in &mut generics.params {
@@ -52,6 +63,10 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 #krate::doc::schema::r#ref(
                     <Self as #krate::utoipa::ToSchema>::name().into_owned(),
                 )
+            }
+
+            fn description() -> ::core::option::Option<&'static str> {
+                #description
             }
 
             fn register(

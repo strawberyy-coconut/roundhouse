@@ -60,12 +60,20 @@ pub use response_doc::*;
 /// The documentation half a `#[handler]` attribute derives from the signature.
 #[derive(Clone, Default)]
 pub struct HandlerDocs {
+    /// Operation summary from the handler's `@summary:` tag, unless the route entry overrides it.
+    pub summary: Option<String>,
+    /// Operation description from the handler's `@description:` tag.
+    pub description: Option<String>,
     pub params: Vec<Param>,
     /// Path and query types the engine should compile for this operation.
     pub parts: Vec<PartsDoc>,
     pub body: Option<BodyDoc>,
     pub failures: Vec<ResponseDoc>,
     pub responses: Vec<ResponseDoc>,
+    /// Responses declared explicitly by the handler's `@responses:` tag.
+    pub declared_responses: Vec<ResponseDoc>,
+    /// Whether `@responses(override):` allows a declared response to replace an inferred one.
+    pub declared_response_override: bool,
     pub required_auth: Vec<crate::auth::AuthDoc>,
     pub optional_auth: Vec<crate::auth::AuthDoc>,
     pub schemes: Vec<crate::auth::SchemeDoc>,
@@ -119,6 +127,11 @@ pub trait HandlerMeta: Send + Sync + 'static {
     /// it (a custom `ApiResponse`). `Some(&[])` means the macro knows there is no success
     /// response, so a route entry must declare one.
     const INFERRED_SUCCESS: Option<&'static [u16]> = None;
+
+    /// Success statuses declared by the handler's `@responses:` block.
+    ///
+    /// The route-table compile-time check uses this when the return type cannot prove success.
+    const DECLARED_SUCCESS: Option<&'static [u16]> = None;
 
     fn docs(components: &mut Components) -> HandlerDocs;
 

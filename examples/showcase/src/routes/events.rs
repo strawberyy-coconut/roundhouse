@@ -2,7 +2,7 @@ use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 
 routes! {
-    post("/events", create, summary = "Validate a tagged event"),
+    post("/events", create),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
@@ -15,6 +15,7 @@ pub enum Event {
     Deleted,
 }
 
+/// @summary: Validate a tagged event
 #[handler]
 pub async fn create(Json(event): Json<Event>) -> Json<Event> {
     Json(event)

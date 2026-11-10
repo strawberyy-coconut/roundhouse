@@ -15,7 +15,7 @@ mod more {
     routes! {
         prefix = "/more",
         post("/created", created, operation_id = "toschema_created"),
-        get("/declared", declared, operation_id = "toschema_declared", responses(200 = Payload)),
+        get("/declared", declared, operation_id = "toschema_declared"),
     }
 
     #[derive(ApiResponse)]
@@ -38,6 +38,8 @@ mod more {
         })
     }
 
+    /// @responses:
+    ///   200: Payload
     #[handler]
     pub async fn declared() -> axum::http::StatusCode {
         axum::http::StatusCode::NO_CONTENT

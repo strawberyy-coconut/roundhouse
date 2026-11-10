@@ -1,4 +1,5 @@
-use syn::{Expr, LitStr, Result};
+use proc_macro2::Span;
+use syn::{Attribute, Expr, LitStr, Result};
 
 #[derive(Default, Clone)]
 pub(crate) struct Constraints {
@@ -13,6 +14,7 @@ pub(crate) struct Constraints {
     pub(crate) max_items: Option<Expr>,
     pub(crate) unique_items: bool,
     pub(crate) format: Option<LitStr>,
+    pub(crate) description: Option<LitStr>,
     pub(crate) example: Option<Expr>,
     pub(crate) validate_with: Option<syn::Path>,
 }
@@ -60,6 +62,8 @@ pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
                     schema.constraints.max_items = Some(meta.value()?.parse()?);
                 } else if meta.path.is_ident("format") {
                     schema.constraints.format = Some(meta.value()?.parse()?);
+                } else if meta.path.is_ident("description") {
+                    schema.constraints.description = Some(meta.value()?.parse()?);
                 } else if meta.path.is_ident("example") {
                     schema.constraints.example = Some(meta.value()?.parse()?);
                 } else if meta.path.is_ident("skip_validation") {
@@ -103,4 +107,16 @@ pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
         }
     }
     Ok(schema)
+}
+
+/// A parameter's description: `#[schema(description = "...")]` wins over a `@description:` tag.
+pub(crate) fn description_lit(attrs: &[Attribute], span: Span) -> Result<Option<LitStr>> {
+    let schema = schema_attrs(attrs)?;
+    if let Some(description) = schema.constraints.description {
+        return Ok(Some(description));
+    }
+    let tags = crate::doc_tags::parse(attrs, crate::doc_tags::AllowedTags::DESCRIPTION_ONLY)?;
+    Ok(tags
+        .description
+        .map(|description| LitStr::new(&description, span)))
 }

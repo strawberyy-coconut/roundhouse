@@ -231,7 +231,9 @@ mod repeated_prefix {
     routes! {
         prefix = "/api",
         "/api" {
-            get "/x" => x, operation_id = "repeated_prefix_x",
+            "/x" => {
+                get(x, operation_id = "repeated_prefix_x"),
+            },
         }
     }
 

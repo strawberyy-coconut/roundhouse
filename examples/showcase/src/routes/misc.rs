@@ -5,12 +5,12 @@ use roundhouse::utoipa::openapi::schema::{ObjectBuilder, Type};
 use serde::{Deserialize, Serialize};
 
 routes! {
-    post("/even", even, summary = "Validate with a custom function"),
-    get("/utoipa", external, summary = "A schema delegated to utoipa"),
-    any("/echo", echo, summary = "Any HTTP method"),
-    get("/erased", erased, summary = "Extension instead of State"),
+    post("/even", even),
+    get("/utoipa", external),
+    any("/echo", echo),
+    get("/erased", erased),
     #[cfg(feature = "extras")]
-    get("/extras", extras, summary = "Compiled only with the extras feature"),
+    get("/extras", extras),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
@@ -33,6 +33,7 @@ fn validate_even(value: &i64) -> Result<(), ::roundhouse::ValidationErrors> {
     }
 }
 
+/// @summary: Validate with a custom function
 #[handler]
 pub async fn even(Json(value): Json<Even>) -> Json<Even> {
     Json(value)
@@ -55,6 +56,7 @@ impl roundhouse::utoipa::PartialSchema for External {
 
 impl roundhouse::utoipa::ToSchema for External {}
 
+/// @summary: A schema delegated to utoipa
 #[handler]
 pub async fn external() -> Json<External> {
     Json(External {
@@ -62,16 +64,19 @@ pub async fn external() -> Json<External> {
     })
 }
 
+/// @summary: Any HTTP method
 #[handler]
 pub async fn echo() -> &'static str {
     "echo"
 }
 
+/// @summary: Extension instead of State
 #[handler]
 pub async fn erased(Extension(value): Extension<Arc<usize>>) -> String {
     format!("{value}")
 }
 
+/// @summary: Compiled only with the extras feature
 #[cfg(feature = "extras")]
 #[handler]
 pub async fn extras() -> &'static str {

@@ -22,9 +22,11 @@ mod declared {
     routes! {
         prefix = "/declared",
 
-        get("/x", x, operation_id = "declared_x", responses(200)),
+        get("/x", x, operation_id = "declared_x"),
     }
 
+    /// @responses:
+    ///   200
     #[handler]
     pub async fn x() -> impl IntoResponse {
         "x"
@@ -42,9 +44,11 @@ mod typed {
     routes! {
         prefix = "/typed",
 
-        get("/x", x, operation_id = "typed_x", responses(200 = Payload)),
+        get("/x", x, operation_id = "typed_x"),
     }
 
+    /// @responses:
+    ///   200: Payload
     #[handler]
     pub async fn x() -> impl IntoResponse {
         Json(Payload { value: 1 })
@@ -62,9 +66,11 @@ mod override_response {
     routes! {
         prefix = "/override-response",
 
-        get("/x", x, operation_id = "override_x", responses(200 = Payload), override),
+        get("/x", x, operation_id = "override_x"),
     }
 
+    /// @responses(override):
+    ///   200: Payload
     #[handler]
     pub async fn x() -> Json<OtherPayload> {
         Json(OtherPayload { other: 1 })
@@ -77,9 +83,11 @@ mod conflict_response {
     routes! {
         prefix = "/conflict-response",
 
-        get("/x", x, operation_id = "conflict_x", responses(200 = Payload)),
+        get("/x", x, operation_id = "conflict_x"),
     }
 
+    /// @responses:
+    ///   200: Payload
     #[handler]
     pub async fn x() -> Json<OtherPayload> {
         Json(OtherPayload { other: 1 })

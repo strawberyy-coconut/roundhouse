@@ -4,11 +4,10 @@ use serde::Serialize;
 use crate::auth::DemoBearer;
 
 routes! {
-    get("/admin/audit", audit, summary = "Read the audit report"),
+    get("/admin/audit", audit),
     get(
         "/admin/optional",
-        optional,
-        summary = "An endpoint that works with or without auth",
+        optional
     ),
 }
 
@@ -18,6 +17,7 @@ pub struct AuditReport {
     pub secured: bool,
 }
 
+/// @summary: Read the audit report
 #[handler]
 pub async fn audit(_auth: Auth<DemoBearer>) -> Json<AuditReport> {
     Json(AuditReport {
@@ -26,6 +26,7 @@ pub async fn audit(_auth: Auth<DemoBearer>) -> Json<AuditReport> {
     })
 }
 
+/// @summary: An endpoint that works with or without auth
 #[handler]
 pub async fn optional(auth: Option<Auth<DemoBearer>>) -> &'static str {
     if auth.is_some() {

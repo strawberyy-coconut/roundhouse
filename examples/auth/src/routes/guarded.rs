@@ -8,7 +8,7 @@ use crate::schemes::BearerAuth;
 routes! {
     prefix = "/guarded",
     security = [BearerAuth],
-    get("/whoami", whoami, summary = "Bearer required by the module"),
+    get("/whoami", whoami),
 }
 
 #[derive(Serialize, ToSchema, ApiSchema)]
@@ -16,6 +16,7 @@ pub struct Guarded {
     pub message: String,
 }
 
+/// @summary: Bearer required by the module
 #[handler]
 pub async fn whoami() -> Json<Guarded> {
     Json(Guarded {

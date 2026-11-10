@@ -31,7 +31,7 @@ mod grouped {
         tags = ["grouped"],
 
         "/" => {
-            get(index, summary = "Index"),
+            get(index),
             post(create),
         },
         "/{id}" => {
@@ -40,6 +40,7 @@ mod grouped {
         },
     }
 
+    /// @summary: Index
     #[handler]
     pub async fn index() -> &'static str {
         "index"
@@ -215,9 +216,10 @@ mod split_notes {
         use roundhouse::prelude::*;
 
         routes! {
-            get("/", list, summary = "List split notes"),
+            get("/", list),
         }
 
+        /// @summary: List split notes
         #[handler]
         pub async fn list() -> &'static str {
             "list"

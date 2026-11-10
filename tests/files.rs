@@ -13,10 +13,10 @@ mod files {
     routes! {
         prefix = "/files",
         tags = ["files"],
-        post("/upload", upload, summary = "Upload a file"),
-        get("/download", download, summary = "Download bytes"),
-        get("/raw", raw, summary = "Download a file"),
-        get("/events", events, summary = "Server-sent events"),
+        post("/upload", upload),
+        get("/download", download),
+        get("/raw", raw),
+        get("/events", events),
         post("/strict", strict),
     }
 
@@ -53,6 +53,7 @@ mod files {
         StatusCode::NO_CONTENT
     }
 
+    /// @summary: Upload a file
     #[handler]
     pub async fn upload(Multipart(form): Multipart<Upload>) -> Json<UploadSummary> {
         Json(UploadSummary {
@@ -65,16 +66,19 @@ mod files {
         })
     }
 
+    /// @summary: Download bytes
     #[handler]
     pub async fn download() -> Attachment<Vec<u8>> {
         Attachment::new(b"hello".to_vec()).filename("hello.txt")
     }
 
+    /// @summary: Download a file
     #[handler]
     pub async fn raw() -> File {
         File::new(vec![1u8, 2, 3]).content_type("application/octet-stream")
     }
 
+    /// @summary: Server-sent events
     #[handler]
     pub async fn events() -> Sse<
         impl futures_util::Stream<Item = ::core::result::Result<Event, ::core::convert::Infallible>>,

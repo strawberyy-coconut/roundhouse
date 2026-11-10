@@ -22,12 +22,6 @@ impl AllowedTags {
         responses: true,
     };
 
-    pub(crate) const ENTRY: Self = Self {
-        summary: true,
-        description: true,
-        responses: false,
-    };
-
     pub(crate) const DESCRIPTION_ONLY: Self = Self {
         summary: false,
         description: true,
@@ -223,22 +217,6 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
     }
 
     Ok(tags)
-}
-
-/// A summary/description pair, for sites that only use prose.
-#[derive(Default, Debug)]
-pub(crate) struct Prose {
-    pub(crate) summary: Option<String>,
-    pub(crate) description: Option<String>,
-}
-
-impl From<DocTags> for Prose {
-    fn from(tags: DocTags) -> Self {
-        Self {
-            summary: tags.summary,
-            description: tags.description,
-        }
-    }
 }
 
 fn doc_value(attr: &Attribute) -> Option<(String, Span)> {

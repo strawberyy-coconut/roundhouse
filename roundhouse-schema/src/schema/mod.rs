@@ -14,6 +14,12 @@ use crate::validate::ValidationErrors;
 pub trait ApiSchema {
     fn schema() -> RefOr<Schema>;
 
+    /// A short description from the type's `@description:` doc tag, used when the type is a
+    /// single JSON response body.
+    fn description() -> Option<&'static str> {
+        None
+    }
+
     /// Register this type (and anything it references) under its component name.
     fn register(_components: &mut Components) {}
 

@@ -10,7 +10,9 @@ mod api {
 
     routes! {
         prefix = "/api",
-        get "/" => root, operation_id = "fragment_api_root",
+        "/" => {
+            get(root, operation_id = "fragment_api_root"),
+        },
         ...blog,
     }
 
@@ -24,7 +26,9 @@ mod api {
 
         routes! {
             prefix = "/blog",
-            get "/" => list, operation_id = "fragment_blog_list",
+            "/" => {
+                get(list, operation_id = "fragment_blog_list"),
+            },
         }
 
         #[handler]
@@ -72,12 +76,18 @@ mod compact {
     routes! {
         "/api" {
             "/notes" [tags = ["notes"]] {
-                get "/" => list,
-                post "/" => create, responses(201 = Note),
-                get "/{id}" => show, operation_id = "compact_get_note",
+                "/" => {
+                    get(list),
+                    post(create),
+                },
+                "/{id}" => {
+                    get(show, operation_id = "compact_get_note"),
+                },
             }
             "/blog" [tags = ["blog"]] {
-                get "/posts" => posts,
+                "/posts" => {
+                    get(posts),
+                },
             }
         }
     }
@@ -87,6 +97,8 @@ mod compact {
         Json(vec![])
     }
 
+    /// @responses:
+    ///   201: Note
     #[handler]
     pub async fn create() -> Json<Note> {
         Json(Note { id: 1 })

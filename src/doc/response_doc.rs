@@ -4,7 +4,11 @@ use super::{ApiSchema, ResponseDoc, canonical_reason, register_to_schema, schema
 
 pub fn json_response<T: ApiSchema>(components: &mut Components, status: u16) -> Vec<ResponseDoc> {
     T::register(components);
-    vec![ResponseDoc::json(status, T::schema())]
+    let mut response = ResponseDoc::json(status, T::schema());
+    if let Some(description) = T::description() {
+        response.description = description.to_string();
+    }
+    vec![response]
 }
 
 /// A JSON response documented from `ToSchema` alone, without roundhouse hooks.
@@ -66,7 +70,11 @@ where
 /// One JSON response, for a `responses(200 = Post)` declaration.
 pub fn json_response_doc<T: ApiSchema>(components: &mut Components, status: u16) -> ResponseDoc {
     T::register(components);
-    ResponseDoc::json(status, T::schema())
+    let mut response = ResponseDoc::json(status, T::schema());
+    if let Some(description) = T::description() {
+        response.description = description.to_string();
+    }
+    response
 }
 
 /// A `responses(status = Type)` declaration for a plain `ToSchema` type.

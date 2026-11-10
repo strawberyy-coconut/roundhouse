@@ -7,6 +7,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{FnArg, ItemFn, Type};
 
+use crate::doc_tags::{AllowedTags, DocLine, DocTags};
 use crate::util::{outer_ident, single_generic};
 
 use self::response::{inferred_successes, response_statements};
@@ -54,6 +55,24 @@ pub fn expand(item: ItemFn) -> TokenStream {
         )
         .to_compile_error();
     }
+    let tags = match crate::doc_tags::parse(&item.attrs, AllowedTags::HANDLER) {
+        Ok(tags) => tags,
+        Err(error) => return error.to_compile_error(),
+    };
+    let (declared_responses, declared_success) = match declared_response_statements(&tags) {
+        Ok(statements) => statements,
+        Err(error) => return error.to_compile_error(),
+    };
+    let declared_success = match declared_success {
+        Some(statuses) => {
+            let statuses = statuses
+                .iter()
+                .map(|status| proc_macro2::Literal::u16_suffixed(*status));
+            quote!(::core::option::Option::Some(&[#(#statuses),*]))
+        }
+        None => quote!(::core::option::Option::None),
+    };
+
     let name = item.sig.ident.clone();
     let marker_type = format_ident!("{}_missing_roundhouse_handler_attribute", name);
     let vis = item.vis.clone();
@@ -115,6 +134,20 @@ pub fn expand(item: ItemFn) -> TokenStream {
             }
         });
     }
+
+    if let Some(summary) = &tags.summary {
+        let summary = syn::LitStr::new(summary, item.sig.ident.span());
+        statements.push(quote! {
+            docs.summary = ::core::option::Option::Some(#summary.to_string());
+        });
+    }
+    if let Some(description) = &tags.description {
+        let description = syn::LitStr::new(description, item.sig.ident.span());
+        statements.push(quote! {
+            docs.description = ::core::option::Option::Some(#description.to_string());
+        });
+    }
+    statements.extend(declared_responses);
 
     let response_statements = match response_statements(&item.sig.output) {
         Ok(statements) => statements,
@@ -254,6 +287,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
             const PATH_NAMES: &'static [&'static str] = #path_names;
             const REQUIRED_AUTH: &'static [&'static str] = &[#(#required_auth),*];
             const INFERRED_SUCCESS: ::core::option::Option<&'static [u16]> = #inferred_success;
+            const DECLARED_SUCCESS: ::core::option::Option<&'static [u16]> = #declared_success;
 
             fn docs(
                 components: &mut #krate::utoipa::openapi::schema::Components,
@@ -279,4 +313,120 @@ pub fn expand(item: ItemFn) -> TokenStream {
             }
         }
     }
+}
+
+/// Expand the handler's `@responses:` block into `HandlerDocs.declared_responses` statements.
+fn declared_response_statements(
+    tags: &DocTags,
+) -> syn::Result<(Vec<TokenStream>, Option<Vec<u16>>)> {
+    let krate = crate::util::krate();
+    let Some(section) = &tags.responses else {
+        return Ok((Vec::new(), None));
+    };
+    if section.lines.is_empty() {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "`@responses:` needs at least one `status[: Type]` line",
+        ));
+    }
+
+    let mut seen = std::collections::BTreeSet::new();
+    let mut success = Vec::new();
+    let mut statements = Vec::new();
+    if section.override_existing {
+        statements.push(quote! {
+            docs.declared_response_override = true;
+        });
+    }
+
+    for line in &section.lines {
+        let (status, body) = response_line(line)?;
+        if !seen.insert(status) {
+            return Err(syn::Error::new(
+                line.span,
+                format!("status {status} is declared more than once in `@responses:`"),
+            ));
+        }
+        if status == 0 || (200..400).contains(&status) {
+            success.push(status);
+        }
+        let status = proc_macro2::Literal::u16_suffixed(status);
+
+        statements.push(match body {
+            ResponseBody::Empty => quote! {
+                docs.declared_responses.push(#krate::doc::ResponseDoc::new(
+                    #status,
+                    #krate::doc::canonical_reason(#status),
+                ));
+            },
+            ResponseBody::Problem => quote! {
+                docs.declared_responses.push(#krate::doc::ResponseDoc::problem(
+                    #status,
+                    #krate::doc::canonical_reason(#status),
+                ));
+            },
+            ResponseBody::Json(ty) => quote! {
+                docs.declared_responses.push({
+                    use #krate::doc::ProbeJsonResponseDoc as _;
+                    (&#krate::doc::JsonResponseDocProbe::<#ty>::new())
+                        .probe_json_response_doc(components, #status)
+                });
+            },
+        });
+    }
+
+    Ok((statements, Some(success)))
+}
+
+enum ResponseBody {
+    Empty,
+    Problem,
+    Json(Type),
+}
+
+fn response_line(line: &DocLine) -> syn::Result<(u16, ResponseBody)> {
+    let (status_text, body_text) = match line.text.split_once(':') {
+        Some((status, body)) => (status.trim(), body.trim()),
+        None => (line.text.trim(), ""),
+    };
+    let status = if status_text.eq_ignore_ascii_case("default") {
+        0
+    } else {
+        status_text.parse::<u16>().map_err(|_| {
+            syn::Error::new(
+                line.span,
+                format!("`{status_text}` is not an HTTP status or `default`"),
+            )
+        })?
+    };
+    if status != 0 && !(100..=599).contains(&status) {
+        return Err(syn::Error::new(
+            line.span,
+            format!("`{status}` is not an HTTP status code"),
+        ));
+    }
+
+    if body_text.is_empty() {
+        return Ok((status, ResponseBody::Empty));
+    }
+    let ty: Type = syn::parse_str(body_text).map_err(|error| {
+        syn::Error::new(
+            line.span,
+            format!("invalid response type `{body_text}`: {error}"),
+        )
+    })?;
+    let body = match outer_ident(&ty).as_deref() {
+        Some("Problem" | "ValidationErrors") => ResponseBody::Problem,
+        Some("Json") => {
+            let inner = single_generic(&ty).ok_or_else(|| {
+                syn::Error::new(
+                    line.span,
+                    "`Json<T>` needs exactly one type argument in `@responses:`",
+                )
+            })?;
+            ResponseBody::Json(inner)
+        }
+        _ => ResponseBody::Json(ty),
+    };
+    Ok((status, body))
 }

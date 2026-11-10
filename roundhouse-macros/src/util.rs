@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::parse::ParseStream;
-use syn::{LitInt, LitStr, Path, Type};
+use syn::{LitStr, Path, Type};
 
 /// The path to the `roundhouse` crate as the *expanding* crate names it.
 ///
@@ -103,10 +103,6 @@ pub fn auth_slice(types: &[Type]) -> TokenStream {
         let krate = krate();
         quote!(&[#(#krate::auth::AuthGuard::__new::<#types>()),*])
     }
-}
-
-pub fn parse_u16(lit: &LitInt) -> syn::Result<u16> {
-    lit.base10_parse::<u16>()
 }
 
 /// Extract the single generic type argument from `Path<T>`-like types.

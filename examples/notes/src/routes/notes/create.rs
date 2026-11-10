@@ -5,7 +5,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 routes! {
-    post("/", create, summary = "Create a note"),
+    post("/", create),
 }
 
 /// The success response for `POST /notes`: exactly one variant, one status, one body.
@@ -18,6 +18,7 @@ pub enum CreateNote {
     },
 }
 
+/// @summary: Create a note
 #[handler]
 pub async fn create(
     State(app): State<AppState>,

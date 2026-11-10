@@ -167,29 +167,49 @@ pub(super) fn operation(
     for response in docs.responses.into_iter().chain(failures) {
         merge_response(&mut responses, response, route, strict, diagnostics)?;
     }
-    // A route-level `responses(..)` declaration may add statuses or, with `override`, replace an
-    // inferred body. Replacing it silently would let the table contradict the handler.
+    // The handler's `@responses:` declarations may add statuses or, with
+    // `@responses(override):`, replace an inferred body. Replacing it silently would let the
+    // documentation contradict the handler.
+    let declared_responses = std::mem::take(&mut docs.declared_responses);
+    let declared_override = docs.declared_response_override;
     let mut overridden = false;
-    for response in (route.record.responses)(components) {
-        match responses.get(&response.status) {
-            Some(existing)
-                if existing.schema != response.schema
-                    || existing.content_type != response.content_type =>
-            {
-                if !route.record.response_override {
-                    return Err(BuildError::ConflictingResponse {
-                        operation_id: route.operation_id.clone(),
-                        status: response.status,
-                        source: route.record.source_ref(),
-                    });
+    for response in declared_responses {
+        let same_shape = responses.get(&response.status).is_some_and(|existing| {
+            existing.schema == response.schema && existing.content_type == response.content_type
+        });
+        if same_shape {
+            if let Some(existing) = responses.get_mut(&response.status) {
+                // A declaration without a richer description must not erase one supplied by a
+                // type/variant or a `doc` hook.
+                let canonical = crate::doc::canonical_reason(existing.status);
+                if existing.description == canonical
+                    && response.description != crate::doc::canonical_reason(response.status)
+                {
+                    existing.description = response.description;
                 }
-                overridden = true;
-                responses.insert(response.status, response);
+                for header in response.headers {
+                    if !existing
+                        .headers
+                        .iter()
+                        .any(|existing| existing.name == header.name)
+                    {
+                        existing.headers.push(header);
+                    }
+                }
             }
-            _ => {
-                responses.insert(response.status, response);
-            }
+            continue;
         }
+        if responses.contains_key(&response.status) && !declared_override {
+            return Err(BuildError::ConflictingResponse {
+                operation_id: route.operation_id.clone(),
+                status: response.status,
+                source: route.record.source_ref(),
+            });
+        }
+        if responses.contains_key(&response.status) {
+            overridden = true;
+        }
+        responses.insert(response.status, response);
     }
 
     if !responses
@@ -268,8 +288,8 @@ pub(super) fn operation(
 
     let mut builder = OperationBuilder::new()
         .operation_id(Some(route.operation_id.clone()))
-        .summary(route.record.summary)
-        .description(route.record.description)
+        .summary(docs.summary.clone())
+        .description(docs.description.clone())
         .responses(responses);
 
     if !tags.is_empty() {

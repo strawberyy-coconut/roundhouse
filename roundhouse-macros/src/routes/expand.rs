@@ -266,8 +266,6 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
         ),
         entry.path.span(),
     );
-    let summary = option_lit(&entry.summary);
-    let description = option_lit(&entry.description);
     let tags = string_slice(&entry.tags);
     let security = auth_slice(&entry.security);
     let required_auth = quote!(<#marker_type as #krate::doc::HandlerMeta>::REQUIRED_AUTH);
@@ -276,15 +274,10 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
     let validate = entry.validate;
     let deprecated = entry.deprecated;
     let public = entry.public;
-    let response_override = entry.response_override;
-    let declared_success = entry
-        .responses
-        .iter()
-        .any(|(status, _)| *status == 0 || (200..400).contains(status));
     let no_success_message = LitStr::new(
         &format!(
             "roundhouse: `{} {}` has no success response; return a concrete response type or \
-             declare `responses(..)` in the table",
+             declare `@responses:` on the handler",
             method_ident,
             entry.path.value().replace('{', "{{").replace('}', "}}")
         ),
@@ -292,7 +285,7 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
     );
     let success_assert = quote_spanned! { entry.path.span()=>
         const _: () = {
-            if !#declared_success {
+            if <#handler_alias as #krate::doc::HandlerMeta>::DECLARED_SUCCESS.is_none() {
                 if let ::core::option::Option::Some(__statuses) =
                     <#handler_alias as #krate::doc::HandlerMeta>::INFERRED_SUCCESS
                 {
@@ -301,28 +294,9 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
             }
         };
     };
-    let responses = entry.responses.iter().map(|(status, body)| {
-        let status = proc_macro2::Literal::u16_suffixed(*status);
-        match body {
-            Some(ty) => quote! {
-                __responses.push({
-                    use #krate::doc::ProbeJsonResponseDoc as _;
-                    (&#krate::doc::JsonResponseDocProbe::<#ty>::new())
-                        .probe_json_response_doc(components, #status)
-                });
-            },
-            None => quote! {
-                __responses.push(#krate::doc::ResponseDoc::new(
-                    #status,
-                    #krate::doc::canonical_reason(#status),
-                ));
-            },
-        }
-    });
     let line = entry.path.span().start().line as u32;
 
     let route_fn = format_ident!("__roundhouse_route_{index}");
-    let responses_fn = format_ident!("__roundhouse_responses_{index}");
     let layer_fn = format_ident!("__roundhouse_layer_{index}");
     let doc_fn = format_ident!("__roundhouse_entry_doc_{index}");
     let record_name = format_ident!("__ROUNDHOUSE_ROUTE_{index}");
@@ -393,15 +367,6 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
         #doc
 
         #(#attrs)*
-        fn #responses_fn(
-            components: &mut #krate::utoipa::openapi::schema::Components,
-        ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {
-            let mut __responses = ::std::vec::Vec::new();
-            #(#responses)*
-            __responses
-        }
-
-        #(#attrs)*
         #[allow(non_upper_case_globals)]
         const #record_name: #krate::registry::RouteRecord = #krate::registry::RouteRecord::__new(
             module_path!(),
@@ -412,8 +377,6 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
             #assert_path,
             #operation_id,
             #handler_name,
-            #summary,
-            #description,
             #tags,
             #security,
             #required_auth,
@@ -423,8 +386,6 @@ pub(super) fn expand_entry(entry: &Entry, index: usize) -> ExpandedEntry {
             #validate,
             #deprecated,
             #public,
-            #response_override,
-            #responses_fn,
             #state,
             #state_name,
             #route_fn,

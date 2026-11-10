@@ -5,13 +5,13 @@ use serde::Serialize;
 use crate::schemes::{ApiKeyAuth, BearerAuth, ReadPosts, WritePosts};
 
 routes! {
-    get("/public", public, summary = "No auth"),
-    get("/private", private, summary = "Bearer required"),
-    get("/scoped", scoped, summary = "Bearer with read scope"),
-    get("/write", write, summary = "Bearer with write scope"),
-    get("/optional", optional, summary = "Auth is optional"),
-    get("/admin", admin, summary = "Bearer AND API key, admin only"),
-    get("/projects/{project_id}", project, summary = "Resource policy after the scope gate"),
+    get("/public", public),
+    get("/private", private),
+    get("/scoped", scoped),
+    get("/write", write),
+    get("/optional", optional),
+    get("/admin", admin),
+    get("/projects/{project_id}", project),
 }
 
 #[derive(Serialize, ToSchema, ApiSchema)]
@@ -19,6 +19,7 @@ pub struct Message {
     pub message: String,
 }
 
+/// @summary: No auth
 #[handler]
 pub async fn public() -> Json<Message> {
     Json(Message {
@@ -26,6 +27,7 @@ pub async fn public() -> Json<Message> {
     })
 }
 
+/// @summary: Bearer required
 #[handler]
 pub async fn private(Auth { principal, .. }: Auth<BearerAuth>) -> Json<Message> {
     let _ = principal;
@@ -34,6 +36,7 @@ pub async fn private(Auth { principal, .. }: Auth<BearerAuth>) -> Json<Message> 
     })
 }
 
+/// @summary: Bearer with read scope
 #[handler]
 pub async fn scoped(Auth { .. }: Auth<BearerAuth, ReadPosts>) -> Json<Message> {
     Json(Message {
@@ -41,6 +44,7 @@ pub async fn scoped(Auth { .. }: Auth<BearerAuth, ReadPosts>) -> Json<Message> {
     })
 }
 
+/// @summary: Bearer with write scope
 #[handler]
 pub async fn write(Auth { .. }: Auth<BearerAuth, WritePosts>) -> Json<Message> {
     Json(Message {
@@ -48,6 +52,7 @@ pub async fn write(Auth { .. }: Auth<BearerAuth, WritePosts>) -> Json<Message> {
     })
 }
 
+/// @summary: Auth is optional
 #[handler]
 pub async fn optional(auth: Option<Auth<BearerAuth>>) -> Json<Message> {
     Json(Message {
@@ -58,6 +63,7 @@ pub async fn optional(auth: Option<Auth<BearerAuth>>) -> Json<Message> {
     })
 }
 
+/// @summary: Bearer AND API key, admin only
 #[allow(clippy::result_large_err)]
 #[handler]
 pub async fn admin(
@@ -82,6 +88,7 @@ pub struct ProjectPath {
 
 /// `read:posts` is the route-level gate. Whether this user may read *this* project is resource
 /// policy, so it is checked here with the typed path and the identity.
+/// @summary: Resource policy after the scope gate
 #[allow(clippy::result_large_err)]
 #[handler]
 pub async fn project(

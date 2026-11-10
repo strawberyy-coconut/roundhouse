@@ -6,15 +6,16 @@ use crate::state::AppState;
 
 routes! {
     "/{id}" => {
-        get(show, summary = "Read a post"),
-        put(update, summary = "Replace a post"),
-        delete(destroy, summary = "Delete a post", responses(204)),
+        get(show),
+        put(update),
+        delete(destroy),
     },
     "/{id}/status" => {
-        patch(set_status, summary = "Change a post's status", responses(204)),
+        patch(set_status),
     },
 }
 
+/// @summary: Read a post.
 #[handler]
 pub async fn show(
     State(state): State<AppState>,
@@ -23,6 +24,7 @@ pub async fn show(
     state.get(id).map(Json).ok_or(ApiError::PostNotFound { id })
 }
 
+/// @summary: Replace a post.
 #[handler]
 pub async fn update(
     State(state): State<AppState>,
@@ -35,6 +37,9 @@ pub async fn update(
         .ok_or(ApiError::PostNotFound { id })
 }
 
+/// @responses:
+///   204
+/// @summary: Delete a post.
 #[handler]
 pub async fn destroy(
     State(state): State<AppState>,
@@ -47,6 +52,9 @@ pub async fn destroy(
     }
 }
 
+/// @responses:
+///   204
+/// @summary: Change a post's status.
 #[handler]
 pub async fn set_status(
     State(state): State<AppState>,

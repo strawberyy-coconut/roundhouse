@@ -7,11 +7,11 @@ use crate::state::AppState;
 routes! {
     get(
         "/authors/{author_id}/posts/{post_id}",
-        show_author_post,
-        summary = "Read one author's post",
+        show_author_post
     ),
 }
 
+/// @summary: Read one author's post
 #[handler]
 pub async fn show_author_post(
     State(state): State<AppState>,

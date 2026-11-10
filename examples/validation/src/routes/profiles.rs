@@ -6,15 +6,15 @@ use crate::error::ApiError;
 routes! {
     prefix = "/profiles",
     tags = ["profiles"],
-    post("/", create, summary = "Create a profile"),
+    post("/", create),
     post(
         "/unchecked",
         unchecked,
-        summary = "Create a profile without constraint checks",
         validate = false,
     ),
 }
 
+/// @summary: Create a profile
 #[handler]
 pub async fn create(
     Strict(axum::Json(profile)): Strict<axum::Json<Profile>>,
@@ -29,6 +29,7 @@ pub async fn create(
 
 /// The same extractor, with `validate = false` on the table entry. This still deserializes and
 /// still rejects malformed JSON; it only skips the `#[schema(..)]` constraint checks.
+/// @summary: Create a profile without constraint checks
 #[handler]
 pub async fn unchecked(Strict(axum::Json(profile)): Strict<axum::Json<Profile>>) -> Json<Profile> {
     Json(profile)

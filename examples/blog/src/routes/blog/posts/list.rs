@@ -7,8 +7,8 @@ use crate::state::AppState;
 
 routes! {
     "/" => {
-        get(list, summary = "List posts"),
-        post(create, summary = "Create a post"),
+        get(list),
+        post(create),
     },
 }
 
@@ -19,6 +19,7 @@ pub struct ListQuery {
     pub limit: Option<usize>,
 }
 
+/// @summary: List posts.
 #[handler]
 pub async fn list(
     State(state): State<AppState>,
@@ -38,6 +39,7 @@ pub enum CreatedPost {
     },
 }
 
+/// @summary: Create a post.
 #[handler]
 pub async fn create(
     State(state): State<AppState>,
