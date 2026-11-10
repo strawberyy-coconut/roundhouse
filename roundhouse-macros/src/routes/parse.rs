@@ -120,7 +120,7 @@ impl Body {
                     // `"/{id}" => { get(show) }` is one path shared by several methods.
                     Body::parse_shared(&content, path.clone())?
                 } else {
-                    // `"/notes" [tags = ..] { get "/" => list }` is a prefix group.
+                    // `"/notes" [tags = ..] { "/" => { get(list) } }` is a prefix group.
                     Body::parse(&content)?
                 };
                 let mut group = Group {
