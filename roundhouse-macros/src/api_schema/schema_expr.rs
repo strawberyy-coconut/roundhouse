@@ -12,6 +12,18 @@ pub(super) fn validate_expr(ty: &Type, value: TokenStream, pointer: TokenStream)
             .probe_validate_for(#value, &#pointer, errors)
     })
 }
+
+/// Register the components referenced by a field type.
+///
+/// Parameter derives call this before they publish a `$ref`; without it a query or path field
+/// whose type derives `ApiSchema` documents a component that the document never contains.
+pub(crate) fn register_expr(ty: &Type) -> TokenStream {
+    let krate = crate::util::krate();
+    quote!({
+        use #krate::doc::ProbeSchemaFor as _;
+        (&#krate::doc::SchemaFor::<#ty>::new()).probe_register(components)
+    })
+}
 pub(crate) fn field_schema_expr(ty: &Type, constraints: &Constraints) -> TokenStream {
     let krate = crate::util::krate();
     let mut calls = TokenStream::new();

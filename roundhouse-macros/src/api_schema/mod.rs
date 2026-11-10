@@ -6,4 +6,4 @@ mod schema_expr;
 
 pub(crate) use attrs::{description_lit, schema_attrs};
 pub use expand::expand;
-pub(crate) use schema_expr::{field_schema_expr, field_validation};
+pub(crate) use schema_expr::{field_schema_expr, field_validation, register_expr};

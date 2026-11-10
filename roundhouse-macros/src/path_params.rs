@@ -27,6 +27,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         ));
     };
 
+    let mut registrations = Vec::new();
     let mut names = Vec::new();
     let mut params = Vec::new();
     let mut validations = Vec::new();
@@ -65,6 +66,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 None => quote!(),
             };
         let ty = &field.ty;
+        registrations.push(crate::api_schema::register_expr(ty));
         let schema = crate::api_schema::schema_attrs(&field.attrs)?;
         let schema_expr = crate::api_schema::field_schema_expr(ty, &schema.constraints);
         validations.push(crate::api_schema::field_validation(
@@ -98,6 +100,12 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         impl #krate::doc::PathNames for #ident {
             const NAMES: &'static [&'static str] = &[#(#names),*];
 
+            fn register(
+                components: &mut #krate::utoipa::openapi::schema::Components,
+            ) {
+                #(#registrations)*
+            }
+
             fn params() -> ::std::vec::Vec<#krate::doc::Param> {
                 ::std::vec![#(#params),*]
             }
@@ -119,8 +127,9 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
         impl #krate::doc::PartsSchema for #ident {
             fn parts_schema(
-                _components: &mut #krate::utoipa::openapi::schema::Components,
+                components: &mut #krate::utoipa::openapi::schema::Components,
             ) -> #krate::utoipa::openapi::RefOr<#krate::utoipa::openapi::schema::Schema> {
+                <Self as #krate::doc::PathNames>::register(components);
                 #krate::doc::schema::object_from_params(
                     <Self as #krate::doc::PathNames>::params(),
                 )

@@ -241,7 +241,8 @@ where
 // --- Parts --------------------------------------------------------------------------------
 
 impl<T: PathNames + PartsValue + PathValidate + 'static> ExtractArg for axum::extract::Path<T> {
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
+    fn document(components: &mut Components, docs: &mut HandlerDocs) {
+        T::register(components);
         docs.params.extend(path_params::<T>());
         docs.path_schema = Some(<T as PathNames>::scalar_schema);
         if let Some(parts) = T::parts_doc() {
@@ -258,7 +259,8 @@ impl<T: PathNames + PartsValue + PathValidate + 'static> ExtractArg for axum::ex
         }
     }
 
-    fn document_result(_components: &mut Components, docs: &mut HandlerDocs) {
+    fn document_result(components: &mut Components, docs: &mut HandlerDocs) {
+        T::register(components);
         docs.params.extend(path_params::<T>());
         docs.path_schema = Some(<T as PathNames>::scalar_schema);
         if let Some(parts) = T::parts_doc() {

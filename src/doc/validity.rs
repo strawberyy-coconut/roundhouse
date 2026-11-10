@@ -12,6 +12,7 @@ const OPERATIONS: [&str; 8] = [
 pub fn validate_document(document: &impl serde::Serialize) -> Result<(), String> {
     let value = serde_json::to_value(document).map_err(|error| error.to_string())?;
     validate_patterns(&value)?;
+    validate_refs(&value)?;
 
     let schemes: Vec<&str> = value
         .pointer("/components/securitySchemes")
@@ -102,6 +103,58 @@ pub fn validate_document(document: &impl serde::Serialize) -> Result<(), String>
     }
 
     Ok(())
+}
+
+/// A `$ref` to a component the document does not contain is a declaration error.
+///
+/// The schema engine would otherwise compile the reference and fail with a less useful
+/// `Pointer '/$defs/...' does not exist`. Checking the finished document catches an unregistered
+/// parameter type and a hand-written `doc` hook that published a dangling reference.
+fn validate_refs(value: &serde_json::Value) -> Result<(), String> {
+    let schemas = value
+        .pointer("/components/schemas")
+        .and_then(|value| value.as_object())
+        .map(|object| object.keys().cloned().collect::<std::collections::HashSet<_>>())
+        .unwrap_or_default();
+    validate_ref_values(value, &schemas)
+}
+
+fn validate_ref_values(
+    value: &serde_json::Value,
+    schemas: &std::collections::HashSet<String>,
+) -> Result<(), String> {
+    match value {
+        serde_json::Value::Object(object) => {
+            if let Some(serde_json::Value::String(reference)) = object.get("$ref")
+                && let Some(name) = reference.strip_prefix("#/components/schemas/")
+                && !schemas.contains(name)
+            {
+                return Err(format!(
+                    "component reference `{reference}` has no component `{name}`; \
+                     register the type with `ApiSchema` or declare it explicitly"
+                ));
+            }
+            for (key, value) in object {
+                // These keywords hold instance data, not schemas; an example may contain a
+                // string that looks like a reference.
+                if matches!(
+                    key.as_str(),
+                    "example" | "examples" | "default" | "enum" | "const"
+                ) {
+                    continue;
+                }
+                validate_ref_values(value, schemas)?;
+            }
+            Ok(())
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                validate_ref_values(value, schemas)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 /// A `pattern` the runtime would compile on the first request is a declaration error. Probe it

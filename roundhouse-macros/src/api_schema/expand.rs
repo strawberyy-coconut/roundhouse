@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Data, DeriveInput, Fields, LitStr, Result, Type};
+use syn::{Data, DeriveInput, Fields, LitStr, Result};
 
 use crate::serde_shape::{
     SerdeContainer, container as serde_container, field as serde_field, field_name,
@@ -8,15 +8,8 @@ use crate::serde_shape::{
 };
 
 use super::attrs::{Constraints, schema_attrs};
-use super::schema_expr::{field_validation, validate_expr};
+use super::schema_expr::{field_validation, register_expr, validate_expr};
 
-fn register_expr(ty: &Type) -> TokenStream {
-    let krate = crate::util::krate();
-    quote!({
-        use #krate::doc::ProbeSchemaFor as _;
-        (&#krate::doc::SchemaFor::<#ty>::new()).probe_register(components)
-    })
-}
 pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let krate = crate::util::krate();
     let ident = input.ident.clone();

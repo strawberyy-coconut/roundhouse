@@ -89,6 +89,10 @@ impl<T: PathNames> PathNames for Option<T> {
         T::scalar_schema()
     }
 
+    fn register(components: &mut utoipa::openapi::schema::Components) {
+        T::register(components);
+    }
+
     fn params() -> Vec<crate::Param> {
         let mut params = T::params();
         for param in &mut params {

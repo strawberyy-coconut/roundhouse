@@ -86,6 +86,14 @@ pub fn nullable(schema: RefOr<Schema>) -> RefOr<Schema> {
                 }
                 SchemaType::AnyValue => SchemaType::Array(vec![Type::Null]),
             };
+            // A nullable enum must accept `null` as a value, not just as an instance type.
+            // Without this, an absent optional enum parameter is serialized as `null` and then
+            // rejected by the enum branch even though the type permits it.
+            if let Some(values) = &mut object.enum_values
+                && !values.contains(&Value::Null)
+            {
+                values.push(Value::Null);
+            }
             RefOr::T(Schema::Object(object))
         }
         RefOr::T(Schema::Array(mut array)) => {

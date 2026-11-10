@@ -100,6 +100,12 @@ pub trait PathNames {
         None
     }
 
+    /// Register the components referenced by this path type's field schemas.
+    ///
+    /// `params()` has no component table, so the build calls this before it publishes the
+    /// parameters. Scalar path types have nothing to register.
+    fn register(_components: &mut Components) {}
+
     fn params() -> Vec<super::Param> {
         Vec::new()
     }

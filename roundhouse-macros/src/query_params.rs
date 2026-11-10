@@ -28,6 +28,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         ));
     };
 
+    let mut registrations = Vec::new();
     let mut params = Vec::new();
     let mut validations = Vec::new();
     let mut value_inserts = Vec::new();
@@ -55,6 +56,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
         let name = field_name(field, &field_serde, container.rename_all)?;
         let name_lit = LitStr::new(&name, field_ident.span());
+        registrations.push(crate::api_schema::register_expr(ty));
         let required = is_option(ty).is_none() && !field_serde.default && !container.default;
         let description =
             match crate::api_schema::description_lit(&field.attrs, field_ident.span())? {
@@ -110,6 +112,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         fn #fn_name(
             components: &mut #krate::utoipa::openapi::schema::Components,
         ) -> ::std::vec::Vec<#krate::doc::Param> {
+            #(#registrations)*
             let mut params = ::std::vec::Vec::new();
             #(#params)*
             params
