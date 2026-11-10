@@ -400,6 +400,9 @@ Full API documentation:
 cargo doc --workspace --no-deps --open
 ```
 
+The rationale behind the API lives in [`docs/design`](docs/design): the crate and feature
+policy, the routing and document pipelines, validation, extensibility and macro diagnostics.
+
 ## License
 
 MIT OR Apache-2.0.

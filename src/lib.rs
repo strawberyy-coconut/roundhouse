@@ -80,7 +80,8 @@
 //! | `multipart` | `Multipart<F>`, `FilePart`, `TempFile` (feature-gated) |
 //!
 //! The derive macros and `routes!` are re-exported at the crate root; [`prelude`] is the usual
-//! import for application code.
+//! import for application code. The repository's `docs/design/` notes explain the crate and
+//! feature policy, the routing and document pipelines, validation and the macro diagnostics.
 //!
 //! ## Feature flags
 //!
