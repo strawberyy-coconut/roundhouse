@@ -1021,7 +1021,7 @@ async fn documents_can_be_downgraded_to_openapi_30() {
 async fn erased_style_handlers_use_unit_state_and_extensions() {
     let app = App::new(State).fragment(__roundhouse_fragment()).build();
     let router = app
-        .into_router()
+        .router()
         .layer(axum::Extension(std::sync::Arc::new(7usize)));
     let request = Request::builder()
         .uri("/erased")
