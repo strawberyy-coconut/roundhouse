@@ -5,7 +5,7 @@ mod signature;
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{FnArg, ItemFn, Type};
+use syn::{FnArg, ItemFn, LitStr, Type};
 
 use crate::doc_tags::{AllowedTags, DocLine, DocTags};
 use crate::util::{outer_ident, single_generic};
@@ -151,6 +151,10 @@ pub fn expand(item: ItemFn) -> TokenStream {
         });
     }
     statements.extend(declared_responses);
+    match path_statements(&tags) {
+        Ok(path_statements) => statements.extend(path_statements),
+        Err(error) => return error.to_compile_error(),
+    }
 
     let response_statements = match response_statements(&item.sig.output) {
         Ok(statements) => statements,
@@ -322,6 +326,49 @@ pub fn expand(item: ItemFn) -> TokenStream {
             }
         }
     }
+}
+
+/// Expand the handler's `@path:` block into `HandlerDocs.path_descriptions` statements.
+fn path_statements(tags: &DocTags) -> syn::Result<Vec<TokenStream>> {
+    let Some(lines) = &tags.path else {
+        return Ok(Vec::new());
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    let mut statements = Vec::new();
+    for line in lines {
+        let Some((name, description)) = line.text.split_once(':') else {
+            return Err(syn::Error::new(
+                line.span,
+                "`@path:` lines must be `name: description`",
+            ));
+        };
+        let name = name.trim();
+        let description = description.trim();
+        if name.is_empty() {
+            return Err(syn::Error::new(line.span, "`@path:` needs a parameter name"));
+        }
+        if description.is_empty() {
+            return Err(syn::Error::new(
+                line.span,
+                "`@path:` needs a description after the name",
+            ));
+        }
+        if !seen.insert(name.to_string()) {
+            return Err(syn::Error::new(
+                line.span,
+                format!("`{name}` is described more than once in `@path:`"),
+            ));
+        }
+        let name_lit = LitStr::new(name, line.span);
+        let description_lit = LitStr::new(description, line.span);
+        statements.push(quote! {
+            docs.path_descriptions.push((
+                #name_lit.to_string(),
+                #description_lit.to_string(),
+            ));
+        });
+    }
+    Ok(statements)
 }
 
 /// Expand the handler's `@responses:` block into `HandlerDocs.declared_responses` statements.

@@ -111,6 +111,13 @@ pub struct Filter {
 
 `#[schema(description = "...")]` takes priority.
 
+## Doc-tag sections
+
+`@summary:` and `@responses:` now end at a blank line. Previously any following untagged rustdoc
+prose became part of the summary. `@description:` still keeps blank lines as paragraphs. A handler
+can describe path parameters with `@path: name: description`; this is the way to describe a scalar
+`Path<T>`, which has no field for a description.
+
 ## Components
 
 Two different Rust types that register the same component name are now a

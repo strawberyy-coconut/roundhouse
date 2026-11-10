@@ -12,7 +12,9 @@ This keeps the route table lean:
 ## Syntax
 
 Tags start a line after optional indentation. A tag starts a section; following lines belong to
-it until the next recognized tag.
+it until the next recognized tag. `@summary:`, `@responses:` and `@path:` also end at a blank
+line, so following rustdoc prose is not swallowed. `@description:` keeps blank lines as
+paragraphs.
 
 ```rust
 /// @summary: Create a note.
@@ -32,6 +34,7 @@ Recognized tags:
 | `@description:` | handler, response variant, response body type, query/path field | OpenAPI description |
 | `@responses:` | handler | Response declarations |
 | `@responses(override):` | handler | Response declarations that may replace inferred responses |
+| `@path:` | handler | `name: description` lines for path parameters |
 
 Summary lines are joined with spaces. Description lines preserve paragraphs. A duplicate tag in
 one doc block is a compile error, and a tag in the wrong context is a compile error.
@@ -86,6 +89,22 @@ an inferred response is `BuildError::ConflictingResponse` unless the block uses
 
 Response declarations are handler-local. Per-mount differences use a distinct handler; entry-level
 `@responses:` is not part of this release.
+
+## `@path:`
+
+A handler can describe path parameters that have no field to carry the description:
+
+```rust
+/// @path:
+///   id: The note's identifier.
+///   slug: The note's URL slug.
+#[handler]
+async fn show(Path(id): Path<String>) -> Json<Note> { ... }
+```
+
+A scalar `Path<T>` has no name of its own, so the tag supplies it. A matching `PathParams` field
+`@description:` (or `#[schema(description = ...)]`) takes precedence. A `@path:` name that is not a
+template capture is a build error.
 
 ## Rustdoc visibility
 

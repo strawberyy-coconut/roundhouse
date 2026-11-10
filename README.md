@@ -101,11 +101,14 @@ pub async fn create(...) -> ... { ... }
 ```
 
 - Untagged doc prose is ignored for OpenAPI; it remains rustdoc-only.
-- `@summary:` is valid on handlers.
+- `@summary:` is valid on handlers. It ends at a blank line.
 - `@description:` is valid on handlers, response variants, response body types and query/path
-  fields.
-- `@responses:` declares `status: Type`, bare `status`, or `default: Type` lines.
+  fields. It keeps blank lines as paragraphs.
+- `@responses:` declares `status: Type`, bare `status`, or `default: Type` lines. It ends at a
+  blank line.
 - `@responses(override):` replaces an inferred response.
+- `@path: name: description` describes a path parameter from the handler; it is useful for a
+  scalar `Path<T>` that cannot carry a field description. A `PathParams` field description wins.
 - `Json<T>` in `@responses:` is unwrapped to `T` for the body schema.
 
 The full tag grammar and precedence rules are in

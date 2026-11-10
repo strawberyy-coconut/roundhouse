@@ -13,6 +13,7 @@ pub(crate) struct AllowedTags {
     pub(crate) summary: bool,
     pub(crate) description: bool,
     pub(crate) responses: bool,
+    pub(crate) path: bool,
 }
 
 impl AllowedTags {
@@ -20,12 +21,14 @@ impl AllowedTags {
         summary: true,
         description: true,
         responses: true,
+        path: true,
     };
 
     pub(crate) const DESCRIPTION_ONLY: Self = Self {
         summary: false,
         description: true,
         responses: false,
+        path: false,
     };
 }
 
@@ -49,6 +52,8 @@ pub(crate) struct DocTags {
     pub(crate) summary: Option<String>,
     pub(crate) description: Option<String>,
     pub(crate) responses: Option<ResponseSection>,
+    /// `@path:` lines, still `name: description`; the handler expansion splits them.
+    pub(crate) path: Option<Vec<DocLine>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -56,6 +61,7 @@ enum Kind {
     Summary,
     Description,
     Responses,
+    Path,
 }
 
 pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags> {
@@ -74,12 +80,26 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
             let line = line.trim_end_matches('\r');
             let trimmed = line.trim_start();
 
+            // `@summary:`, `@path:` and `@responses:` are compact sections: a blank line ends
+            // them, so following rustdoc prose is not swallowed. Descriptions keep blank lines
+            // as paragraphs.
+            if trimmed.is_empty() {
+                match current {
+                    Some(Kind::Description) => description_lines.push(String::new()),
+                    Some(Kind::Summary | Kind::Path | Kind::Responses) => current = None,
+                    None => {}
+                }
+                continue;
+            }
+
             let tag = if let Some(rest) = trimmed.strip_prefix("@summary:") {
                 Some((Kind::Summary, rest, false))
             } else if let Some(rest) = trimmed.strip_prefix("@description:") {
                 Some((Kind::Description, rest, false))
             } else if let Some(rest) = trimmed.strip_prefix("@responses(override):") {
                 Some((Kind::Responses, rest, true))
+            } else if let Some(rest) = trimmed.strip_prefix("@path:") {
+                Some((Kind::Path, rest, false))
             } else {
                 trimmed
                     .strip_prefix("@responses:")
@@ -108,6 +128,12 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                              descriptions on the response type instead",
                         ));
                     }
+                    Kind::Path if !allowed.path => {
+                        return Err(syn::Error::new(
+                            span,
+                            "`@path:` is only valid on a handler",
+                        ));
+                    }
                     _ => {}
                 }
 
@@ -115,6 +141,7 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                     Kind::Summary => tags.summary.is_some(),
                     Kind::Description => tags.description.is_some(),
                     Kind::Responses => tags.responses.is_some(),
+                    Kind::Path => tags.path.is_some(),
                 };
                 if already {
                     return Err(syn::Error::new(
@@ -155,6 +182,18 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                             });
                         }
                     }
+                    Kind::Path => {
+                        tags.path = Some(Vec::new());
+                        let rest = rest.trim();
+                        if !rest.is_empty()
+                            && let Some(lines) = &mut tags.path
+                        {
+                            lines.push(DocLine {
+                                text: rest.to_string(),
+                                span,
+                            });
+                        }
+                    }
                 }
                 continue;
             }
@@ -175,6 +214,17 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                         && let Some(section) = &mut tags.responses
                     {
                         section.lines.push(DocLine {
+                            text: text.to_string(),
+                            span,
+                        });
+                    }
+                }
+                Some(Kind::Path) => {
+                    let text = trimmed.trim();
+                    if !text.is_empty()
+                        && let Some(lines) = &mut tags.path
+                    {
+                        lines.push(DocLine {
                             text: text.to_string(),
                             span,
                         });
@@ -211,6 +261,12 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                 "`@description:` needs some text",
             ));
         }
+    }
+    if tags.path.as_ref().is_some_and(Vec::is_empty) {
+        return Err(syn::Error::new(
+            current_span,
+            "`@path:` needs at least one `name: description` line",
+        ));
     }
 
     Ok(tags)
@@ -263,6 +319,61 @@ mod tests {
             tags.description.as_deref(),
             Some("Persists the note.\n\nReturns the stored note.")
         );
+    }
+
+    #[test]
+    fn summary_stops_at_a_blank_line() {
+        let tags = parse(
+            &attrs(quote! {
+                /// @summary: Create a note.
+                ///
+                /// Internal rustdoc prose that must not become the summary.
+                #[handler]
+                fn create() {}
+            }),
+            AllowedTags::HANDLER,
+        )
+        .expect("tags parse");
+
+        assert_eq!(tags.summary.as_deref(), Some("Create a note."));
+    }
+
+    #[test]
+    fn responses_stop_at_a_blank_line() {
+        let tags = parse(
+            &attrs(quote! {
+                /// @responses:
+                ///   201: Note
+                ///
+                /// Internal rustdoc prose.
+                #[handler]
+                fn create() {}
+            }),
+            AllowedTags::HANDLER,
+        )
+        .expect("tags parse");
+
+        assert_eq!(tags.responses.expect("responses").lines.len(), 1);
+    }
+
+    #[test]
+    fn parses_path_descriptions() {
+        let tags = parse(
+            &attrs(quote! {
+                /// @path:
+                ///   id: The note identifier.
+                ///   slug: The note slug.
+                #[handler]
+                fn show() {}
+            }),
+            AllowedTags::HANDLER,
+        )
+        .expect("tags parse");
+
+        let path = tags.path.expect("path section");
+        assert_eq!(path.len(), 2);
+        assert_eq!(path[0].text, "id: The note identifier.");
+        assert_eq!(path[1].text, "slug: The note slug.");
     }
 
     #[test]

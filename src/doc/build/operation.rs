@@ -90,6 +90,7 @@ pub(super) fn operation(
         )?;
     }
 
+    let path_descriptions = std::mem::take(&mut docs.path_descriptions);
     let mut parameters: Vec<Param> = Vec::new();
     for param in docs.params {
         if let Some(existing) = parameters
@@ -106,6 +107,18 @@ pub(super) fn operation(
             continue;
         }
         parameters.push(param);
+    }
+
+    // A handler `@path:` description fills a scalar `Path<T>` parameter that has no field-level
+    // description. A `PathParams` field description stays authoritative.
+    for (name, description) in &path_descriptions {
+        if let Some(param) = parameters
+            .iter_mut()
+            .find(|param| param.location == ParamIn::Path && &param.name == name)
+            && param.description.is_none()
+        {
+            param.description = Some(description.clone());
+        }
     }
 
     // OpenAPI 3.1 requires a parameter object for every `{capture}` in the template. A scalar or
@@ -145,7 +158,24 @@ pub(super) fn operation(
                 super::super::schema::string()
             }
         };
-        parameters.push(Param::new(name.clone(), ParamIn::Path, schema));
+        let mut param = Param::new(name.clone(), ParamIn::Path, schema);
+        if let Some((_, description)) = path_descriptions
+            .iter()
+            .find(|(param_name, _)| param_name == name)
+        {
+            param.description = Some(description.clone());
+        }
+        parameters.push(param);
+    }
+    // A handler `@path:` name that is not a template capture is a declaration error.
+    for (name, _) in &path_descriptions {
+        if !captures.contains(name) {
+            return Err(BuildError::UnknownPathParameter {
+                name: name.clone(),
+                path: route.path.clone(),
+                source: route.record.source_ref(),
+            });
+        }
     }
     // ... and a path parameter that no capture uses is equally invalid.
     for param in &parameters {

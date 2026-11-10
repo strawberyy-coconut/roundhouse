@@ -158,6 +158,77 @@ mod problem_response {
     }
 }
 
+mod summary_boundary {
+    use super::*;
+    use super::things::Thing;
+
+    /// @summary: A short summary.
+    ///
+    /// This rustdoc paragraph is for readers, not for OpenAPI.
+    #[handler]
+    pub async fn show() -> Json<Thing> {
+        Json(Thing { id: 1 })
+    }
+
+    routes! {
+        prefix = "/summary",
+        "/" => { get(show) },
+    }
+}
+
+mod scalar_path {
+    use super::*;
+
+    /// @summary: A scalar path.
+    /// @path: id: The scalar identifier.
+    #[handler]
+    pub async fn show(Path(id): Path<String>) -> String {
+        id
+    }
+
+    routes! {
+        prefix = "/scalar",
+        "/{id}" => { get(show) },
+    }
+}
+
+mod path_precedence {
+    use super::*;
+    use serde::Deserialize;
+
+    #[derive(Deserialize, PathParams)]
+    pub struct Args {
+        /// @description: The field description.
+        pub id: i64,
+    }
+
+    /// @path: id: The handler description.
+    #[handler]
+    pub async fn show(Path(args): Path<Args>) -> String {
+        args.id.to_string()
+    }
+
+    routes! {
+        prefix = "/precedence",
+        "/{id}" => { get(show) },
+    }
+}
+
+mod unknown_path {
+    use super::*;
+
+    /// @path: missing: No such capture.
+    #[handler]
+    pub async fn show() -> &'static str {
+        "x"
+    }
+
+    routes! {
+        prefix = "/unknown",
+        "/x" => { get(show) },
+    }
+}
+
 fn document(module: &'static roundhouse::Module) -> serde_json::Value {
     let built = roundhouse::App::new(State)
         .include(module)
@@ -248,4 +319,46 @@ fn at_responses_special_cases_problem_bodies() {
     let response = &document["paths"]["/problem"]["get"]["responses"]["400"];
     assert!(response["content"]["application/problem+json"]["schema"].is_object());
     assert_eq!(response["description"], "Bad Request");
+}
+
+#[test]
+fn a_summary_stops_at_a_blank_line() {
+    let document = document(&summary_boundary::MODULE);
+    assert_eq!(
+        document["paths"]["/summary"]["get"]["summary"],
+        "A short summary."
+    );
+    assert!(
+        document["paths"]["/summary"]["get"]
+            .get("description")
+            .is_none()
+    );
+}
+
+#[test]
+fn a_scalar_path_can_carry_a_handler_description() {
+    let document = document(&scalar_path::MODULE);
+    let parameter = &document["paths"]["/scalar/{id}"]["get"]["parameters"][0];
+    assert_eq!(parameter["name"], "id");
+    assert_eq!(parameter["description"], "The scalar identifier.");
+}
+
+#[test]
+fn a_path_params_field_description_wins_over_the_handler_tag() {
+    let document = document(&path_precedence::MODULE);
+    let parameter = &document["paths"]["/precedence/{id}"]["get"]["parameters"][0];
+    assert_eq!(parameter["description"], "The field description.");
+}
+
+#[test]
+fn a_path_tag_without_a_capture_is_a_build_error() {
+    let error = roundhouse::App::new(State)
+        .include(&unknown_path::MODULE)
+        .try_build()
+        .err()
+        .expect("an unknown @path name must not build");
+    assert!(matches!(
+        error,
+        roundhouse::BuildError::UnknownPathParameter { .. }
+    ));
 }

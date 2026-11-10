@@ -315,7 +315,9 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// Handlers cannot be generic, and the attribute cannot be applied to a method inside an `impl`
 /// block. Use `#[handler]` on a free function.
 ///
-/// The handler's doc block may carry `@summary:`, `@description:` and `@responses:` tags. Untagged
+/// The handler's doc block may carry `@summary:`, `@description:`, `@responses:` and `@path:`
+/// tags. `@summary:` and `@responses:` end at a blank line; `@description:` keeps paragraphs.
+/// `@path: name: description` describes a path parameter that has no field description. Untagged
 /// prose stays rustdoc-only.
 ///
 /// # Example

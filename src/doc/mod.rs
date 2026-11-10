@@ -67,6 +67,8 @@ pub struct HandlerDocs {
     /// Operation description from the handler's `@description:` tag.
     pub description: Option<String>,
     pub params: Vec<Param>,
+    /// `@path:` descriptions, applied when the build fills a path capture.
+    pub path_descriptions: Vec<(String, String)>,
     /// Path and query types the engine should compile for this operation.
     pub parts: Vec<PartsDoc>,
     pub body: Option<BodyDoc>,
