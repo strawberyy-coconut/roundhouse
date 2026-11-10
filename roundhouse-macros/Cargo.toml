@@ -1,11 +1,11 @@
 [package]
 name = "roundhouse-macros"
 version = "0.2.2"
-edition = "2024"
+edition.workspace = true
 description = "Proc macros for roundhouse: routes!, #[handler] and the derives."
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/strawberyy-coconut/roundhouse"
-rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 
 [lib]
 proc-macro = true

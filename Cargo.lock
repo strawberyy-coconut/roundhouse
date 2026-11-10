@@ -1244,7 +1244,6 @@ dependencies = [
  "chrono",
  "jiff",
  "jsonschema",
- "regex",
  "rust_decimal",
  "serde",
  "serde_json",

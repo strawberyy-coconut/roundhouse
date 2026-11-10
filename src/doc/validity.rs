@@ -109,6 +109,7 @@ pub fn validate_document(document: &impl serde::Serialize) -> Result<(), String>
 fn validate_patterns(value: &serde_json::Value) -> Result<(), String> {
     match value {
         serde_json::Value::Object(object) => {
+            #[cfg(feature = "schema-engine")]
             if let Some(serde_json::Value::String(pattern)) = object.get("pattern") {
                 regex::Regex::new(pattern).map_err(|error| {
                     format!("schema pattern `{pattern}` is not a valid regular expression: {error}")

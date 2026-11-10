@@ -259,7 +259,9 @@ where
     /// Build and serve on `addr`, without a graceful-shutdown signal.
     ///
     /// Use [`App::serve_with`] to stop accepting connections and let in-flight requests finish
-    /// when the supplied shutdown future resolves.
+    /// when the supplied shutdown future resolves. This method is available with the `serve`
+    /// feature, which is enabled by default.
+    #[cfg(feature = "serve")]
     pub async fn serve(self, addr: impl Into<String>) -> std::io::Result<()> {
         self.serve_with(addr, std::future::pending()).await
     }
@@ -271,6 +273,9 @@ where
     ///     tokio::signal::ctrl_c().await.ok();
     /// }).await?;
     /// ```
+    ///
+    /// This method is available with the `serve` feature, which is enabled by default.
+    #[cfg(feature = "serve")]
     pub async fn serve_with<F>(self, addr: impl Into<String>, shutdown: F) -> std::io::Result<()>
     where
         F: std::future::Future<Output = ()> + Send + 'static,
