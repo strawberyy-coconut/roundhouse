@@ -40,6 +40,7 @@
 
 mod api_response;
 mod api_schema;
+mod doc_tags;
 mod handler;
 mod multipart;
 mod path_params;
