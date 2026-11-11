@@ -1,0 +1,5 @@
+error: `#[roundhouse::schema]` already derives `ToSchema` and `ApiSchema`; remove the separate derive
+ --> tests/ui/schema_attr_duplicate.rs:2:1
+  |
+2 | #[derive(serde::Serialize, roundhouse::ToSchema)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
