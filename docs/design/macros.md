@@ -141,7 +141,7 @@ The derives keep their own rules on top:
 - `ApiSchema` splits attributes: `#[schema(..)]` for what utoipa understands,
   `#[roundhouse(..)]` for `unique_items` and `validate_with`. `#[schema(skip_validation)]` is
   rejected: a declared constraint is published and enforced; opting out is a route policy
-  (`validate = false`), not a field property.
+  (`validate = false` or `validate_body = false`), not a field property.
 
 `proc-macro-crate` resolves the dependency name, so `rh = { package = "roundhouse", .. }` works.
 `examples/renamed` is the regression test.

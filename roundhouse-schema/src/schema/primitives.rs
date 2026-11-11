@@ -204,6 +204,10 @@ impl<T: ApiSchema> ApiSchema for Option<T> {
         nullable(T::schema())
     }
 
+    fn description() -> Option<&'static str> {
+        T::description()
+    }
+
     fn register(components: &mut Components) {
         T::register(components);
     }
@@ -218,6 +222,10 @@ impl<T: ApiSchema> ApiSchema for Option<T> {
 impl<T: ApiSchema> ApiSchema for Vec<T> {
     fn schema() -> RefOr<Schema> {
         array(T::schema()).into()
+    }
+
+    fn description() -> Option<&'static str> {
+        T::description()
     }
 
     fn register(components: &mut Components) {
@@ -239,6 +247,10 @@ impl<T: ApiSchema> ApiSchema for [T] {
         array(T::schema()).into()
     }
 
+    fn description() -> Option<&'static str> {
+        T::description()
+    }
+
     fn register(components: &mut Components) {
         T::register(components);
     }
@@ -258,6 +270,10 @@ impl<T: ApiSchema, S> ApiSchema for HashMap<String, T, S> {
         map(T::schema())
     }
 
+    fn description() -> Option<&'static str> {
+        T::description()
+    }
+
     fn register(components: &mut Components) {
         T::register(components);
     }
@@ -274,6 +290,10 @@ impl<T: ApiSchema> ApiSchema for Box<T> {
         T::schema()
     }
 
+    fn description() -> Option<&'static str> {
+        T::description()
+    }
+
     fn register(components: &mut Components) {
         T::register(components);
     }
@@ -286,6 +306,10 @@ impl<T: ApiSchema> ApiSchema for Box<T> {
 impl<T: ApiSchema> ApiSchema for &T {
     fn schema() -> RefOr<Schema> {
         T::schema()
+    }
+
+    fn description() -> Option<&'static str> {
+        T::description()
     }
 
     fn register(components: &mut Components) {

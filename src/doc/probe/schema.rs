@@ -48,6 +48,41 @@ impl<T: utoipa::ToSchema + ?Sized> ProbeSchemaFor for &&SchemaFor<T> {
     }
 }
 
+/// A concrete-type probe for a response body type's description.
+///
+/// The body type's `ApiSchema::description()` is the default response description when the
+/// variant does not declare one. A `ToSchema`-only type has no roundhouse description, so the
+/// fallback returns `None` and the caller uses the canonical reason phrase.
+pub struct DescriptionFor<T: ?Sized>(std::marker::PhantomData<T>);
+
+impl<T: ?Sized> DescriptionFor<T> {
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<T: ?Sized> Default for DescriptionFor<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait ProbeDescription {
+    fn probe_description(self) -> Option<&'static str>;
+}
+
+impl<T: ApiSchema + ?Sized> ProbeDescription for &DescriptionFor<T> {
+    fn probe_description(self) -> Option<&'static str> {
+        T::description()
+    }
+}
+
+impl<T: ?Sized> ProbeDescription for &&DescriptionFor<T> {
+    fn probe_description(self) -> Option<&'static str> {
+        None
+    }
+}
+
 /// A concrete-type probe for recursive `validate_with` traversal.
 ///
 /// The specific impl calls the field type's [`ApiSchema::validate_at`]; the fallback is a no-op

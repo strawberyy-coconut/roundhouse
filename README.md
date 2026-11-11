@@ -105,7 +105,11 @@ pub async fn create(...) -> ... { ... }
 - `@description:` is valid on handlers, response variants, response body types and query/path
   fields. It keeps blank lines as paragraphs.
 - `@responses:` declares `status: Type`, bare `status`, or `default: Type` lines. It ends at a
-  blank line.
+  blank line. A bare status asserts a success response; if the handler already inferred a
+  response for that status, the inferred shape is kept. That is the cheap way to satisfy the
+  compile-time success check for a `Result` alias.
+- `@response-descriptions:` overrides the description of an individual documented response, for
+  example `200: A stored thing.`
 - `@responses(override):` replaces an inferred response.
 - `@path: name: description` describes a path parameter from the handler; it is useful for a
   scalar `Path<T>` that cannot carry a field description. A `PathParams` field description wins.
@@ -124,11 +128,14 @@ The full tag grammar and precedence rules are in
 | `path = "/full/path"` | Assert the final resolved path, including module prefixes. |
 | `layer = expression` | Apply a tower layer to this route. |
 | `doc = expression` | Run a hook over the operation's `HandlerDocs` before document checks. |
+| `prose = expression` | Take the summary and description from a `&'static str`, usually `include_str!(...)`. The first line is the summary. |
 | `hidden` | Serve the route without documenting it. |
 | `absolute` | Use the path as the full URL, ignoring inherited prefixes, tags, layers and guards. |
 | `deprecated` | Mark the operation deprecated. |
 | `public` | Add the `x-roundhouse-public` extension to the operation. |
-| `validate = false` | Skip schema constraint validation for this route. The request still has to parse. |
+| `validate = false` | Skip schema constraint validation for the whole route. The request still has to parse. |
+| `validate_body = false` | Keep path/query/form validation, but treat the request body as opaque. Malformed JSON still fails. |
+| `unverified = "reason"` | Acknowledge an intentional unverified body/response/extractor so `strict()` passes. |
 
 ### Module options
 
@@ -174,10 +181,26 @@ separate `routes!` expansion, so it declares its own `state` when it uses substa
 without `state = ...` keeps the old default: a single `State<T>` argument, the auth scheme's state,
 or `()`. `Auth<A>` remains exact: `AuthScheme::State` must equal the table state.
 
+If every table in an application uses the same state, a crate-local wrapper removes the repeated
+type name while keeping the declaration explicit:
+
+```rust
+macro_rules! routes {
+    ($($tokens:tt)*) => {
+        roundhouse::routes! { state = crate::AppState, $($tokens)* }
+    };
+}
+```
+
+A spread cannot inherit state because it is a separate macro expansion: the child table's route
+records already contain their `MethodRouter<S>`. The wrapper is the supported way to centralize
+the name.
+
 ## Schemas
 
-`utoipa::ToSchema` defines the underlying schema shape. `#[derive(ApiSchema)]` is the trait the
-automatic body and response documentation uses; it adds:
+`utoipa::ToSchema` defines the underlying schema shape. `#[roundhouse::schema]` derives both
+`ToSchema` and `ApiSchema` with one annotation; the explicit
+`#[derive(ToSchema, ApiSchema)]` form remains available. `#[derive(ApiSchema)]` adds:
 
 - a named component (`$ref`) for the type;
 - `#[roundhouse(unique_items)]`;
@@ -185,7 +208,8 @@ automatic body and response documentation uses; it adds:
 - `#[roundhouse(validate_with = path)]` hooks.
 
 ```rust
-#[derive(serde::Serialize, serde::Deserialize, ToSchema, ApiSchema)]
+#[roundhouse::schema]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
     #[schema(min_length = 3, max_length = 32)]
@@ -257,6 +281,11 @@ enforcer:
 - Path, query and form values are validated by the route shim, including handlers written against
   axum's own extractors.
 - `validate = false` skips constraints for one route. Malformed input is still rejected.
+- `validate_body = false` keeps path, query and form validation while treating the body as
+  opaque. This is the route policy for a large payload that should be parsed but not buffered and
+  checked twice.
+- `unverified = "reason"` acknowledges an intentional whole-route opt-out or an unverifiable
+  body/response/extractor so `strict()` passes.
 - `App::validation_status(StatusCode::UNPROCESSABLE_ENTITY)` changes the status used for
   validation failures (`400` by default).
 - `App::validation(Validation::Off)` disables schema execution for the app.
@@ -271,9 +300,12 @@ A JSON body is buffered and parsed once by the schema engine and once by the ext
 deliberate: it keeps the `Serialize` bound off the handler and validates the bytes the client
 sent. The body limit bounds the memory; the default is 2 MiB, and `App::max_body` changes it.
 `validate = false` is not a silent performance switch: it marks the body unverified, and a strict
-build rejects it. `Strict<Json<T>>` still buffers. A future after-extraction mode for
-`Serialize` body types would avoid the second parse; streaming JSON Schema validation is not
-planned, because `required`, `additionalProperties` and `oneOf` need the whole value.
+build rejects it unless the entry acknowledges the decision with `unverified = "reason"`.
+`validate_body = false` is the precise alternative: it records
+`x-roundhouse-body-validation: false`, compiles no body validator, and does not warn.
+`Strict<Json<T>>` honors both policies. A future after-extraction mode for `Serialize` body types
+would avoid the second parse; streaming JSON Schema validation is not planned, because
+`required`, `additionalProperties` and `oneOf` need the whole value.
 
 Failures carry JSON Pointers and stable codes:
 
@@ -418,12 +450,12 @@ media type, and `#[multipart(deny_unknown)]` rejects unexpected fields. `App::ma
 
 The OpenAPI document is always built. `App::openapi(..)` sets the info and serves it at
 `/openapi.json`; `App::openapi_route(..)` chooses another path. `App::docs()` serves a Swagger UI
-at `/docs`, and `App::docs_route(..)` moves it. The UI loads pinned Swagger UI assets from unpkg.
+at `/docs`, and `App::docs_route(..)` moves it.
 
-With the `swagger` feature, `App::swagger()` serves a self-hosted Swagger UI at `/docs/swagger`
-with the assets embedded in the binary, so the page works without browser network access.
-`App::swagger_route(..)` moves it. `App::docs()` and `App::swagger()` can be used together, or
-`App::swagger()` can replace the CDN UI entirely.
+With the default `swagger` feature, the CSS, JavaScript and OAuth assets are embedded in the
+binary and served by the app, so `/docs` works in an air-gapped deployment. `App::docs_cdn()` opts
+back into the pinned unpkg assets. `App::swagger()` serves the same local UI at `/docs/swagger`,
+and `App::swagger_route(..)` moves it; `App::docs()` and `App::swagger()` can be used together.
 
 ```rust
 let built = app(state).build();
@@ -469,20 +501,21 @@ cargo add axum
 cargo add serde --features derive
 ```
 
-Rust 1.88 or newer is required. The default features are `schema-engine` and `serve`; the macros
-are always part of the framework.
+Rust 1.88 or newer is required. The default features are `schema-engine`, `serve` and `swagger`;
+the macros are always part of the framework.
 
 | Feature | Enables |
 |---|---|
 | `schema-engine` | Execute the emitted JSON Schema for request and response validation |
 | `serve` | `App::serve`/`App::serve_with`, axum's `ConnectInfo<T>`, and the tokio server runtime |
-| `swagger` | Vendored Swagger UI assets for `App::swagger()` |
+| `swagger` | Vendored Swagger UI assets for local `App::docs()` and `App::swagger()` |
 | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 | `uuid`, `chrono`, `time`, `jiff`, `decimal` | Schema support for those types |
 
 `roundhouse::prelude` re-exports `ToSchema` and the `utoipa` module used by the derives.
-`#[derive(ApiSchema)]` needs `ToSchema` on the same type.
+`#[derive(ApiSchema)]` needs `ToSchema` on the same type; `#[roundhouse::schema]` derives both at
+once.
 
 ## Examples
 

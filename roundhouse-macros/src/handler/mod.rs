@@ -63,6 +63,10 @@ pub fn expand(item: ItemFn) -> TokenStream {
         Ok(statements) => statements,
         Err(error) => return error.to_compile_error(),
     };
+    let response_descriptions = match response_description_statements(&tags) {
+        Ok(statements) => statements,
+        Err(error) => return error.to_compile_error(),
+    };
     let declared_success = match declared_success {
         Some(statuses) => {
             let statuses = statuses
@@ -151,6 +155,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
         });
     }
     statements.extend(declared_responses);
+    statements.extend(response_descriptions);
     match path_statements(&tags) {
         Ok(path_statements) => statements.extend(path_statements),
         Err(error) => return error.to_compile_error(),
@@ -234,11 +239,15 @@ pub fn expand(item: ItemFn) -> TokenStream {
             },
         });
         shim_checks.push(quote! {
-            if let ::core::result::Result::Err(__rh_problem) = {
+            {
                 use #krate::doc::ProbeArg as _;
-                (&#krate::doc::ArgProbe::<#ty>::new()).validate(&#ident, &__rh_ctx)
-            } {
-                return #krate::axum::response::IntoResponse::into_response(__rh_problem);
+                let __rh_probe = &#krate::doc::ArgProbe::<#ty>::new();
+                if __rh_ctx.arg_enabled(__rh_probe.body_arg())
+                    && let ::core::result::Result::Err(__rh_problem) =
+                        __rh_probe.validate(&#ident, &__rh_ctx)
+                {
+                    return #krate::axum::response::IntoResponse::into_response(__rh_problem);
+                }
             }
         });
         shim_idents.push(ident);
@@ -435,6 +444,59 @@ fn declared_response_statements(
     }
 
     Ok((statements, Some(success)))
+}
+
+/// Expand `@response-descriptions:` into per-status description overrides.
+fn response_description_statements(tags: &DocTags) -> syn::Result<Vec<TokenStream>> {
+    let Some(lines) = &tags.response_descriptions else {
+        return Ok(Vec::new());
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    let mut statements = Vec::new();
+    for line in lines {
+        let Some((status, description)) = line.text.split_once(':') else {
+            return Err(syn::Error::new(
+                line.span,
+                "`@response-descriptions:` lines must be `status: description`",
+            ));
+        };
+        let status = status.trim();
+        let status = if status.eq_ignore_ascii_case("default") {
+            0
+        } else {
+            status.parse::<u16>().map_err(|_| {
+                syn::Error::new(
+                    line.span,
+                    format!("`{status}` is not an HTTP status or `default`"),
+                )
+            })?
+        };
+        if status != 0 && !(100..=599).contains(&status) {
+            return Err(syn::Error::new(
+                line.span,
+                format!("`{status}` is not an HTTP status code"),
+            ));
+        }
+        if !seen.insert(status) {
+            return Err(syn::Error::new(
+                line.span,
+                format!("status {status} is described more than once in `@response-descriptions:`"),
+            ));
+        }
+        let description = description.trim();
+        if description.is_empty() {
+            return Err(syn::Error::new(
+                line.span,
+                "`@response-descriptions:` needs a description after the status",
+            ));
+        }
+        let description = syn::LitStr::new(description, line.span);
+        let status = proc_macro2::Literal::u16_suffixed(status);
+        statements.push(quote! {
+            docs.response_descriptions.push((#status, #description.to_string()));
+        });
+    }
+    Ok(statements)
 }
 
 enum ResponseBody {

@@ -275,8 +275,11 @@ where
 
     if !record.validate {
         method_router = method_router.layer(axum::middleware::from_fn(skip_validation));
+    } else if !record.validate_body {
+        method_router = method_router.layer(axum::middleware::from_fn(skip_body_validation));
     }
     if record.validate
+        && record.validate_body
         && let Some(engine) = engine
         && let Some(type_id) = route_bodies
             .get(&route.operation_id)
@@ -386,6 +389,16 @@ async fn skip_validation(
     next.run(request).await
 }
 
+async fn skip_body_validation(
+    mut request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let mut state = crate::extract::ValidationState::read(request.extensions());
+    state.skip_body = true;
+    request.extensions_mut().insert(state);
+    next.run(request).await
+}
+
 pub(super) async fn inject_validation_config(
     axum::extract::State((status, mode, max_body, max_parts, engine)): axum::extract::State<
         ValidationDefaults,
@@ -400,6 +413,7 @@ pub(super) async fn inject_validation_config(
             mode,
             max_body,
             skip: false,
+            skip_body: false,
             body_validated: false,
         });
     #[cfg(feature = "multipart")]

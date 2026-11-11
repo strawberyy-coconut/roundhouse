@@ -3,9 +3,9 @@
 The document and the router come from the same declarations. There is no side-car annotation
 file and no second description to keep in sync: a `routes!` entry supplies the path, method and
 policy; `#[handler]` derives the request, response and security contribution from the signature;
-explicit `@summary:`, `@description:` and `@responses:` doc tags supply the prose and response
-declarations the signature cannot express; the document builder turns those contributions into an
-operation.
+explicit `@summary:`, `@description:`, `@responses:` and `@response-descriptions:` doc tags supply
+the prose and response declarations the signature cannot express; the document builder turns those
+contributions into an operation.
 
 ## From signature to operation
 
@@ -158,14 +158,20 @@ register the responses of an error enum, so `Result<Json<T>, NoteError>` documen
   domain failure whether or not that route can produce it.
 - **Do not create a per-endpoint error enum just to narrow the document.** That is what the
   outcome enum is for; keep the error side for infrastructure.
+- **No `Outcome<T>` helper.** A wrapper that hides the variants would hide which statuses the
+  endpoint can produce, which is the reason to write the enum. Derive `ApiResponse` and let the
+  body type's description fill the prose.
 
 A `Result` type alias is visible through the same blanket `ApiResponse for Result<T, E>` impl as
 long as both sides implement `ApiResponse`; the macro's compile-time success check remains
 syntactic and is skipped for aliases, so the build-time check is authoritative.
 
-Variant `@description:` tags supply response descriptions. `#[status(description = "…")]` remains
-the explicit override. `ApiError` uses that text as the `Problem` title as well; `problem = "…"`
-only sets the RFC 9457 `type` URI (`https://roundhouse.rs/problems/…`).
+Response descriptions are resolved in this order: `#[status(description = "…")]`, the variant's
+`@description:` tag, the body type's `ApiSchema::description()`, then the canonical HTTP reason
+phrase. The body type description also feeds a direct `Json<T>` or `Vec<T>` response, and a
+handler can override an individual status with `@response-descriptions:`. `ApiError` uses the
+resolved text as the `Problem` title as well; `problem = "…"` only sets the RFC 9457 `type` URI
+(`https://roundhouse.rs/problems/…`).
 
 Generic `ApiResponse`/`ApiError` enums copy their generics and `where` clause into each impl and add
 only the bounds a field shape needs: `Json<T>` needs `T: ApiSchema` for docs and `Json<T>:
@@ -180,8 +186,15 @@ location needs `T: TryInto<HeaderValue>` and the schema bound. The built-in `Cre
 - it registers the type as a named component (`$ref`);
 - it applies the roundhouse-only patches (`unique_items`, the `url` → `uri` format mapping);
 - it carries `validate_with` hooks (`validate_at`);
-- it exposes the type's `@description:` through `description()`, used for single-body responses;
+- it exposes the type's `#[schema(description = "…")]` or `@description:` through `description()`,
+  used for response prose;
 - it is the bound automatic body and JSON response documentation requires.
+
+`#[roundhouse::schema]` is the one-annotation form: it re-emits a struct or enum with
+`#[derive(ToSchema, ApiSchema)]`. The two-derive form remains valid and explicit. A derive cannot
+invoke another derive, so an attribute macro is the only way to make one annotation provide both;
+the attribute must be the outermost attribute and cannot be combined with a separate `ToSchema` or
+`ApiSchema` derive.
 
 A type that only derives `ToSchema` can still be documented explicitly:
 
@@ -228,10 +241,13 @@ the component name with dots: `module.Name`).
    4xx/5xx shapes collapse to a `Problem`, because that is what every failure path produces.
    Two different success bodies keep the first and emit a diagnostic.
 9. **Apply `@responses:` declarations.** Declarations add statuses or refine inferred ones.
-   Replacing a different shape without `@responses(override):` is
-   `BuildError::ConflictingResponse`; with the override, the operation is marked
-   `x-roundhouse-overridden-response`. A non-canonical description is preserved when the status
-   and shape match.
+   A bare `status` declares the status as a success and keeps an already-inferred response for
+   that status; when no response was inferred it adds an empty one. This is the alias-friendly
+   success declaration. A typed declaration that replaces a different shape without
+   `@responses(override):` is `BuildError::ConflictingResponse`; with the override, the operation
+   is marked `x-roundhouse-overridden-response`. A non-canonical description is preserved when
+   the status and shape match. `@response-descriptions:` then replaces the description of an
+   existing status; a description for a status the operation does not document is a diagnostic.
 10. **Require a success.** An operation with no `default` and no 2xx/3xx response is
     `BuildError::UndeclaredSuccess`.
 11. **Build security.** Requirements are ANDed in declaration order. `Option<Auth<A>>` adds the
@@ -269,6 +285,7 @@ roundhouse adds a small set of `x-roundhouse-*` keys rather than inventing respo
 | `x-roundhouse-merged` | A hand-written router was merged and is not documented |
 | `x-roundhouse-public` | The entry is marked `public` |
 | `x-roundhouse-validation: false` | The route opted out of constraint validation |
+| `x-roundhouse-body-validation: false` | The route kept parts validation and opted the body out |
 | `x-roundhouse-rejections: none` | Extractor rejection responses are not published |
 | `x-roundhouse-unverified-body` | The body comes from an extractor whose schema could not be verified |
 | `x-roundhouse-unverified-response` | A `Json`/`Vec` response shape could not be verified (for example a `ToSchema`-only type) |

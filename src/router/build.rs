@@ -152,16 +152,37 @@ where
 
         if serve_openapi && let Some(docs_path) = self.docs_route {
             let spec_path = self.openapi_route.unwrap_or("/openapi.json");
-            let html = docs_html(spec_path);
-            router = add_get_route(
-                router,
-                docs_path,
-                move || {
-                    let html = html.clone();
-                    async move { axum::response::Html(html) }
-                },
-                crate::build_error::Source::new("App::docs_route", "<app>", 0),
-            )?;
+            #[cfg(feature = "swagger")]
+            {
+                if !self.docs_cdn {
+                    router = add_swagger_routes(router, spec_path, docs_path)?;
+                } else {
+                    let html = docs_html(spec_path);
+                    router = add_get_route(
+                        router,
+                        docs_path,
+                        move || {
+                            let html = html.clone();
+                            async move { axum::response::Html(html) }
+                        },
+                        crate::build_error::Source::new("App::docs_route", "<app>", 0),
+                    )?;
+                }
+            }
+            #[cfg(not(feature = "swagger"))]
+            {
+                let _ = self.docs_cdn;
+                let html = docs_html(spec_path);
+                router = add_get_route(
+                    router,
+                    docs_path,
+                    move || {
+                        let html = html.clone();
+                        async move { axum::response::Html(html) }
+                    },
+                    crate::build_error::Source::new("App::docs_route", "<app>", 0),
+                )?;
+            }
         }
 
         #[cfg(feature = "swagger")]
@@ -318,11 +339,23 @@ where
             ));
         }
         if let Some(path) = self.docs_route {
+            let docs = prefix::join("", path);
             reserved.push((
-                prefix::join("", path),
+                docs.clone(),
                 "the documentation UI",
                 crate::build_error::Source::new("App::docs_route", "<app>", 0),
             ));
+            #[cfg(feature = "swagger")]
+            if !self.docs_cdn {
+                let asset_root = prefix::join(&docs, "assets");
+                for asset in super::assemble::SWAGGER_ASSETS {
+                    reserved.push((
+                        prefix::join(&asset_root, asset.name),
+                        "a documentation UI asset",
+                        crate::build_error::Source::new("App::docs_route", "<app>", 0),
+                    ));
+                }
+            }
         }
         #[cfg(feature = "swagger")]
         if let Some(path) = self.swagger_route {

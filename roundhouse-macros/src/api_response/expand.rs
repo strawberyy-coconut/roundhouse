@@ -104,11 +104,38 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         if (200..300).contains(&status) && !success_statuses.contains(&status) {
             success_statuses.push(status);
         }
-        let description = attrs
-            .description
-            .clone()
-            .or(tags.description)
-            .unwrap_or_else(|| canonical_reason(status).to_string());
+        // Response descriptions fall back to the body type's `ApiSchema::description()` before
+        // the canonical reason phrase. A variant-level description always wins.
+        let explicit_description = attrs.description.clone().or(tags.description);
+        let canonical = canonical_reason(status);
+        let canonical_lit = syn::LitStr::new(canonical, variant.ident.span());
+        let description = match explicit_description {
+            Some(description) => {
+                let description = syn::LitStr::new(&description, variant.ident.span());
+                quote!(#description)
+            }
+            None => match body {
+                Some(field)
+                    if !matches!(
+                        crate::util::outer_ident(&field.ty).as_deref(),
+                        Some("Problem" | "ValidationErrors")
+                    ) =>
+                {
+                    let doc_ty = if crate::util::outer_ident(&field.ty).as_deref() == Some("Json") {
+                        crate::util::single_generic(&field.ty).unwrap_or_else(|| field.ty.clone())
+                    } else {
+                        field.ty.clone()
+                    };
+                    quote!({
+                        use #krate::doc::ProbeDescription as _;
+                        (&#krate::doc::DescriptionFor::<#doc_ty>::new())
+                            .probe_description()
+                            .unwrap_or(#canonical_lit)
+                    })
+                }
+                _ => quote!(#canonical_lit),
+            },
+        };
         // `problem = "slug"` names the RFC 9457 `type`; it does not replace the human title.
         // The title stays the variant description (or the canonical reason).
         let problem_title = description.clone();

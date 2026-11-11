@@ -78,23 +78,24 @@
 //! | [`attachment`] | `Attachment`, `File`, SSE responses |
 //! | [`openapi`] | `Info`, `OpenApi`, `Components` |
 //! | [`build_error`] | `BuildError` and its source locations |
-//! | [`schema`] | schema derivation and validation without axum |
+//! | [`schema`](mod@schema) | schema derivation and validation without axum |
 //! | `multipart` | `Multipart<F>`, `FilePart`, `TempFile` (feature-gated) |
 //!
-//! The derive macros and `routes!` are re-exported at the crate root; [`prelude`] is the usual
+//! The derive macros, `#[roundhouse::schema]` (which derives both `ToSchema` and `ApiSchema`) and
+//! `routes!` are re-exported at the crate root; [`prelude`] is the usual
 //! import for application code. The repository's `docs/design/` notes explain the crate and
 //! feature policy, the routing and document pipelines, validation and the macro diagnostics.
 //!
 //! ## Feature flags
 //!
-//! The default build includes the schema engine and the server runtime. The macros are always
-//! part of the framework:
+//! The default build includes the schema engine, the server runtime and the local documentation
+//! UI. The macros are always part of the framework:
 //!
 //! | Feature | Enables |
 //! |---|---|
 //! | `schema-engine` | Execute the emitted JSON Schema for request and response validation (default) |
 //! | `serve` | `App::serve`/`App::serve_with`, axum's `ConnectInfo<T>`, and the tokio server runtime (default) |
-//! | `swagger` | Vendored Swagger UI assets for `App::swagger()` |
+//! | `swagger` | Vendored Swagger UI assets for `App::docs()` and `App::swagger()` (default) |
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 //! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | `ToSchema`/`ApiSchema` support for those types |
@@ -169,7 +170,7 @@ pub use utoipa;
 #[cfg(feature = "multipart")]
 pub use roundhouse_macros::Multipart;
 pub use roundhouse_macros::{
-    ApiError, ApiResponse, ApiSchema, PathParams, QueryParams, handler, routes,
+    ApiError, ApiResponse, ApiSchema, PathParams, QueryParams, handler, routes, schema,
 };
 
 /// Implement `roundhouse::doc::ApiSchema` for a type that already implements `ToSchema`.

@@ -59,6 +59,26 @@ pub use params::*;
 pub use probe::*;
 pub use response_doc::*;
 
+/// Split public prose into an operation summary and description.
+///
+/// The first non-empty line is the summary; everything after the next blank line is the
+/// description. This is the convention behind `routes!`'s `prose = include_str!(..)` option, so a
+/// single documentation file can supply both fields without duplicating the text in doc tags.
+pub fn split_prose(text: &'static str) -> (Option<&'static str>, Option<&'static str>) {
+    let text = text.trim();
+    if text.is_empty() {
+        return (None, None);
+    }
+    let (summary, rest) = match text.split_once('\n') {
+        Some((summary, rest)) => (summary.trim(), rest),
+        None => (text, ""),
+    };
+    let description = rest.trim();
+    let summary = (!summary.is_empty()).then_some(summary);
+    let description = (!description.is_empty()).then_some(description);
+    (summary, description)
+}
+
 /// The documentation half a `#[handler]` attribute derives from the signature.
 #[derive(Clone, Default)]
 pub struct HandlerDocs {
@@ -78,6 +98,9 @@ pub struct HandlerDocs {
     pub declared_responses: Vec<ResponseDoc>,
     /// Whether `@responses(override):` allows a declared response to replace an inferred one.
     pub declared_response_override: bool,
+    /// Descriptions from the handler's `@response-descriptions:` tag, applied by status after
+    /// inferred and declared responses are merged. Status `0` means OpenAPI's `default`.
+    pub response_descriptions: Vec<(u16, String)>,
     pub required_auth: Vec<crate::auth::AuthDoc>,
     pub optional_auth: Vec<crate::auth::AuthDoc>,
     pub schemes: Vec<crate::auth::SchemeDoc>,

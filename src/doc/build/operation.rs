@@ -75,7 +75,7 @@ pub(super) fn operation(
         }
     }
 
-    if unverified_extractor {
+    if unverified_extractor && route.record.unverified.is_none() {
         crate::build_error::report(
             diagnostics,
             strict,
@@ -204,6 +204,14 @@ pub(super) fn operation(
     let declared_override = docs.declared_response_override;
     let mut overridden = false;
     for response in declared_responses {
+        // A bare status (`@responses: 200`) declares the status as a success response. When the
+        // handler already inferred a response for that status, keep the inferred shape: the
+        // declaration is an assertion, not a replacement. This is what lets a `Result` alias
+        // keep the compile-time success guarantee without repeating the body type.
+        let bare = response.schema.is_none() && response.content_type.is_none();
+        if bare && responses.contains_key(&response.status) {
+            continue;
+        }
         let same_shape = responses.get(&response.status).is_some_and(|existing| {
             existing.schema == response.schema && existing.content_type == response.content_type
         });
@@ -240,6 +248,30 @@ pub(super) fn operation(
             overridden = true;
         }
         responses.insert(response.status, response);
+    }
+
+    for (status, description) in std::mem::take(&mut docs.response_descriptions) {
+        if let Some(response) = responses.get_mut(&status) {
+            response.description = description;
+        } else {
+            let label = if status == 0 {
+                "default".to_string()
+            } else {
+                status.to_string()
+            };
+            crate::build_error::report(
+                diagnostics,
+                strict,
+                Diagnostic::new(
+                    route.record.source_ref(),
+                    format!(
+                        "operation `{}` describes response {label}, but no such response is \
+                         documented",
+                        route.operation_id
+                    ),
+                ),
+            )?;
+        }
     }
 
     if !responses
@@ -329,7 +361,10 @@ pub(super) fn operation(
         parts.push(((part.type_id)(), (part.schema)(components)));
     }
     if let Some(body) = docs.body {
-        if let Some(body_type) = docs.body_type {
+        if route.record.validate
+            && route.record.validate_body
+            && let Some(body_type) = docs.body_type
+        {
             let type_id = body_type();
             route_bodies.insert(
                 route.operation_id.clone(),
@@ -367,6 +402,8 @@ pub(super) fn operation(
     }
     if !route.record.validate {
         extensions = extensions.add("x-roundhouse-validation", false);
+    } else if !route.record.validate_body {
+        extensions = extensions.add("x-roundhouse-body-validation", false);
     }
     if !include_rejections {
         extensions = extensions.add("x-roundhouse-rejections", "none");

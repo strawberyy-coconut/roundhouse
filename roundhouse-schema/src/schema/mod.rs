@@ -14,8 +14,11 @@ use crate::validate::ValidationErrors;
 pub trait ApiSchema {
     fn schema() -> RefOr<Schema>;
 
-    /// A short description from the type's `@description:` doc tag, used when the type is a
-    /// single JSON response body.
+    /// The type's configured description, used as the default prose for a JSON response body.
+    ///
+    /// `#[derive(ApiSchema)]` reads `#[schema(description = "..")]` first, then the type's
+    /// `@description:` doc tag. Wrapper types such as `Vec<T>` and `Option<T>` forward the inner
+    /// description.
     fn description() -> Option<&'static str> {
         None
     }

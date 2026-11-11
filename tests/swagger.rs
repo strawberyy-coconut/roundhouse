@@ -120,11 +120,29 @@ async fn docs_and_swagger_can_be_served_together() {
 
     let response = app.oneshot_get("/docs").await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(body_string(response).await.contains("unpkg.com"));
+    let html = body_string(response).await;
+    assert!(!html.contains("unpkg.com"));
+    assert!(html.contains("/docs/assets/swagger-ui.css"));
+
+    let response = app.oneshot_get("/docs/assets/swagger-ui.css").await;
+    assert_eq!(response.status(), StatusCode::OK);
 
     let response = app.oneshot_get("/docs/swagger").await;
     assert_eq!(response.status(), StatusCode::OK);
     assert!(!body_string(response).await.contains("unpkg.com"));
+}
+
+#[tokio::test]
+async fn docs_can_opt_back_into_the_cdn() {
+    let app = roundhouse::app!(State, routes)
+        .openapi(|| Info::new("Swagger", "0.1.0"))
+        .docs()
+        .docs_cdn()
+        .build();
+
+    let response = app.oneshot_get("/docs").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(body_string(response).await.contains("unpkg.com"));
 }
 
 mod collision {

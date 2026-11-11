@@ -301,8 +301,9 @@ impl fmt::Display for BuildError {
             } => write!(
                 f,
                 "error: route `{operation_id}` needs `{expected}`; app was built with `{actual}`\n  {source}\n\
-                 hint: set the `routes!` table's `state = ...` to the app state; a `State<T>` \
-                 argument may then be a substate with `T: FromRef<AppState>`"
+                 hint: set `state = ...` on the `routes!` table that declares this route. If the \
+                 route comes from a spread module, set it on that module's own table: a spread \
+                 cannot inherit the parent's state"
             ),
             BuildError::EmptyApp => write!(
                 f,

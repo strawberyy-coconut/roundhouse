@@ -114,6 +114,11 @@ pub struct RouteRecord {
     pub(crate) hidden: bool,
     pub(crate) absolute: bool,
     pub(crate) validate: bool,
+    /// Validate the body's schema as well as path/query/form parts.
+    pub(crate) validate_body: bool,
+    /// An explicit acknowledgement of an intentional unverified marker, with the author's
+    /// reason. Suppresses the build diagnostic and lets `strict()` pass.
+    pub(crate) unverified: Option<&'static str>,
     pub(crate) deprecated: bool,
     pub(crate) public: bool,
     pub(crate) state: fn() -> Option<std::any::TypeId>,
@@ -147,6 +152,8 @@ impl RouteRecord {
         hidden: bool,
         absolute: bool,
         validate: bool,
+        validate_body: bool,
+        unverified: Option<&'static str>,
         deprecated: bool,
         public: bool,
         state: fn() -> Option<std::any::TypeId>,
@@ -172,6 +179,8 @@ impl RouteRecord {
             hidden,
             absolute,
             validate,
+            validate_body,
+            unverified,
             deprecated,
             public,
             state,

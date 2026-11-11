@@ -22,6 +22,8 @@ type ApiResult<T> = Result<T, NoteError>;
 mod aliased {
     use super::*;
 
+    /// @responses:
+    ///   200
     #[handler]
     pub async fn show() -> ApiResult<Json<Thing>> {
         Ok(Json(Thing { id: 1 }))

@@ -291,6 +291,8 @@ pub(super) fn expand_entry(
     let hidden = entry.hidden;
     let absolute = entry.absolute;
     let validate = entry.validate;
+    let validate_body = entry.validate_body;
+    let unverified = option_lit(&entry.unverified);
     let deprecated = entry.deprecated;
     let public = entry.public;
     let no_success_message = LitStr::new(
@@ -335,19 +337,41 @@ pub(super) fn expand_entry(
         },
         None => quote! {},
     };
-    let doc_value = if entry.doc.is_some() {
+    let doc_value = if entry.doc.is_some() || entry.prose.is_some() {
         quote!(::core::option::Option::Some(#doc_fn))
     } else {
         quote!(::core::option::Option::None)
     };
-    let doc = match &entry.doc {
-        Some(expr) => quote! {
-            fn #doc_fn(docs: &mut #krate::doc::HandlerDocs) {
+    let prose_call = entry.prose.as_ref().map(|expr| {
+        quote! {
+            {
+                let (summary, description) = #krate::doc::split_prose(#expr);
+                if docs.summary.is_none() {
+                    docs.summary = summary.map(::std::string::ToString::to_string);
+                }
+                if docs.description.is_none() {
+                    docs.description = description.map(::std::string::ToString::to_string);
+                }
+            }
+        }
+    });
+    let hook_call = entry.doc.as_ref().map(|expr| {
+        quote! {
+            {
                 let hook: fn(&mut #krate::doc::HandlerDocs) = #expr;
                 hook(docs)
             }
-        },
-        None => quote! {},
+        }
+    });
+    let doc = if entry.doc.is_some() || entry.prose.is_some() {
+        quote! {
+            fn #doc_fn(docs: &mut #krate::doc::HandlerDocs) {
+                #prose_call
+                #hook_call
+            }
+        }
+    } else {
+        quote! {}
     };
 
     let defs = quote! {
@@ -403,6 +427,8 @@ pub(super) fn expand_entry(
             #hidden,
             #absolute,
             #validate,
+            #validate_body,
+            #unverified,
             #deprecated,
             #public,
             #state,

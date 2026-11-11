@@ -350,6 +350,76 @@ fn a_path_params_field_description_wins_over_the_handler_tag() {
     assert_eq!(parameter["description"], "The field description.");
 }
 
+mod described {
+    use super::*;
+    use serde::Serialize;
+
+    #[derive(Serialize, ToSchema, ApiSchema)]
+    #[schema(description = "A schema-described thing.")]
+    pub struct SchemaThing {
+        pub id: u64,
+    }
+
+    #[allow(dead_code)]
+    #[derive(ApiResponse)]
+    pub enum Outcome {
+        #[status(200)]
+        Found(Json<SchemaThing>),
+        #[status(404)]
+        Missing,
+    }
+
+    /// @summary: Use the schema description.
+    #[handler]
+    pub async fn found() -> Outcome {
+        Outcome::Found(Json(SchemaThing { id: 1 }))
+    }
+
+    /// @response-descriptions:
+    ///   200: A route-specific description.
+    #[handler]
+    pub async fn overridden() -> Json<SchemaThing> {
+        Json(SchemaThing { id: 1 })
+    }
+
+    routes! {
+        prefix = "/described",
+        "/found" => { get(found) },
+        "/overridden" => { get(overridden) },
+    }
+}
+
+#[test]
+fn collection_responses_inherit_the_element_description() {
+    let document = document(&things::MODULE);
+    assert_eq!(
+        document["paths"]["/things"]["get"]["responses"]["200"]["description"],
+        "A stored thing."
+    );
+}
+
+#[test]
+fn an_api_response_variant_inherits_the_body_type_description() {
+    let document = document(&described::MODULE);
+    assert_eq!(
+        document["paths"]["/described/found"]["get"]["responses"]["200"]["description"],
+        "A schema-described thing."
+    );
+    assert_eq!(
+        document["paths"]["/described/found"]["get"]["responses"]["404"]["description"],
+        "Not Found"
+    );
+}
+
+#[test]
+fn a_response_description_tag_overrides_the_body_type() {
+    let document = document(&described::MODULE);
+    assert_eq!(
+        document["paths"]["/described/overridden"]["get"]["responses"]["200"]["description"],
+        "A route-specific description."
+    );
+}
+
 #[test]
 fn a_path_tag_without_a_capture_is_a_build_error() {
     let error = roundhouse::App::new(State)

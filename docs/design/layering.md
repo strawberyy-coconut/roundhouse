@@ -89,7 +89,7 @@ validated.
 
 ## Feature policy
 
-The default feature set is `schema-engine` + `serve`.
+The default feature set is `schema-engine` + `serve` + `swagger`.
 
 | Feature | Enables | Why it is optional |
 |---|---|---|
@@ -97,7 +97,7 @@ The default feature set is `schema-engine` + `serve`.
 | `serve` | `App::serve`/`App::serve_with`, axum `http1`/`tokio`, tokio, tracing, `ConnectInfo<T>` docs | Pulls in hyper, tokio and tracing; tests and check binaries usually use `try_build` instead |
 | `multipart` | `Multipart<F>`, `FilePart`, and axum's multipart support | Pulls in `roundhouse-multipart` and `multer` |
 | `multipart-tempfile` | `TempFile` (implies `multipart`) | Pulls in `tempfile` |
-| `swagger` | Vendored Swagger UI assets for `App::swagger()` | Adds embedded assets to the binary |
+| `swagger` | Vendored Swagger UI assets for local `App::docs()` and `App::swagger()` (default) | Adds ~1.6 MB of embedded assets to the binary; disable it to use the unpkg UI |
 | `uuid`, `chrono`, `time`, `jiff`, `decimal` | Schema support for those types | Forwarded to `roundhouse-schema` and utoipa |
 
 Two details are consequences of axum's own feature layout:

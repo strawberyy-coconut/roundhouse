@@ -87,6 +87,8 @@ pub(crate) struct ValidationState {
     pub(crate) mode: Validation,
     pub(crate) max_body: Option<usize>,
     pub(crate) skip: bool,
+    /// Validate parts (path/query/form) but leave the body opaque.
+    pub(crate) skip_body: bool,
     pub(crate) body_validated: bool,
 }
 
@@ -97,6 +99,7 @@ impl Default for ValidationState {
             mode: Validation::default(),
             max_body: None,
             skip: false,
+            skip_body: false,
             body_validated: false,
         }
     }
@@ -124,6 +127,22 @@ impl ValidationContext {
     /// not disable the engine.
     pub fn enabled(&self) -> bool {
         !self.0.skip && self.0.mode != Validation::Off
+    }
+
+    /// Whether body validation should run for this request.
+    ///
+    /// A route can keep path/query validation and opt the body out with `validate_body = false`.
+    /// A whole-route `validate = false` disables both.
+    pub fn body_enabled(&self) -> bool {
+        self.enabled() && !self.0.skip_body
+    }
+
+    /// Whether validation should run for one argument, given whether it is the request body.
+    ///
+    /// The generated shim uses this with `ExtractArg::IS_BODY`, so a custom body extractor needs
+    /// no special handling for `validate_body = false`.
+    pub fn arg_enabled(&self, is_body: bool) -> bool {
+        self.enabled() && (!is_body || !self.0.skip_body)
     }
 
     /// The compiled schema engine, when schema mode is active.
@@ -422,6 +441,10 @@ impl Policy {
         !self.state.skip && self.state.mode != Validation::Off
     }
 
+    fn body_enabled(self) -> bool {
+        self.enabled() && !self.state.skip_body
+    }
+
     fn status(self) -> StatusCode {
         self.state.status
     }
@@ -536,7 +559,7 @@ where
     // The router's raw layer may have run already; it marks the state when it did.
     let already = policy.state.body_validated;
     if !already
-        && policy.enabled()
+        && policy.body_enabled()
         && is_json(&parts)
         && let Some(engine) = &engine
     {
@@ -593,7 +616,7 @@ where
         let engine = engine(&parts);
         let request = axum::extract::Request::from_parts(parts, body);
         let axum::Form(value) = from_request_problem::<axum::Form<T>, S>(request, state).await?;
-        if policy.enabled() {
+        if policy.body_enabled() {
             enforce_schema::<T>(&value, engine.as_ref(), policy.status())?;
         }
         Ok(Strict(axum::Form(value)))

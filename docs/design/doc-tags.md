@@ -34,6 +34,7 @@ Recognized tags:
 | `@description:` | handler, response variant, response body type, query/path field | OpenAPI description |
 | `@responses:` | handler | Response declarations |
 | `@responses(override):` | handler | Response declarations that may replace inferred responses |
+| `@response-descriptions:` | handler | `status: description` prose overrides |
 | `@path:` | handler | `name: description` lines for path parameters |
 
 Summary lines are joined with spaces. Description lines preserve paragraphs. A duplicate tag in
@@ -48,7 +49,11 @@ Operation prose:
 
 1. `doc = |docs| ..` hook on the entry (it can set `docs.summary` / `docs.description`),
 2. the handler's `@summary:` / `@description:`,
-3. nothing.
+3. the entry's `prose = ..` (it only fills fields the handler left empty),
+4. nothing.
+
+Response descriptions can also be overridden per route with `@response-descriptions:`; those
+overrides apply after inferred and `@responses:` shapes have merged.
 
 Response descriptions:
 
@@ -76,7 +81,10 @@ default: Problem
 
 - `status: Type` declares a JSON response body.
 - `Json<T>` is accepted as a convenience and unwrapped to `T` for the schema.
-- A bare `status` declares an empty response.
+- A bare `status` asserts that status as a success. If the handler already inferred a response
+  for it, the inferred shape is kept; otherwise an empty response is added. This is how a
+  `Result` alias keeps the compile-time success guarantee without repeating the body type:
+  `@responses:` followed by `200`.
 - `default: Type` maps to OpenAPI's `default` response.
 - `Problem` and `ValidationErrors` declare a problem response body.
 - Duplicate statuses are compile errors.
@@ -89,6 +97,39 @@ an inferred response is `BuildError::ConflictingResponse` unless the block uses
 
 Response declarations are handler-local. Per-mount differences use a distinct handler; entry-level
 `@responses:` is not part of this release.
+
+## `@response-descriptions:`
+
+Overrides the prose of an individual response after inferred and declared shapes have merged:
+
+```rust
+/// @response-descriptions:
+///   200: The stored note.
+///   404: The note does not exist.
+#[handler]
+async fn show(...) -> ... { ... }
+```
+
+A status that the operation does not document is a build diagnostic. The tag does not change a
+status or body shape; use `@responses:` for that.
+
+## `prose = include_str!(..)`
+
+An entry option, not a doc tag, supplies both fields from one string:
+
+```rust
+routes! {
+    "/notes/{id}" => {
+        get(show, prose = include_str!("../../docs/show.md")),
+    },
+}
+```
+
+The first non-empty line is the summary; the remaining text is the description. Any
+`&'static str` expression is accepted, including a const string. `prose` only fills fields the
+handler did not set with `@summary:` / `@description:`; a `doc =` hook runs last and can override
+both. This is the supported way to keep public prose in one file instead of repeating it in a doc
+tag block.
 
 ## `@path:`
 
@@ -110,8 +151,8 @@ template capture is a build error.
 
 Handler doc tags are ordinary `///` comments, so they appear in `cargo doc`. Entry-level doc tags
 are not used because rustdoc warns about doc comments attached to expressions inside a macro
-invocation. If prose should stay out of rustdoc, keep it in the handler's implementation details
-and use a `doc =` hook for the operation override.
+invocation. If the public prose is a separate file, use `prose = include_str!(..)` on the entry;
+it is not emitted into rustdoc. A `doc =` hook remains the escape hatch for computed prose.
 
 ## Constraints
 

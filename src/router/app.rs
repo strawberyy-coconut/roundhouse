@@ -41,6 +41,8 @@ pub struct App<S> {
     pub(crate) document_hooks: Vec<DocumentHook>,
     pub(crate) openapi_route: Option<&'static str>,
     pub(crate) docs_route: Option<&'static str>,
+    /// Load the docs UI from unpkg instead of the vendored assets.
+    pub(crate) docs_cdn: bool,
     #[cfg(feature = "swagger")]
     pub(crate) swagger_route: Option<&'static str>,
     pub(crate) document_rejections: DocumentRejections,
@@ -70,6 +72,7 @@ where
             document_hooks: Vec::new(),
             openapi_route: None,
             docs_route: None,
+            docs_cdn: false,
             #[cfg(feature = "swagger")]
             swagger_route: None,
             document_rejections: DocumentRejections::Auto,
@@ -203,9 +206,10 @@ where
 
     /// Serve a Swagger UI page at `/docs` over the generated document.
     ///
-    /// This implies the document route: a UI without a document is a broken page. The UI assets
-    /// are pinned (and SRI-checked) but loaded from unpkg, so the page needs browser network
-    /// access. Enable the `swagger` feature and use `App::swagger` for a self-hosted UI.
+    /// This implies the document route: a UI without a document is a broken page. With the
+    /// `swagger` feature (enabled by default), the CSS, JavaScript and OAuth assets are served by
+    /// this app, so the page works in an air-gapped deployment. Use [`App::docs_cdn`] to load the
+    /// pinned unpkg assets instead.
     pub fn docs(mut self) -> Self {
         self.docs_route = Some("/docs");
         if self.openapi_route.is_none() {
@@ -220,6 +224,15 @@ where
         if self.openapi_route.is_none() {
             self.openapi_route = Some("/openapi.json");
         }
+        self
+    }
+
+    /// Load the docs UI assets from unpkg instead of serving them locally.
+    ///
+    /// The unpkg assets are pinned and SRI-checked, but the browser needs network access. Without
+    /// the `swagger` feature this is the only available mode, so the call is a no-op there.
+    pub fn docs_cdn(mut self) -> Self {
+        self.docs_cdn = true;
         self
     }
 

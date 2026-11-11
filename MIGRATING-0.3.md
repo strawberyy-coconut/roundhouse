@@ -165,4 +165,23 @@ state when it uses substates. `AuthScheme::State` must still equal the table sta
 
 `ApiResponse`/`ApiError` now support generic enums. `Created<T>` and `NoContent` are available for
 the common created/no-content cases. `Result` aliases are documented through the existing blanket
-`ApiResponse for Result<T, E>` impl when both sides implement `ApiResponse`.
+`ApiResponse for Result<T, E>` impl when both sides implement `ApiResponse`. A bare
+`@responses: 200` now asserts the success while keeping an inferred body shape, so an alias does
+not need to repeat its type.
+
+## Documentation UI
+
+`App::docs()` now serves the vendored Swagger UI assets by default (the `swagger` feature is part
+of the default feature set), so the page works without browser network access. Call
+`App::docs_cdn()` to opt back into the pinned unpkg assets. `App::swagger()` remains available for
+a second local UI at `/docs/swagger`.
+
+## New opt-in route policies
+
+These are additions, not required migrations:
+
+- `validate_body = false` keeps path/query validation and treats the request body as opaque.
+- `unverified = "reason"` acknowledges an intentional unverified body/response/extractor.
+- `prose = include_str!(..)` supplies operation summary and description from one string.
+- `@response-descriptions:` overrides the prose of an individual response.
+- `#[roundhouse::schema]` derives both `ToSchema` and `ApiSchema` with one annotation.

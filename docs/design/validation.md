@@ -34,10 +34,27 @@ payload.
 ```rust
 routes! {
     "/import" => {
-        post(import, validate = false),
+        post(import, validate = false, unverified = "opaque import payload"),
     },
 }
 ```
+
+`validate = false` disables both body and parts validation. The narrower policy is
+`validate_body = false`: path, query and form values keep their schema, but the body is opaque.
+This is the route policy for a large payload that should be deserialized but should not be
+buffered into `serde_json::Value` and checked twice:
+
+```rust
+routes! {
+    "/layouts" => {
+        post(create_layout, validate_body = false),
+    },
+}
+```
+
+The body schema is still documented, but the raw JSON layer is not installed and the body schema
+is not compiled into the engine. Malformed JSON, a wrong content type and a failed
+deserialization still reject exactly as they do on a validated route.
 
 ## Request pipeline
 
@@ -76,7 +93,7 @@ through interior state, so a route's opt-out cannot leak into another request.
 For a route whose documented body is `application/json` (or a `+json` media type), the build
 installs a middleware that:
 
-1. honours `Validation::Off` and the route's opt-out;
+1. honours `Validation::Off`, the route's `validate = false` and its `validate_body = false`;
 2. ignores non-JSON content types;
 3. reads the body with the app's body limit (`413` if exceeded);
 4. parses it as JSON (`400` if malformed);
@@ -94,8 +111,11 @@ handler and validates before any extractor can consume the body. The body limit 
 the default is 2 MiB and `App::max_body` raises or lowers it.
 
 `validate = false` is not a silent performance switch: it marks the body unverified in the
-document, and `App::strict()` rejects that marker. `Strict<Json<T>>` also buffers and parses
-twice, so it is not an escape hatch for large bodies.
+document, and `App::strict()` rejects that marker unless the entry acknowledges it with
+`unverified = "reason"`. `validate_body = false` is the precise alternative: it records
+`x-roundhouse-body-validation: false`, does not compile a body validator, and is quiet under
+`strict()` because the author made a body-only decision. `Strict<Json<T>>` honors both policies,
+so it is not an escape hatch for large bodies.
 
 A later optimization may skip the raw layer when the body schema has no enforceable keywords, or
 offer a validate-after-extraction mode for `Serialize` body types. The latter would need an
@@ -157,9 +177,10 @@ Hooks are skipped when validation is off or the route opted out.
 | `Bytes`, `Body`, `String`, `Request` | No schema | None |
 | `Extension<T>`, other parts | No schema; possibly an unverified-extractor diagnostic | None |
 
-`validate = false` disables the schema and hook columns. Parsing and extractor-owned contract
-checks still run: an opted-out route still rejects malformed JSON, an invalid query string or a
-too-large multipart part. Opting out is not an invitation to skip deserialisation.
+`validate = false` disables the schema and hook columns. `validate_body = false` disables only the
+body rows; path and query rows still run. Parsing and extractor-owned contract checks still run:
+an opted-out route still rejects malformed JSON, an invalid query string or a too-large multipart
+part. Opting out is not an invitation to skip deserialisation.
 
 ## The schema engine
 
@@ -219,10 +240,15 @@ promise stays true.
 }
 ```
 
-`strict()` rejects a route whose body is unverified, including an opted-out body that would
-otherwise have been verified by the shim. This is intentional: the document describes the route
-as unvalidated, and a strict build treats that as a contract gap rather than silently accepting
-it.
+`strict()` rejects a route whose body is unverified unless the entry acknowledges it with
+`unverified = "reason"`. This keeps the default loud for accidental gaps while making an explicit
+decision quiet. The acknowledgement suppresses the diagnostic; it does not change the extensions,
+so document consumers can still see that the body was not verified.
+
+`validate_body = false` is different: it is a precise body policy and records
+`x-roundhouse-body-validation: false`. It does not need an acknowledgement and is quiet under
+`strict()`. The `x-roundhouse-unverified-body` marker remains because the body genuinely was not
+checked.
 
 ## Response validation
 
@@ -241,9 +267,12 @@ It requires `schema-engine`; without the feature `try_build` returns
 - Only JSON request bodies are validated from raw bytes. Forms are validated after
   deserialisation; multipart is enforced by its extractor.
 - A JSON body is currently parsed twice when schema mode is on: once for validation and once by
-  the extractor. For large payloads, set an explicit body limit and choose `validate = false` or
-  `Validation::Off` deliberately; do not add a silent size threshold, because it would change the
-  contract based on the request size.
+  the extractor. For large payloads, use `validate_body = false` (or `validate = false` /
+  `Validation::Off` deliberately); do not add a silent size threshold, because it would change
+  the contract based on the request size.
+- Body and parts validation share one `jsonschema` engine. A feature that kept only parts
+  validation would still depend on the engine, so it would not reduce dependency weight. The
+  useful split is compile-time work: opted-out body schemas are not compiled.
 - Streaming JSON Schema validation is not planned: `required`, `additionalProperties`, `oneOf` and
   most format checks need the whole value.
 - Response validation is JSON-only and needs the body in memory.

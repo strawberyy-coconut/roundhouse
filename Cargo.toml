@@ -33,7 +33,7 @@ keywords = ["axum", "openapi", "web", "framework", "router"]
 categories = ["web-programming::http-server"]
 
 [features]
-default = ["schema-engine", "serve"]
+default = ["schema-engine", "serve", "swagger"]
 # Typed multipart extraction, plus axum's multipart body support.
 multipart = ["dep:roundhouse-multipart", "axum/multipart"]
 # `TempFile` parts, streamed to an already-unlinked temporary file.
@@ -42,7 +42,8 @@ multipart-tempfile = ["multipart", "roundhouse-multipart/multipart-tempfile"]
 schema-engine = ["roundhouse-schema/schema-engine", "dep:regex"]
 # `App::serve` and `App::serve_with`, plus the tokio server runtime and its log line.
 serve = ["axum/http1", "axum/tokio", "dep:tokio", "dep:tracing"]
-# Serve the vendored Swagger UI assets with `App::swagger()`.
+# Serve the vendored Swagger UI assets with `App::docs()` (local by default) and
+# `App::swagger()`. Disable this feature to keep the binary small and use the unpkg UI.
 swagger = []
 uuid = ["roundhouse-schema/uuid"]
 chrono = ["roundhouse-schema/chrono"]

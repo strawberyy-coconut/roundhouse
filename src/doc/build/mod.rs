@@ -107,7 +107,10 @@ pub fn build_with_observations(
         };
 
         crate::doc::registration::set_source(route.record.source_ref());
-        let mut docs = (route.record.docs)(&mut components, route.record.validate);
+        let mut docs = (route.record.docs)(
+            &mut components,
+            route.record.validate && route.record.validate_body,
+        );
         if let Some(custom) = route.record.doc {
             custom(&mut docs);
         }
@@ -126,7 +129,11 @@ pub fn build_with_observations(
                 ),
             )?;
         }
-        if docs.unverified {
+        // `validate_body = false` is a precise, intentional body opt-out; `unverified = "..."`
+        // acknowledges the remaining markers on the whole operation. Neither should make a
+        // strict build fail or print a warning: the document already records the opt-out.
+        let acknowledged = route.record.unverified.is_some();
+        if docs.unverified && route.record.validate_body && !acknowledged {
             if strict {
                 return Err(BuildError::UnverifiedBody {
                     operation_id: route.operation_id.clone(),
@@ -142,7 +149,7 @@ pub fn build_with_observations(
                 ),
             ));
         }
-        if docs.unverified_response {
+        if docs.unverified_response && !acknowledged {
             if strict {
                 return Err(BuildError::UnverifiedResponse {
                     operation_id: route.operation_id.clone(),

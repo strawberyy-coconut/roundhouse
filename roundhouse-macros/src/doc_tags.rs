@@ -13,6 +13,7 @@ pub(crate) struct AllowedTags {
     pub(crate) summary: bool,
     pub(crate) description: bool,
     pub(crate) responses: bool,
+    pub(crate) response_descriptions: bool,
     pub(crate) path: bool,
 }
 
@@ -21,6 +22,7 @@ impl AllowedTags {
         summary: true,
         description: true,
         responses: true,
+        response_descriptions: true,
         path: true,
     };
 
@@ -28,6 +30,7 @@ impl AllowedTags {
         summary: false,
         description: true,
         responses: false,
+        response_descriptions: false,
         path: false,
     };
 }
@@ -52,6 +55,9 @@ pub(crate) struct DocTags {
     pub(crate) summary: Option<String>,
     pub(crate) description: Option<String>,
     pub(crate) responses: Option<ResponseSection>,
+    /// `@response-descriptions:` lines, still `status: description`; the handler expansion
+    /// resolves statuses and strings.
+    pub(crate) response_descriptions: Option<Vec<DocLine>>,
     /// `@path:` lines, still `name: description`; the handler expansion splits them.
     pub(crate) path: Option<Vec<DocLine>>,
 }
@@ -61,6 +67,7 @@ enum Kind {
     Summary,
     Description,
     Responses,
+    ResponseDescriptions,
     Path,
 }
 
@@ -86,7 +93,9 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
             if trimmed.is_empty() {
                 match current {
                     Some(Kind::Description) => description_lines.push(String::new()),
-                    Some(Kind::Summary | Kind::Path | Kind::Responses) => current = None,
+                    Some(
+                        Kind::Summary | Kind::Path | Kind::Responses | Kind::ResponseDescriptions,
+                    ) => current = None,
                     None => {}
                 }
                 continue;
@@ -98,6 +107,8 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                 Some((Kind::Description, rest, false))
             } else if let Some(rest) = trimmed.strip_prefix("@responses(override):") {
                 Some((Kind::Responses, rest, true))
+            } else if let Some(rest) = trimmed.strip_prefix("@response-descriptions:") {
+                Some((Kind::ResponseDescriptions, rest, false))
             } else if let Some(rest) = trimmed.strip_prefix("@path:") {
                 Some((Kind::Path, rest, false))
             } else {
@@ -128,6 +139,13 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                              descriptions on the response type instead",
                         ));
                     }
+                    Kind::ResponseDescriptions if !allowed.response_descriptions => {
+                        return Err(syn::Error::new(
+                            span,
+                            "`@response-descriptions:` is only valid on a handler; declare \
+                             response descriptions on the response type instead",
+                        ));
+                    }
                     Kind::Path if !allowed.path => {
                         return Err(syn::Error::new(span, "`@path:` is only valid on a handler"));
                     }
@@ -138,6 +156,7 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                     Kind::Summary => tags.summary.is_some(),
                     Kind::Description => tags.description.is_some(),
                     Kind::Responses => tags.responses.is_some(),
+                    Kind::ResponseDescriptions => tags.response_descriptions.is_some(),
                     Kind::Path => tags.path.is_some(),
                 };
                 if already {
@@ -179,6 +198,18 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                             });
                         }
                     }
+                    Kind::ResponseDescriptions => {
+                        tags.response_descriptions = Some(Vec::new());
+                        let rest = rest.trim();
+                        if !rest.is_empty()
+                            && let Some(lines) = &mut tags.response_descriptions
+                        {
+                            lines.push(DocLine {
+                                text: rest.to_string(),
+                                span,
+                            });
+                        }
+                    }
                     Kind::Path => {
                         tags.path = Some(Vec::new());
                         let rest = rest.trim();
@@ -211,6 +242,17 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                         && let Some(section) = &mut tags.responses
                     {
                         section.lines.push(DocLine {
+                            text: text.to_string(),
+                            span,
+                        });
+                    }
+                }
+                Some(Kind::ResponseDescriptions) => {
+                    let text = trimmed.trim();
+                    if !text.is_empty()
+                        && let Some(lines) = &mut tags.response_descriptions
+                    {
+                        lines.push(DocLine {
                             text: text.to_string(),
                             span,
                         });
@@ -258,6 +300,16 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                 "`@description:` needs some text",
             ));
         }
+    }
+    if tags
+        .response_descriptions
+        .as_ref()
+        .is_some_and(Vec::is_empty)
+    {
+        return Err(syn::Error::new(
+            current_span,
+            "`@response-descriptions:` needs at least one `status: description` line",
+        ));
     }
     if tags.path.as_ref().is_some_and(Vec::is_empty) {
         return Err(syn::Error::new(

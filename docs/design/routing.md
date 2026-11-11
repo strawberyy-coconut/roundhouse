@@ -216,6 +216,21 @@ The declaration is required because `#[handler]` expands before `App::new` and a
 on the app root cannot reach a separately expanded module, and `App::new`'s inferred type is not
 visible to a proc macro. The table is the smallest scope that knows the router state.
 
+A spread therefore cannot inherit its parent's state. The child table's `MODULE` already contains
+`MethodRouter<S>` values for the state it declared; re-typing them at the spread site would
+require an owned, generic module builder and give up the `'static` tree. The supported way to
+centralize the name is a crate-local wrapper that expands every table with the same state:
+
+```rust
+macro_rules! routes {
+    ($($tokens:tt)*) => {
+        roundhouse::routes! { state = crate::AppState, $($tokens)* }
+    };
+}
+```
+
+This keeps the declaration in one place without pretending the macro can see another expansion.
+
 `Auth<A>` remains exact: `AuthScheme::State` must equal the table state. A state mismatch is a
 `BuildError::StateMismatch` from `App::try_build()`.
 

@@ -34,9 +34,14 @@ pub(super) struct Entry {
     pub(super) security: Vec<Type>,
     pub(super) layer: Option<Expr>,
     pub(super) doc: Option<Expr>,
+    /// `prose = include_str!(..)`: an operation summary/description from one string.
+    pub(super) prose: Option<Expr>,
     pub(super) hidden: bool,
     pub(super) absolute: bool,
     pub(super) validate: bool,
+    pub(super) validate_body: bool,
+    /// An explicit acknowledgement of an intentional unverified body/response/extractor.
+    pub(super) unverified: Option<LitStr>,
     pub(super) deprecated: bool,
     pub(super) public: bool,
 }
@@ -54,9 +59,12 @@ impl Entry {
             security: Vec::new(),
             layer: None,
             doc: None,
+            prose: None,
             hidden: false,
             absolute: false,
             validate: true,
+            validate_body: true,
+            unverified: None,
             deprecated: false,
             public: false,
         }
@@ -274,6 +282,10 @@ fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> R
             content.parse::<Token![=]>()?;
             entry.doc = Some(content.parse()?);
         }
+        "prose" => {
+            content.parse::<Token![=]>()?;
+            entry.prose = Some(content.parse()?);
+        }
         "hidden" => entry.hidden = true,
         "absolute" => entry.absolute = true,
         "public" => entry.public = true,
@@ -288,6 +300,15 @@ fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> R
             content.parse::<Token![=]>()?;
             let value: syn::LitBool = content.parse()?;
             entry.validate = value.value;
+        }
+        "validate_body" => {
+            content.parse::<Token![=]>()?;
+            let value: syn::LitBool = content.parse()?;
+            entry.validate_body = value.value;
+        }
+        "unverified" => {
+            content.parse::<Token![=]>()?;
+            entry.unverified = Some(content.parse()?);
         }
         other => {
             return Err(syn::Error::new(

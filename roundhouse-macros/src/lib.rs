@@ -144,9 +144,11 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// ```
 ///
 /// `@summary:` and `@description:` set the operation text; `@responses:` declares `status: Type`,
-/// bare `status`, or `default: Type` lines. `@responses(override):` permits replacing an inferred
-/// response. Untagged doc prose is ignored for OpenAPI. See the crate documentation for the full
-/// grammar.
+/// bare `status`, or `default: Type` lines. A bare status asserts a success response and keeps an
+/// inferred response for the same status, which is the cheap way to satisfy the compile-time
+/// success check for a `Result` alias. `@response-descriptions:` overrides the prose of an
+/// individual documented response. `@responses(override):` permits replacing an inferred response.
+/// Untagged doc prose is ignored for OpenAPI. See the crate documentation for the full grammar.
 ///
 /// # Entry options
 ///
@@ -165,6 +167,9 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 ///   the handler's inferred documentation and before document checks. It can set summary or
 ///   description and add hand-written parameters, bodies or responses; the additions still go
 ///   through conflict and capture validation.
+/// - `prose = expression` — a `&'static str` (often `include_str!("...")`) whose first line is
+///   the operation summary and whose remaining text is the description. The expression is
+///   evaluated at compile time; `doc` still runs afterwards and may override it.
 /// - `hidden` — serve the route but omit it from the document.
 /// - `absolute` — the path owns the full URL. Module prefixes, tags, security, layers and hidden
 ///   flags do not apply; a `security` declared on the entry itself still does.
@@ -172,7 +177,16 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// - `public` — add the `x-roundhouse-public` extension to the operation.
 /// - `validate = false` — parse the request as usual but skip `#[schema(..)]` constraint
 ///   validation for this route. Malformed bodies are still rejected. The document records
-///   `x-roundhouse-validation: false`.
+///   `x-roundhouse-validation: false`. This is a whole-route opt-out; `unverified = "reason"`
+///   acknowledges it so `strict()` passes.
+/// - `validate_body = false` — keep path, query and form validation, but treat the request body
+///   as opaque: do not install the raw JSON layer, run body schemas or body hooks. Malformed
+///   JSON is still rejected during extraction. The document records
+///   `x-roundhouse-body-validation: false`; unlike `validate = false`, this is quiet under
+///   `strict()` because it is a precise body policy.
+/// - `unverified = "reason"` — acknowledge an intentional unverified body, response or extractor
+///   on this operation. It suppresses the build diagnostic and lets `strict()` pass, while the
+///   `x-roundhouse-unverified-*` extension still tells document consumers the truth.
 ///
 ///   Validation is on by default. The route's generated shim checks every argument whose type
 ///   publishes constraints, including `axum::Json`, `axum::extract::Path`, `axum::extract::Query`
@@ -315,10 +329,11 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// Handlers cannot be generic, and the attribute cannot be applied to a method inside an `impl`
 /// block. Use `#[handler]` on a free function.
 ///
-/// The handler's doc block may carry `@summary:`, `@description:`, `@responses:` and `@path:`
-/// tags. `@summary:` and `@responses:` end at a blank line; `@description:` keeps paragraphs.
-/// `@path: name: description` describes a path parameter that has no field description. Untagged
-/// prose stays rustdoc-only.
+/// The handler's doc block may carry `@summary:`, `@description:`, `@responses:`,
+/// `@response-descriptions:` and `@path:` tags. Compact tags end at a blank line;
+/// `@description:` keeps paragraphs. `@path: name: description` describes a path parameter that
+/// has no field description. Untagged prose stays rustdoc-only; use `prose = include_str!(..)` on
+/// the route entry when one public document should supply both summary and description.
 ///
 /// # Example
 ///
@@ -419,6 +434,88 @@ pub fn derive_api_schema(input: TokenStream) -> TokenStream {
     api_schema::expand(input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
+}
+
+/// Derive both `ToSchema` and `ApiSchema` with one annotation.
+///
+/// This is the one-annotation form for documented bodies and responses:
+///
+/// ```ignore
+/// use roundhouse::prelude::*;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[roundhouse::schema]
+/// #[derive(Serialize, Deserialize)]
+/// pub struct Note {
+///     #[schema(min_length = 1)]
+///     pub title: String,
+/// }
+/// ```
+///
+/// The attribute re-emits the item with `#[derive(roundhouse::ToSchema,
+/// roundhouse::ApiSchema)]`, so `#[schema(..)]`, `#[serde(..)]` and `#[roundhouse(..)]` keep
+/// working exactly as they do with the two derives. Use it on a struct or enum, as the outermost
+/// attribute; do not also derive `ToSchema` or `ApiSchema` on the same item.
+#[proc_macro_attribute]
+pub fn schema(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "`#[roundhouse::schema]` takes no arguments; schema options belong in \
+             `#[schema(..)]`, `#[serde(..)]` or `#[roundhouse(..)]`",
+        )
+        .to_compile_error()
+        .into();
+    }
+    let item = parse_macro_input!(item as syn::Item);
+    let attrs = match &item {
+        syn::Item::Struct(item) => &item.attrs,
+        syn::Item::Enum(item) => &item.attrs,
+        other => {
+            return syn::Error::new_spanned(
+                other,
+                "`#[roundhouse::schema]` can only be applied to a struct or enum",
+            )
+            .to_compile_error()
+            .into();
+        }
+    };
+    if has_derive(attrs, "ToSchema") || has_derive(attrs, "ApiSchema") {
+        let message = "`#[roundhouse::schema]` already derives `ToSchema` and `ApiSchema`; \
+                       remove the separate derive";
+        if let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("derive")) {
+            return syn::Error::new_spanned(attr, message)
+                .to_compile_error()
+                .into();
+        }
+        return syn::Error::new(proc_macro2::Span::call_site(), message)
+            .to_compile_error()
+            .into();
+    }
+    let krate = util::krate();
+    quote::quote! {
+        #[derive(#krate::ToSchema, #krate::ApiSchema)]
+        #item
+    }
+    .into()
+}
+
+fn has_derive(attrs: &[syn::Attribute], name: &str) -> bool {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("derive"))
+        .filter_map(|attr| {
+            attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+            )
+            .ok()
+        })
+        .flatten()
+        .any(|path| {
+            path.segments
+                .last()
+                .is_some_and(|segment| segment.ident == name)
+        })
 }
 
 /// Derive OpenAPI query-parameter documentation and validation for a struct.

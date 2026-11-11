@@ -14,10 +14,17 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let krate = crate::util::krate();
     let ident = input.ident.clone();
     let container_serde = serde_container(&input.attrs)?;
-    let _container_schema = schema_attrs(&input.attrs)?;
+    let container_schema = schema_attrs(&input.attrs)?;
     let tags =
         crate::doc_tags::parse(&input.attrs, crate::doc_tags::AllowedTags::DESCRIPTION_ONLY)?;
-    let description = match tags.description {
+    // `#[schema(description = "..")]` is the schema's own description and wins over the
+    // roundhouse `@description:` tag.
+    let description = container_schema
+        .constraints
+        .description
+        .map(|description| description.value())
+        .or(tags.description);
+    let description = match description {
         Some(description) => {
             let description = LitStr::new(&description, ident.span());
             quote!(::core::option::Option::Some(#description))
