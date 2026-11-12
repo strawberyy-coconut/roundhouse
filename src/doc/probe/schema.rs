@@ -1,108 +1,43 @@
+//! Concrete-type probes for schema and response documentation.
+//!
+//! The handler macro sees argument and return types as tokens. These probes use autoref
+//! specialization to ask the concrete type what it can document:
+//!
+//! - `&SchemaProbe<T>` — `T: ApiSchema`;
+//! - `&&SchemaProbe<T>` — `T: ToSchema` only;
+//! - `&&&SchemaProbe<T>` — neither.
+//!
+//! Each level implements the same [`ProbeSchema`] methods, so one struct serves the schema,
+//! description and `validate_with` questions. Probes are macro plumbing and live behind
+//! `roundhouse::__private`.
+
 use utoipa::openapi::RefOr;
-use utoipa::openapi::schema::{Components, Schema};
+use utoipa::openapi::schema::Schema;
 
 use super::super::{
-    ApiSchema, ResponseDoc, register_self,
-    response_doc::{
-        json_response, json_response_doc, json_response_doc_to_schema, json_response_to_schema,
-        text_response, text_response_to_schema,
-    },
+    ApiSchema, ResponseDoc, SchemaContext, register_self,
+    response_doc::{json_response_doc, json_response_doc_to_schema},
 };
 
-pub struct SchemaFor<T: ?Sized>(std::marker::PhantomData<T>);
+pub struct SchemaProbe<T: ?Sized>(std::marker::PhantomData<T>);
 
-impl<T: ?Sized> SchemaFor<T> {
+impl<T: ?Sized> SchemaProbe<T> {
     pub const fn new() -> Self {
         Self(std::marker::PhantomData)
     }
 }
 
-impl<T: ?Sized> Default for SchemaFor<T> {
+impl<T: ?Sized> Default for SchemaProbe<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub trait ProbeSchemaFor {
+pub trait ProbeSchema<T: ?Sized> {
     fn probe_schema(self) -> RefOr<Schema>;
-    fn probe_register(self, components: &mut Components);
-}
-
-impl<T: ApiSchema + ?Sized> ProbeSchemaFor for &SchemaFor<T> {
-    fn probe_schema(self) -> RefOr<Schema> {
-        T::schema()
-    }
-
-    fn probe_register(self, components: &mut Components) {
-        T::register(components);
-    }
-}
-
-impl<T: utoipa::ToSchema + ?Sized> ProbeSchemaFor for &&SchemaFor<T> {
-    fn probe_schema(self) -> RefOr<Schema> {
-        <T as utoipa::PartialSchema>::schema()
-    }
-
-    fn probe_register(self, components: &mut Components) {
-        register_self::<T>(components);
-    }
-}
-
-/// A concrete-type probe for a response body type's description.
-///
-/// The body type's `ApiSchema::description()` is the default response description when the
-/// variant does not declare one. A `ToSchema`-only type has no roundhouse description, so the
-/// fallback returns `None` and the caller uses the canonical reason phrase.
-pub struct DescriptionFor<T: ?Sized>(std::marker::PhantomData<T>);
-
-impl<T: ?Sized> DescriptionFor<T> {
-    pub const fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-
-impl<T: ?Sized> Default for DescriptionFor<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub trait ProbeDescription {
     fn probe_description(self) -> Option<&'static str>;
-}
-
-impl<T: ApiSchema + ?Sized> ProbeDescription for &DescriptionFor<T> {
-    fn probe_description(self) -> Option<&'static str> {
-        T::description()
-    }
-}
-
-impl<T: ?Sized> ProbeDescription for &&DescriptionFor<T> {
-    fn probe_description(self) -> Option<&'static str> {
-        None
-    }
-}
-
-/// A concrete-type probe for recursive `validate_with` traversal.
-///
-/// The specific impl calls the field type's [`ApiSchema::validate_at`]; the fallback is a no-op
-/// for a plain `ToSchema` field. Call this at the concrete field type.
-pub struct ValidateFor<T: ?Sized>(std::marker::PhantomData<T>);
-
-impl<T: ?Sized> ValidateFor<T> {
-    pub const fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-
-impl<T: ?Sized> Default for ValidateFor<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub trait ProbeValidateFor<T: ?Sized> {
-    fn probe_validate_for(
+    fn probe_register(self, context: &mut dyn SchemaContext);
+    fn probe_validate_at(
         self,
         value: &T,
         pointer: &str,
@@ -110,8 +45,20 @@ pub trait ProbeValidateFor<T: ?Sized> {
     );
 }
 
-impl<T: ApiSchema + ?Sized> ProbeValidateFor<T> for &ValidateFor<T> {
-    fn probe_validate_for(
+impl<T: ApiSchema + ?Sized> ProbeSchema<T> for &SchemaProbe<T> {
+    fn probe_schema(self) -> RefOr<Schema> {
+        T::schema()
+    }
+
+    fn probe_description(self) -> Option<&'static str> {
+        T::description()
+    }
+
+    fn probe_register(self, context: &mut dyn SchemaContext) {
+        T::register(context);
+    }
+
+    fn probe_validate_at(
         self,
         value: &T,
         pointer: &str,
@@ -121,8 +68,20 @@ impl<T: ApiSchema + ?Sized> ProbeValidateFor<T> for &ValidateFor<T> {
     }
 }
 
-impl<T: utoipa::ToSchema + ?Sized> ProbeValidateFor<T> for &&ValidateFor<T> {
-    fn probe_validate_for(
+impl<T: utoipa::ToSchema + ?Sized> ProbeSchema<T> for &&SchemaProbe<T> {
+    fn probe_schema(self) -> RefOr<Schema> {
+        <T as utoipa::PartialSchema>::schema()
+    }
+
+    fn probe_description(self) -> Option<&'static str> {
+        None
+    }
+
+    fn probe_register(self, context: &mut dyn SchemaContext) {
+        register_self::<T>(context);
+    }
+
+    fn probe_validate_at(
         self,
         _value: &T,
         _pointer: &str,
@@ -131,77 +90,23 @@ impl<T: utoipa::ToSchema + ?Sized> ProbeValidateFor<T> for &&ValidateFor<T> {
     }
 }
 
-/// A concrete-type probe for a JSON response body.
-pub struct JsonResponseProbe<T>(std::marker::PhantomData<T>);
-
-impl<T> JsonResponseProbe<T> {
-    pub const fn new() -> Self {
-        Self(std::marker::PhantomData)
+impl<T: ?Sized> ProbeSchema<T> for &&&SchemaProbe<T> {
+    fn probe_schema(self) -> RefOr<Schema> {
+        crate::doc::schema::any_value()
     }
-}
 
-impl<T> Default for JsonResponseProbe<T> {
-    fn default() -> Self {
-        Self::new()
+    fn probe_description(self) -> Option<&'static str> {
+        None
     }
-}
 
-pub trait ProbeJsonResponse {
-    fn probe_json_response(self, components: &mut Components, status: u16) -> Vec<ResponseDoc>;
-}
+    fn probe_register(self, _context: &mut dyn SchemaContext) {}
 
-impl<T: ApiSchema> ProbeJsonResponse for &JsonResponseProbe<T> {
-    fn probe_json_response(self, components: &mut Components, status: u16) -> Vec<ResponseDoc> {
-        json_response::<T>(components, status)
-    }
-}
-
-impl<T> ProbeJsonResponse for &&JsonResponseProbe<T> {
-    fn probe_json_response(self, _components: &mut Components, _status: u16) -> Vec<ResponseDoc> {
-        Vec::new()
-    }
-}
-
-/// A second response probe for types that derive only `ToSchema`.
-pub struct ToSchemaJsonResponseProbe<T>(std::marker::PhantomData<T>);
-
-impl<T> ToSchemaJsonResponseProbe<T> {
-    pub const fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-
-impl<T> Default for ToSchemaJsonResponseProbe<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub trait ProbeToSchemaJsonResponse {
-    fn probe_to_schema_json_response(
+    fn probe_validate_at(
         self,
-        components: &mut Components,
-        status: u16,
-    ) -> Vec<ResponseDoc>;
-}
-
-impl<T: utoipa::ToSchema> ProbeToSchemaJsonResponse for &ToSchemaJsonResponseProbe<T> {
-    fn probe_to_schema_json_response(
-        self,
-        components: &mut Components,
-        status: u16,
-    ) -> Vec<ResponseDoc> {
-        json_response_to_schema::<T>(components, status)
-    }
-}
-
-impl<T> ProbeToSchemaJsonResponse for &&ToSchemaJsonResponseProbe<T> {
-    fn probe_to_schema_json_response(
-        self,
-        _components: &mut Components,
-        _status: u16,
-    ) -> Vec<ResponseDoc> {
-        Vec::new()
+        _value: &T,
+        _pointer: &str,
+        _errors: &mut crate::validate::ValidationErrors,
+    ) {
     }
 }
 
@@ -221,63 +126,17 @@ impl<T> Default for JsonResponseDocProbe<T> {
 }
 
 pub trait ProbeJsonResponseDoc {
-    fn probe_json_response_doc(self, components: &mut Components, status: u16) -> ResponseDoc;
+    fn probe_json_response_doc(self, context: &mut dyn SchemaContext, status: u16) -> ResponseDoc;
 }
 
 impl<T: ApiSchema> ProbeJsonResponseDoc for &JsonResponseDocProbe<T> {
-    fn probe_json_response_doc(self, components: &mut Components, status: u16) -> ResponseDoc {
-        json_response_doc::<T>(components, status)
+    fn probe_json_response_doc(self, context: &mut dyn SchemaContext, status: u16) -> ResponseDoc {
+        json_response_doc::<T>(context, status)
     }
 }
 
 impl<T: utoipa::ToSchema> ProbeJsonResponseDoc for &&JsonResponseDocProbe<T> {
-    fn probe_json_response_doc(self, components: &mut Components, status: u16) -> ResponseDoc {
-        json_response_doc_to_schema::<T>(components, status)
-    }
-}
-
-/// A concrete-type probe for a non-JSON response body.
-pub struct TextResponseProbe<T>(std::marker::PhantomData<T>);
-
-impl<T> TextResponseProbe<T> {
-    pub const fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-
-impl<T> Default for TextResponseProbe<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub trait ProbeTextResponse {
-    fn probe_text_response(
-        self,
-        components: &mut Components,
-        status: u16,
-        content_type: &str,
-    ) -> ResponseDoc;
-}
-
-impl<T: ApiSchema> ProbeTextResponse for &TextResponseProbe<T> {
-    fn probe_text_response(
-        self,
-        components: &mut Components,
-        status: u16,
-        content_type: &str,
-    ) -> ResponseDoc {
-        text_response::<T>(components, status, content_type)
-    }
-}
-
-impl<T: utoipa::ToSchema> ProbeTextResponse for &&TextResponseProbe<T> {
-    fn probe_text_response(
-        self,
-        components: &mut Components,
-        status: u16,
-        content_type: &str,
-    ) -> ResponseDoc {
-        text_response_to_schema::<T>(components, status, content_type)
+    fn probe_json_response_doc(self, context: &mut dyn SchemaContext, status: u16) -> ResponseDoc {
+        json_response_doc_to_schema::<T>(context, status)
     }
 }

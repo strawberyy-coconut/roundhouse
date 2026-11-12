@@ -350,12 +350,14 @@ fn the_extractor_trait_recognises_a_documented_json_body() {
 fn a_body_without_api_schema_still_builds_as_an_unverified_extractor() {
     // `NotASchema` does not implement `ApiSchema`, so `Json<NotASchema>` falls back to the
     // unverified-extractor marker instead of publishing a schema it cannot describe.
-    use roundhouse::doc::ArgProbe;
-    use roundhouse::doc::ProbeArg as _;
+    use roundhouse::__private::ArgProbe;
+    use roundhouse::__private::ProbeArg as _;
 
     let mut components = roundhouse::utoipa::openapi::schema::Components::new();
-    let mut docs = roundhouse::doc::HandlerDocs::default();
-    (&ArgProbe::<axum::Json<NotASchema>>::new()).document(&mut components, &mut docs);
+    let mut context = roundhouse::doc::DocContext::new(&mut components);
+    let mut docs = roundhouse::doc::OperationDoc::default();
+    let arg = (&ArgProbe::<axum::Json<NotASchema>>::new()).document(&mut context);
+    docs.merge(arg);
     assert!(docs.unverified_extractor);
 }
 

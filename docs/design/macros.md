@@ -60,8 +60,8 @@ routing metadata cannot be inferred from what the function does.
 
 `#[handler]` also reads explicit doc tags:
 
-- `@summary:` and `@description:` fill `HandlerDocs.summary` / `.description`;
-- `@responses:` fills `HandlerDocs.declared_responses` and `DECLARED_SUCCESS`;
+- `@summary:` and `@description:` fill `OperationDoc.summary` / `.description`;
+- `@responses:` fills `OperationDoc.declared_responses` and `DECLARED_SUCCESS`;
 - `@responses(override):` sets the declared-response override.
 
 The tag parser lives in `doc_tags.rs` and is shared with the `ApiResponse` derive and the
@@ -72,8 +72,8 @@ grammar and precedence.
 
 The attribute takes no arguments and leaves the function untouched. It emits:
 
-- a marker type implementing `HandlerMeta` (`State`, `PATH_NAMES`, `REQUIRED_AUTH`,
-  `INFERRED_SUCCESS`, `docs`/`docs_with`);
+- a marker type implementing `HandlerSpec` (`State`, `PATH_NAMES`, `REQUIRED_AUTH`,
+  `INFERRED_SUCCESS`) and `DocSource` (`operation`);
 - an associated `__roundhouse_shim::<P>` on the marker type, which extracts the handler's
   arguments plus a `ValidationContext` and the policy's auth extractor, validates, and calls
   the function.
@@ -155,7 +155,7 @@ The derives keep their own rules on top:
 - **The handler must be reachable by path.** A local closure or a function alias without the
   marker is not a handler.
 - **`doc` and `layer` are expressions.** They are type-checked in the emitted context: `doc`
-  must coerce to `fn(&mut HandlerDocs)`, `layer` must be a tower layer over the relevant
+  must coerce to `fn(&mut OperationDoc)`, `layer` must be a tower layer over the relevant
   router.
 - **`any` is served, not documented.** There is no honest single operation for it.
 - **Two layers, one API.** `routes!` is the routing DSL: paths, methods and policy. Doc tags are
@@ -173,11 +173,11 @@ validation and wiring. That is the part that benefits from a separate library cr
 
 ## Future
 
-- **`roundhouse-macros-core`.** Move `serde_shape`, `util`, route parsing/validation/expansion
-  and the derive expansion into a normal library crate; keep `roundhouse-macros` as the
-  `proc-macro = true` entry point. This would allow unit tests of the parser and expander
-  without `trybuild`, and make the expansion reusable by tooling. Under consideration; not
-  implemented.
+- **`roundhouse-macros-core`.** Implemented. `serde_shape`, `util`, route
+  parsing/validation/expansion and the derive expansion live in a normal library crate;
+  `roundhouse-macros` is the thin `proc-macro = true` entry point. Parser and expander tests can
+  now run without `trybuild`, and the expansion is reusable by tooling. See
+  [Traits and internal API](traits.md) for the probe consolidation that accompanied it.
 - **Richer diagnostics.** More checks can move from "build error" to "compile error" only when
   the information is local to one invocation. Cross-table checks stay at build time.
 - **No no-macro builder.** It would weaken the guarantees that are the reason to use roundhouse.

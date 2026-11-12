@@ -4,9 +4,9 @@
 //! without compiling a server. The `roundhouse` facade re-exports its public items, so application
 //! imports normally use `roundhouse::...`.
 //!
-//! `ApiSchema` supplies the document shape and custom validation hooks. `PartsSchema` and
-//! `PartsValue` describe path and query types. The `schema-engine` feature compiles the emitted
-//! JSON Schema and executes it to produce [`ValidationErrors`].
+//! `ApiSchema` supplies the document shape and custom validation hooks. `Params` is the single
+//! bound for path, query and form types. The `schema-engine` feature compiles the emitted JSON
+//! Schema and executes it to produce [`ValidationErrors`].
 
 #[cfg(feature = "schema-engine")]
 pub mod engine;
@@ -18,7 +18,7 @@ pub mod validate;
 
 #[cfg(feature = "schema-engine")]
 pub use jsonschema;
-pub use schema::{ApiSchema, PartsDoc, PartsSchema, PartsValue, PathNames, PathValidate};
+pub use schema::{ApiSchema, Claim, Params, PartsDoc, SchemaContext};
 pub use utoipa;
 pub use validate::{ValidationError, ValidationErrors, pointer};
 

@@ -27,7 +27,7 @@ pub use roundhouse_problem::Problem;
 use roundhouse_schema::{ApiSchema, ValidationError, ValidationErrors, pointer};
 use serde::de::DeserializeOwned;
 use utoipa::openapi::RefOr;
-use utoipa::openapi::schema::{Components, ObjectBuilder, Schema, Type};
+use utoipa::openapi::schema::{ObjectBuilder, Schema, Type};
 
 /// The global body limit used when the app does not set one.
 pub const DEFAULT_MAX_BODY: usize = 32 * 1024 * 1024;
@@ -276,7 +276,7 @@ pub trait MultipartForm: Sized {
 
     fn from_fields(fields: &mut FieldValues) -> Result<Self, Problem>;
 
-    fn schema(components: &mut Components) -> RefOr<Schema>;
+    fn schema(context: &mut dyn roundhouse_schema::SchemaContext) -> RefOr<Schema>;
 }
 
 /// Multipart extractor. Parts are routed by the field table and limits are checked as bytes
@@ -698,20 +698,26 @@ pub fn optional_files_schema() -> RefOr<Schema> {
 }
 
 /// Convenience for generated code: the schema of a text field.
-pub fn text_schema<T: ApiSchema>(components: &mut Components) -> RefOr<Schema> {
-    T::register(components);
+pub fn text_schema<T: ApiSchema>(
+    context: &mut dyn roundhouse_schema::SchemaContext,
+) -> RefOr<Schema> {
+    T::register(context);
     T::schema()
 }
 
 /// Convenience for generated code: a nullable text schema.
-pub fn optional_text_schema<T: ApiSchema>(components: &mut Components) -> RefOr<Schema> {
-    T::register(components);
+pub fn optional_text_schema<T: ApiSchema>(
+    context: &mut dyn roundhouse_schema::SchemaContext,
+) -> RefOr<Schema> {
+    T::register(context);
     roundhouse_schema::schema::nullable(T::schema())
 }
 
 /// Convenience for generated code: a repeated text schema.
-pub fn text_list_schema<T: ApiSchema>(components: &mut Components) -> RefOr<Schema> {
-    T::register(components);
+pub fn text_list_schema<T: ApiSchema>(
+    context: &mut dyn roundhouse_schema::SchemaContext,
+) -> RefOr<Schema> {
+    T::register(context);
     roundhouse_schema::schema::array(T::schema()).into()
 }
 

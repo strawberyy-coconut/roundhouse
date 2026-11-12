@@ -233,7 +233,7 @@ pub(super) fn expand_entry(
         [scheme] => Some(scheme),
         _ => None,
     };
-    let default_state = quote!(<#marker_type as #krate::doc::HandlerMeta>::State);
+    let default_state = quote!(<#marker_type as #krate::doc::HandlerSpec>::State);
     let shim_state = match table_state {
         Some(state) => quote!(#state),
         None => match single_scheme {
@@ -242,8 +242,8 @@ pub(super) fn expand_entry(
         },
     };
     let policy = match (single_scheme, entry.validate) {
-        (Some(scheme), _) => quote!(#krate::shim::Authed::<#scheme>),
-        (None, _) => quote!(#krate::shim::Plain::<#shim_state>),
+        (Some(scheme), _) => quote!(#krate::__private::Authed::<#scheme>),
+        (None, _) => quote!(#krate::__private::Plain::<#shim_state>),
     };
     let state = match table_state {
         Some(state) => quote!(
@@ -287,7 +287,7 @@ pub(super) fn expand_entry(
     );
     let tags = string_slice(&entry.tags);
     let security = auth_slice(&entry.security);
-    let required_auth = quote!(<#marker_type as #krate::doc::HandlerMeta>::REQUIRED_AUTH);
+    let required_auth = quote!(<#marker_type as #krate::doc::HandlerSpec>::REQUIRED_AUTH);
     let hidden = entry.hidden;
     let absolute = entry.absolute;
     let validate = entry.validate;
@@ -306,9 +306,9 @@ pub(super) fn expand_entry(
     );
     let success_assert = quote_spanned! { entry.path.span()=>
         const _: () = {
-            if <#handler_alias as #krate::doc::HandlerMeta>::DECLARED_SUCCESS.is_none() {
+            if <#handler_alias as #krate::doc::HandlerSpec>::DECLARED_SUCCESS.is_none() {
                 if let ::core::option::Option::Some(__statuses) =
-                    <#handler_alias as #krate::doc::HandlerMeta>::INFERRED_SUCCESS
+                    <#handler_alias as #krate::doc::HandlerSpec>::INFERRED_SUCCESS
                 {
                     assert!(!__statuses.is_empty(), #no_success_message);
                 }
@@ -358,14 +358,14 @@ pub(super) fn expand_entry(
     let hook_call = entry.doc.as_ref().map(|expr| {
         quote! {
             {
-                let hook: fn(&mut #krate::doc::HandlerDocs) = #expr;
+                let hook: fn(&mut #krate::doc::OperationDoc) = #expr;
                 hook(docs)
             }
         }
     });
     let doc = if entry.doc.is_some() || entry.prose.is_some() {
         quote! {
-            fn #doc_fn(docs: &mut #krate::doc::HandlerDocs) {
+            fn #doc_fn(docs: &mut #krate::doc::OperationDoc) {
                 #prose_call
                 #hook_call
             }
@@ -388,7 +388,7 @@ pub(super) fn expand_entry(
                 assert!(
                     #krate::prefix::path_names_match(
                         #path,
-                        <#marker_type as #krate::doc::HandlerMeta>::PATH_NAMES,
+                        <#marker_type as #krate::doc::HandlerSpec>::PATH_NAMES,
                     ),
                     #assertion_message,
                 );
@@ -435,7 +435,7 @@ pub(super) fn expand_entry(
             #state_name,
             #route_fn,
             #layer_value,
-            <#marker_type as #krate::doc::HandlerMeta>::docs_with,
+            <#marker_type as #krate::doc::DocSource>::operation,
             #doc_value,
         );
     };

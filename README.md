@@ -127,7 +127,7 @@ The full tag grammar and precedence rules are in
 | `security = [Scheme]` | Require a scheme for this operation. The scheme is enforced by the route shim. |
 | `path = "/full/path"` | Assert the final resolved path, including module prefixes. |
 | `layer = expression` | Apply a tower layer to this route. |
-| `doc = expression` | Run a hook over the operation's `HandlerDocs` before document checks. |
+| `doc = expression` | Run a hook over the operation's `OperationDoc` before document checks. |
 | `prose = expression` | Take the summary and description from a `&'static str`, usually `include_str!(...)`. The first line is the summary. |
 | `hidden` | Serve the route without documenting it. |
 | `absolute` | Use the path as the full URL, ignoring inherited prefixes, tags, layers and guards. |
@@ -250,11 +250,14 @@ and whether route-level validation has any work to do.
 
 ```rust
 impl ExtractArg for Tenant {
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.params.push(
-            Param::new("x-tenant", ParamIn::Header, schema::string())
-                .description("tenant id"),
-        );
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            params: vec![
+                Param::new("x-tenant", ParamIn::Header, schema::string())
+                    .description("tenant id"),
+            ],
+            ..ArgDoc::default()
+        }
     }
 }
 ```
@@ -352,7 +355,7 @@ impl Authenticate for BearerAuth {
 ```
 
 - `Auth<A>` extracts the identity and documents the security requirement.
-- `Auth<A, Scopes>` also requires `Scopes: Authorize<A>`. The scope is documented only when an
+- `Auth<A, Scopes>` also requires `Scopes: Scopes<A>`. The scope is documented only when an
   authorization decision exists.
 - `Option<Auth<A>>` documents authentication as optional.
 - `security = [A]` on a route or module installs the guard as well as publishing the requirement.

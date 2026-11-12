@@ -12,9 +12,10 @@
 
 use std::any::TypeId;
 
-use utoipa::openapi::schema::Components;
+use utoipa::openapi::RefOr;
+use utoipa::openapi::schema::Schema;
 
-use crate::auth::{Auth, AuthScheme, AuthScopes, auth_doc, auth_scheme};
+use crate::auth::{Auth, AuthDoc, AuthScheme, SchemeDoc, auth_doc, auth_scheme};
 use crate::doc::body::{binary_body, form_body, json_body};
 #[cfg(feature = "multipart")]
 use crate::doc::body::{multipart_body, multipart_failures};
@@ -22,11 +23,84 @@ use crate::doc::response_doc::{
     auth_failures, extension_failures, form_failures, json_failures, path_failures, query_failures,
 };
 use crate::doc::{
-    ApiSchema, HandlerDocs, PartsValue, PathNames, PathValidate, QueryParams, path_params,
+    ApiSchema, BodyDoc, DocContext, OperationDoc, Param, Params, PartsDoc, path_params,
     stored_query_params_for,
 };
 use crate::extract::{Mapped, RepeatedQuery, Strict, ValidationContext};
 use crate::problem::Problem;
+
+/// What one handler argument contributes to the operation.
+///
+/// `ExtractArg::document` returns this value; the document builder owns the merge rules. A trait
+/// never mutates the shared `OperationDoc` bag.
+#[derive(Default)]
+pub struct ArgDoc {
+    pub params: Vec<Param>,
+    pub body: Option<BodyDoc>,
+    pub body_type: Option<fn() -> TypeId>,
+    pub parts: Vec<PartsDoc>,
+    pub failures: Vec<crate::doc::ResponseDoc>,
+    pub required_auth: Vec<AuthDoc>,
+    pub optional_auth: Vec<AuthDoc>,
+    pub schemes: Vec<SchemeDoc>,
+    pub path_schema: Option<fn() -> Option<RefOr<Schema>>>,
+    pub unverified_body: bool,
+    pub unverified_extractor: bool,
+    pub unbounded_file_fields: Vec<&'static str>,
+}
+
+impl ArgDoc {
+    /// `Option<T>` publications: every parameter and the body become optional, and required auth
+    /// moves to the optional alternative.
+    pub fn optional(mut self) -> Self {
+        for param in &mut self.params {
+            param.required = false;
+        }
+        if let Some(body) = &mut self.body {
+            body.required = false;
+        }
+        let had_required_auth = !self.required_auth.is_empty();
+        self.optional_auth.append(&mut self.required_auth);
+        if had_required_auth {
+            // `Option<Auth<A>>` documents the scheme as an alternative and does not promise the
+            // required-auth rejection responses.
+            self.failures.clear();
+        }
+        self
+    }
+
+    /// `Result<T, E>` publications: the handler owns the rejection, so no extractor failures are
+    /// promised and the shim must not validate the body a second time.
+    pub fn result(mut self) -> Self {
+        self.failures.clear();
+        self.body_type = None;
+        self
+    }
+}
+
+impl OperationDoc {
+    /// Merge one argument's contribution into the operation being documented.
+    pub fn merge(&mut self, arg: ArgDoc) {
+        self.params.extend(arg.params);
+        if arg.body.is_some() {
+            self.body = arg.body;
+        }
+        if arg.body_type.is_some() {
+            self.body_type = arg.body_type;
+        }
+        self.parts.extend(arg.parts);
+        self.failures.extend(arg.failures);
+        self.required_auth.extend(arg.required_auth);
+        self.optional_auth.extend(arg.optional_auth);
+        self.schemes.extend(arg.schemes);
+        if arg.path_schema.is_some() {
+            self.path_schema = arg.path_schema;
+        }
+        self.unverified |= arg.unverified_body;
+        self.unverified_extractor |= arg.unverified_extractor;
+        self.unbounded_file_fields.extend(arg.unbounded_file_fields);
+    }
+}
 
 /// One route argument's contribution to the document and to route-level validation.
 ///
@@ -42,21 +116,9 @@ pub trait ExtractArg {
     /// executed the schema during extraction (`Strict`, multipart) set this to `false`.
     const SHIM_VALIDATES: bool = false;
 
-    fn document(components: &mut Components, docs: &mut HandlerDocs);
-
-    /// Documentation for `Option<Self>`. Optional auth, query and body arguments override this to
-    /// publish their alternative shape.
-    fn document_optional(components: &mut Components, docs: &mut HandlerDocs) {
-        Self::document(components, docs);
-    }
-
-    /// Documentation when the extractor sits inside `Result<Self, E>`.
-    ///
-    /// The handler owns the rejection, so extractor-specific failure responses are not promised.
-    /// The successful shape (body, parameters, auth) is still documented.
-    fn document_result(components: &mut Components, docs: &mut HandlerDocs) {
-        Self::document(components, docs);
-    }
+    /// The argument's documentation. Associated, because the macro describes the extractor type
+    /// before a value exists.
+    fn document(context: &mut DocContext<'_>) -> ArgDoc;
 
     /// Route-level validation after extraction. The default leaves the value alone.
     #[allow(clippy::result_large_err)]
@@ -87,7 +149,7 @@ where
 #[allow(clippy::result_large_err)]
 fn validate_parts<T>(value: &T, context: &ValidationContext) -> Result<(), Problem>
 where
-    T: PartsValue + 'static,
+    T: Params + 'static,
 {
     crate::extract::enforce_parts_schema(value, context.engine(), context.status())
 }
@@ -98,24 +160,14 @@ impl<T: ApiSchema + 'static> ExtractArg for axum::Json<T> {
     const IS_BODY: bool = true;
     const SHIM_VALIDATES: bool = true;
 
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.body = Some(json_body::<T>(components));
-        docs.body_type = Some(|| TypeId::of::<T>());
-        docs.unverified = true;
-        docs.failures.extend(json_failures());
-    }
-
-    fn document_optional(components: &mut Components, docs: &mut HandlerDocs) {
-        Self::document(components, docs);
-        if let Some(body) = &mut docs.body {
-            body.required = false;
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            body: Some(json_body::<T>(context)),
+            body_type: Some(|| TypeId::of::<T>()),
+            unverified_body: true,
+            failures: json_failures(),
+            ..ArgDoc::default()
         }
-    }
-
-    fn document_result(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.body = Some(json_body::<T>(components));
-        docs.body_type = Some(|| TypeId::of::<T>());
-        docs.unverified = true;
     }
 
     fn validate(&self, context: &ValidationContext) -> Result<(), Problem> {
@@ -130,24 +182,14 @@ impl<T: ApiSchema + serde::Serialize + 'static> ExtractArg for axum::Form<T> {
     const IS_BODY: bool = true;
     const SHIM_VALIDATES: bool = true;
 
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.body = Some(form_body::<T>(components));
-        docs.body_type = Some(|| TypeId::of::<T>());
-        docs.unverified = true;
-        docs.failures.extend(form_failures());
-    }
-
-    fn document_optional(components: &mut Components, docs: &mut HandlerDocs) {
-        Self::document(components, docs);
-        if let Some(body) = &mut docs.body {
-            body.required = false;
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            body: Some(form_body::<T>(context)),
+            body_type: Some(|| TypeId::of::<T>()),
+            unverified_body: true,
+            failures: form_failures(),
+            ..ArgDoc::default()
         }
-    }
-
-    fn document_result(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.body = Some(form_body::<T>(components));
-        docs.body_type = Some(|| TypeId::of::<T>());
-        docs.unverified = true;
     }
 
     fn validate(&self, context: &ValidationContext) -> Result<(), Problem> {
@@ -159,8 +201,11 @@ impl ExtractArg for bytes::Bytes {
     const IS_BODY: bool = true;
     const SHIM_VALIDATES: bool = true;
 
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.body = Some(binary_body());
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            body: Some(binary_body()),
+            ..ArgDoc::default()
+        }
     }
 }
 
@@ -168,8 +213,11 @@ impl ExtractArg for axum::body::Body {
     const IS_BODY: bool = true;
     const SHIM_VALIDATES: bool = true;
 
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.body = Some(binary_body());
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            body: Some(binary_body()),
+            ..ArgDoc::default()
+        }
     }
 }
 
@@ -178,8 +226,11 @@ impl ExtractArg for axum::body::Body {
 impl ExtractArg for String {
     const IS_BODY: bool = true;
 
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.unverified_extractor = true;
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            unverified_extractor: true,
+            ..ArgDoc::default()
+        }
     }
 }
 
@@ -187,22 +238,28 @@ impl ExtractArg for String {
 impl ExtractArg for axum::extract::Request {
     const IS_BODY: bool = true;
 
-    fn document(_components: &mut Components, _docs: &mut HandlerDocs) {}
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc::default()
+    }
 }
 
 #[cfg(feature = "multipart")]
 impl<F: crate::multipart::MultipartForm + 'static> ExtractArg for crate::multipart::Multipart<F> {
     const IS_BODY: bool = true;
 
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.body = Some(multipart_body::<F>(components));
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        let mut doc = ArgDoc {
+            body: Some(multipart_body::<F>(context)),
+            body_type: Some(|| TypeId::of::<F>()),
+            failures: multipart_failures(),
+            ..ArgDoc::default()
+        };
         for field in F::fields() {
             if field.kind.is_file() && field.max_bytes.is_none() {
-                docs.unbounded_file_fields.push(field.name);
+                doc.unbounded_file_fields.push(field.name);
             }
         }
-        docs.body_type = Some(|| TypeId::of::<F>());
-        docs.failures.extend(multipart_failures());
+        doc
     }
 }
 
@@ -210,8 +267,11 @@ impl<F: crate::multipart::MultipartForm + 'static> ExtractArg for crate::multipa
 impl ExtractArg for axum::extract::Multipart {
     const IS_BODY: bool = true;
 
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.unverified = true;
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            unverified_body: true,
+            ..ArgDoc::default()
+        }
     }
 }
 
@@ -221,17 +281,11 @@ where
 {
     const IS_BODY: bool = F::IS_BODY;
 
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        F::document_result(components, docs);
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
         // A `Result<Extractor, E>` owns its rejection. The handler receives the success value or
         // its own error type, so the route shim (and the raw body layer) must not enforce the
         // schema a second time. Keep the documented shape, drop the runtime registration.
-        docs.body_type = None;
-    }
-
-    fn document_optional(components: &mut Components, docs: &mut HandlerDocs) {
-        F::document_result(components, docs);
-        docs.body_type = None;
+        F::document(context).result()
     }
 
     // The handler owns the rejection (for example `Result<Json<T>, JsonRejection>`), so the shim
@@ -240,121 +294,91 @@ where
 
 // --- Parts --------------------------------------------------------------------------------
 
-impl<T: PathNames + PartsValue + PathValidate + 'static> ExtractArg for axum::extract::Path<T> {
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        T::register(components);
-        docs.params.extend(path_params::<T>());
-        docs.path_schema = Some(<T as PathNames>::scalar_schema);
+impl<T: Params + 'static> ExtractArg for axum::extract::Path<T> {
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        T::register(context);
+        let mut doc = ArgDoc {
+            params: path_params::<T>(context),
+            path_schema: Some(T::scalar_schema),
+            failures: path_failures(),
+            ..ArgDoc::default()
+        };
         if let Some(parts) = T::parts_doc() {
-            docs.parts.push(parts);
+            doc.parts.push(parts);
         }
-        docs.failures.extend(path_failures());
-    }
-
-    fn document_optional(components: &mut Components, docs: &mut HandlerDocs) {
-        let start = docs.params.len();
-        Self::document(components, docs);
-        for param in &mut docs.params[start..] {
-            param.required = false;
-        }
-    }
-
-    fn document_result(components: &mut Components, docs: &mut HandlerDocs) {
-        T::register(components);
-        docs.params.extend(path_params::<T>());
-        docs.path_schema = Some(<T as PathNames>::scalar_schema);
-        if let Some(parts) = T::parts_doc() {
-            docs.parts.push(parts);
-        }
+        doc
     }
 
     fn validate(&self, context: &ValidationContext) -> Result<(), Problem> {
         validate_parts(&self.0, context)?;
-        self.0
-            .validate()
-            .map_err(|errors| validation_problem(errors, context))
+        Params::validate(&self.0).map_err(|errors| validation_problem(errors, context))
     }
 }
 
-impl<T: QueryParams + PartsValue + 'static> ExtractArg for axum::extract::Query<T> {
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.params.extend(stored_query_params_for::<T>(components));
+impl<T: Params + 'static> ExtractArg for axum::extract::Query<T> {
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        let mut doc = ArgDoc {
+            params: stored_query_params_for::<T>(context),
+            failures: query_failures(),
+            ..ArgDoc::default()
+        };
         if let Some(parts) = T::parts_doc() {
-            docs.parts.push(parts);
+            doc.parts.push(parts);
         }
-        docs.failures.extend(query_failures());
-    }
-
-    fn document_optional(components: &mut Components, docs: &mut HandlerDocs) {
-        let start = docs.params.len();
-        Self::document(components, docs);
-        for param in &mut docs.params[start..] {
-            param.required = false;
-        }
-    }
-
-    fn document_result(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.params.extend(stored_query_params_for::<T>(components));
-        if let Some(parts) = T::parts_doc() {
-            docs.parts.push(parts);
-        }
+        doc
     }
 
     fn validate(&self, context: &ValidationContext) -> Result<(), Problem> {
         validate_parts(&self.0, context)?;
-        self.0
-            .validate()
-            .map_err(|errors| validation_problem(errors, context))
+        Params::validate(&self.0).map_err(|errors| validation_problem(errors, context))
     }
 }
 
-impl<T: QueryParams + PartsValue + 'static> ExtractArg for RepeatedQuery<T> {
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.params.extend(stored_query_params_for::<T>(components));
+impl<T: Params + 'static> ExtractArg for RepeatedQuery<T> {
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        let mut doc = ArgDoc {
+            params: stored_query_params_for::<T>(context),
+            failures: query_failures(),
+            ..ArgDoc::default()
+        };
         if let Some(parts) = T::parts_doc() {
-            docs.parts.push(parts);
+            doc.parts.push(parts);
         }
-        docs.failures.extend(query_failures());
-    }
-
-    fn document_optional(components: &mut Components, docs: &mut HandlerDocs) {
-        let start = docs.params.len();
-        Self::document(components, docs);
-        for param in &mut docs.params[start..] {
-            param.required = false;
-        }
-    }
-
-    fn document_result(components: &mut Components, docs: &mut HandlerDocs) {
-        docs.params.extend(stored_query_params_for::<T>(components));
-        if let Some(parts) = T::parts_doc() {
-            docs.parts.push(parts);
-        }
+        doc
     }
 
     // The extractor itself validates the query before returning it.
 }
 
 impl<T> ExtractArg for axum::extract::Extension<T> {
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.unverified_extractor = true;
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            unverified_extractor: true,
+            ..ArgDoc::default()
+        }
     }
 }
 
 impl<S> ExtractArg for axum::extract::State<S> {
-    fn document(_components: &mut Components, _docs: &mut HandlerDocs) {}
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc::default()
+    }
 }
 
 #[cfg(feature = "serve")]
 impl<T> ExtractArg for axum::extract::ConnectInfo<T> {
-    fn document(_components: &mut Components, _docs: &mut HandlerDocs) {}
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc::default()
+    }
 }
 
 macro_rules! no_op_extractor {
     ($($ty:ty),* $(,)?) => {
         $(
             impl ExtractArg for $ty {
-                fn document(_components: &mut Components, _docs: &mut HandlerDocs) {}
+                fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+                    ArgDoc::default()
+                }
             }
         )*
     };
@@ -371,20 +395,18 @@ no_op_extractor!(
 
 // --- Auth ---------------------------------------------------------------------------------
 
-impl<A, Scopes> ExtractArg for Auth<A, Scopes>
+impl<A, S> ExtractArg for Auth<A, S>
 where
     A: AuthScheme,
-    Scopes: AuthScopes,
+    S: crate::auth::Scopes<A>,
 {
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.schemes.push(auth_scheme::<A>());
-        docs.required_auth.push(auth_doc::<A, Scopes>());
-        docs.failures.extend(auth_failures::<A>());
-    }
-
-    fn document_optional(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.schemes.push(auth_scheme::<A>());
-        docs.optional_auth.push(auth_doc::<A, Scopes>());
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            schemes: vec![auth_scheme::<A>()],
+            required_auth: vec![auth_doc::<A, S>()],
+            failures: auth_failures::<A>(),
+            ..ArgDoc::default()
+        }
     }
 }
 
@@ -394,12 +416,8 @@ impl<T: ExtractArg> ExtractArg for Option<T> {
     const IS_BODY: bool = T::IS_BODY;
     const SHIM_VALIDATES: bool = T::SHIM_VALIDATES;
 
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        T::document_optional(components, docs);
-    }
-
-    fn document_optional(components: &mut Components, docs: &mut HandlerDocs) {
-        T::document_optional(components, docs);
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        T::document(context).optional()
     }
 
     fn validate(&self, context: &ValidationContext) -> Result<(), Problem> {
@@ -411,9 +429,12 @@ impl<T: ExtractArg> ExtractArg for Option<T> {
 }
 
 impl<T> ExtractArg for Mapped<T> {
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
         // `Mapped` only maps a rejection; it deliberately does not document or enforce a schema.
-        docs.unverified_extractor = true;
+        ArgDoc {
+            unverified_extractor: true,
+            ..ArgDoc::default()
+        }
     }
 }
 
@@ -421,8 +442,8 @@ impl<T: ApiSchema + 'static> ExtractArg for Strict<axum::Json<T>> {
     const IS_BODY: bool = true;
     const SHIM_VALIDATES: bool = true;
 
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        <axum::Json<T> as ExtractArg>::document(components, docs);
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        <axum::Json<T> as ExtractArg>::document(context)
     }
 
     fn validate(&self, context: &ValidationContext) -> Result<(), Problem> {
@@ -438,8 +459,8 @@ impl<T: ApiSchema + serde::Serialize + 'static> ExtractArg for Strict<axum::Form
     const IS_BODY: bool = true;
     const SHIM_VALIDATES: bool = true;
 
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        <axum::Form<T> as ExtractArg>::document(components, docs);
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        <axum::Form<T> as ExtractArg>::document(context)
     }
 
     fn validate(&self, context: &ValidationContext) -> Result<(), Problem> {
@@ -450,32 +471,33 @@ impl<T: ApiSchema + serde::Serialize + 'static> ExtractArg for Strict<axum::Form
     }
 }
 
-impl<T: PathNames + PartsValue + PathValidate + 'static> ExtractArg
-    for Strict<axum::extract::Path<T>>
-{
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        <axum::extract::Path<T> as ExtractArg>::document(components, docs);
+impl<T: Params + 'static> ExtractArg for Strict<axum::extract::Path<T>> {
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        <axum::extract::Path<T> as ExtractArg>::document(context)
     }
 
     // `Strict` already enforced the parts schema during extraction.
 }
 
-impl<T: QueryParams + PartsValue + 'static> ExtractArg for Strict<axum::extract::Query<T>> {
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        <axum::extract::Query<T> as ExtractArg>::document(components, docs);
+impl<T: Params + 'static> ExtractArg for Strict<axum::extract::Query<T>> {
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        <axum::extract::Query<T> as ExtractArg>::document(context)
     }
 }
 
-impl<T: QueryParams + PartsValue + 'static> ExtractArg for Strict<RepeatedQuery<T>> {
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        <RepeatedQuery<T> as ExtractArg>::document(components, docs);
+impl<T: Params + 'static> ExtractArg for Strict<RepeatedQuery<T>> {
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        <RepeatedQuery<T> as ExtractArg>::document(context)
     }
 }
 
 impl<T> ExtractArg for Strict<axum::extract::Extension<T>> {
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.unverified_extractor = true;
-        docs.failures.extend(extension_failures());
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            unverified_extractor: true,
+            failures: extension_failures(),
+            ..ArgDoc::default()
+        }
     }
 }
 
@@ -483,7 +505,7 @@ impl<T> ExtractArg for Strict<axum::extract::Extension<T>> {
 impl<F: crate::multipart::MultipartForm + 'static> ExtractArg
     for Strict<crate::multipart::Multipart<F>>
 {
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        <crate::multipart::Multipart<F> as ExtractArg>::document(components, docs);
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        <crate::multipart::Multipart<F> as ExtractArg>::document(context)
     }
 }

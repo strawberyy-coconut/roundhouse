@@ -13,10 +13,7 @@ impl crate::doc::ApiResponse for Problem {
     /// `Problem` is the framework's default error type, so it contributes a `default` response
     /// with the `application/problem+json` schema. A `Result<_, Problem>` therefore documents the
     /// failures it can produce instead of only its success status.
-    fn responses(
-        components: &mut utoipa::openapi::schema::Components,
-    ) -> Vec<crate::doc::ResponseDoc> {
-        let _ = components;
+    fn responses(_context: &mut dyn crate::doc::SchemaContext) -> Vec<crate::doc::ResponseDoc> {
         vec![crate::doc::ResponseDoc::problem_default()]
     }
 }

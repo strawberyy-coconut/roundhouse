@@ -4,7 +4,7 @@ use utoipa::openapi::extensions::ExtensionsBuilder;
 use utoipa::openapi::path::OperationBuilder;
 use utoipa::openapi::{Deprecated, ResponsesBuilder, SecurityRequirement};
 
-use super::super::{HandlerDocs, Param, ParamIn, ResponseDoc};
+use super::super::{OperationDoc, Param, ParamIn, ResponseDoc};
 use super::pieces::{
     build_body, build_param, build_response, merge_response, merge_scheme, requirement,
 };
@@ -15,8 +15,8 @@ use crate::router::ResolvedRoute;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn operation(
     route: &ResolvedRoute,
-    docs: HandlerDocs,
-    components: &mut utoipa::openapi::schema::Components,
+    docs: OperationDoc,
+    context: &mut crate::doc::DocContext<'_>,
     used_schemes: &mut BTreeMap<String, (SchemeDoc, crate::build_error::Source)>,
     include_rejections: bool,
     strict: bool,
@@ -358,7 +358,7 @@ pub(super) fn operation(
         builder = builder.tags(Some(tags));
     }
     for part in &docs.parts {
-        parts.push(((part.type_id)(), (part.schema)(components)));
+        parts.push(((part.type_id)(), (part.schema)(context)));
     }
     if let Some(body) = docs.body {
         if route.record.validate

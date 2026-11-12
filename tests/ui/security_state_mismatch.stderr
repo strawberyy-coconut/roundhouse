@@ -12,7 +12,7 @@ help: the trait `FromRef<SchemeState>` is not implemented for `HandlerState`
  9 | struct HandlerState;
    | ^^^^^^^^^^^^^^^^^^^
    = note: implement `FromRef<SchemeState>` for `HandlerState` (or derive `FromRef` on the app state), and set the `routes!` table's `state = SchemeState`
-   = note: required for `HandlerState` to implement `roundhouse::shim::SubstateOf<SchemeState>`
+   = note: required for `HandlerState` to implement `roundhouse::__private::SubstateOf<SchemeState>`
 note: required by a bound in `show_missing_roundhouse_handler_attribute::__roundhouse_shim`
   --> tests/ui/security_state_mismatch.rs:35:1
    |

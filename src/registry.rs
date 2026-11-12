@@ -10,12 +10,10 @@
 use std::any::Any;
 use std::fmt;
 
+use crate::auth::AuthGuard;
+use crate::doc::{DocContext, OperationDoc};
 use axum::Router;
 use axum::routing::MethodRouter;
-use utoipa::openapi::schema::Components;
-
-use crate::auth::AuthGuard;
-use crate::doc::HandlerDocs;
 
 /// HTTP methods a table entry may declare.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -125,11 +123,11 @@ pub struct RouteRecord {
     pub(crate) state_name: fn() -> &'static str,
     pub(crate) handler: fn() -> Box<dyn Any + Send + Sync>,
     pub(crate) layer: Option<RouteLayer>,
-    pub(crate) docs: fn(&mut Components, bool) -> HandlerDocs,
+    pub(crate) docs: fn(&mut DocContext<'_>) -> OperationDoc,
     /// A `doc = |docs| ..` hook from the table entry. It runs after the handler's inferred
     /// documentation and before the document checks, so hand-written parameters still pass
     /// through the capture and conflict validation.
-    pub(crate) doc: Option<fn(&mut HandlerDocs)>,
+    pub(crate) doc: Option<fn(&mut OperationDoc)>,
 }
 
 impl RouteRecord {
@@ -160,8 +158,8 @@ impl RouteRecord {
         state_name: fn() -> &'static str,
         handler: fn() -> Box<dyn Any + Send + Sync>,
         layer: Option<RouteLayer>,
-        docs: fn(&mut Components, bool) -> HandlerDocs,
-        doc: Option<fn(&mut HandlerDocs)>,
+        docs: fn(&mut DocContext<'_>) -> OperationDoc,
+        doc: Option<fn(&mut OperationDoc)>,
     ) -> Self {
         Self {
             module_path,

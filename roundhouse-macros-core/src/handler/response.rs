@@ -103,8 +103,8 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
         } else {
             quote! {
                 match {
-                    use #krate::doc::ProbeResponses as _;
-                    (&#krate::doc::ResponseProbe::<#ok>::new()).probe_responses(components)
+                    use #krate::__private::ProbeResponses as _;
+                    (&#krate::__private::ResponseProbe::<#ok>::new()).probe_responses(context)
                 } {
                     ::core::option::Option::Some(__rh_responses) => {
                         docs.responses.extend(__rh_responses);
@@ -116,8 +116,8 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
         return Ok(vec![quote! {
             #ok_statement
             match {
-                use #krate::doc::ProbeResponses as _;
-                (&#krate::doc::ResponseProbe::<#err>::new()).probe_responses(components)
+                use #krate::__private::ProbeResponses as _;
+                (&#krate::__private::ResponseProbe::<#err>::new()).probe_responses(context)
             } {
                 ::core::option::Option::Some(__rh_responses) => {
                     docs.responses.extend(__rh_responses);
@@ -149,8 +149,8 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
 
     Ok(vec![quote! {
         match {
-            use #krate::doc::ProbeResponses as _;
-            (&#krate::doc::ResponseProbe::<#ty>::new()).probe_responses(components)
+            use #krate::__private::ProbeResponses as _;
+            (&#krate::__private::ResponseProbe::<#ty>::new()).probe_responses(context)
         } {
             ::core::option::Option::Some(__rh_responses) => {
                 docs.responses.extend(__rh_responses);

@@ -1,14 +1,12 @@
 use std::collections::BTreeMap;
 
-use utoipa::openapi::schema::Components;
-
 #[cfg(feature = "multipart")]
 use super::ResponseDoc;
-use super::{ApiSchema, BodyDoc, schema};
+use super::{ApiSchema, BodyDoc, SchemaContext, schema};
 
 /// Register the schemas and build the response for a JSON body.
-pub fn json_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
-    T::register(components);
+pub fn json_body<T: ApiSchema>(context: &mut dyn SchemaContext) -> BodyDoc {
+    T::register(context);
     BodyDoc {
         content_type: "application/json".to_string(),
         schema: T::schema(),
@@ -19,20 +17,26 @@ pub fn json_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
 }
 
 /// Register the components referenced by a plain `ToSchema` type.
-pub fn register_to_schema<T: utoipa::ToSchema + ?Sized>(components: &mut Components) {
+pub fn register_to_schema<T: utoipa::ToSchema + ?Sized>(context: &mut dyn SchemaContext) {
     let mut referenced = Vec::new();
     <T as utoipa::ToSchema>::schemas(&mut referenced);
     let type_name = std::any::type_name::<T>();
     for (name, schema) in referenced {
-        if let Some(existing) = components.schemas.get(&name) {
-            // `schemas()` has no Rust type identity for each entry. Identical shapes are the same
-            // shared type; a different shape under the same name is a real collision.
-            if existing != &schema {
-                crate::doc::registration::record_collision(&name, "<registered schema>", type_name);
-            }
+        // `schemas()` has no Rust type identity for each entry. Identical shapes are the same
+        // shared type; a different shape under the same name is a real collision.
+        let collision = context
+            .components()
+            .schemas
+            .get(&name)
+            .is_some_and(|existing| existing != &schema);
+        if collision {
+            context.record_collision(&name, "<registered schema>", type_name);
             continue;
         }
-        components.schemas.insert(name, schema);
+        if context.components().schemas.contains_key(&name) {
+            continue;
+        }
+        context.components().schemas.insert(name, schema);
     }
 }
 
@@ -40,7 +44,7 @@ pub fn register_to_schema<T: utoipa::ToSchema + ?Sized>(components: &mut Compone
 ///
 /// `ToSchema::schemas()` recurses for self-referential types; registration driven by an enclosing
 /// `ApiSchema` derive calls this per field instead, so a recursive field cannot overflow.
-pub fn register_self<T: utoipa::ToSchema + ?Sized>(components: &mut Components) {
+pub fn register_self<T: utoipa::ToSchema + ?Sized>(context: &mut dyn SchemaContext) {
     let name = <T as utoipa::ToSchema>::name().into_owned();
     // Composite types have no stable component identity (`Vec`, `Option`, ...). Their item
     // schemas are inlined or registered by the concrete item type; never invent a component.
@@ -65,12 +69,13 @@ pub fn register_self<T: utoipa::ToSchema + ?Sized>(components: &mut Components) 
     ) {
         return;
     }
-    match crate::doc::registration::claim::<T>(&name, components) {
-        crate::doc::registration::Claim::Already | crate::doc::registration::Claim::Collision => {
+    match context.claim(&name, std::any::type_name::<T>()) {
+        roundhouse_schema::Claim::Already | roundhouse_schema::Claim::Collision => {
             return;
         }
-        crate::doc::registration::Claim::Claimed | crate::doc::registration::Claim::Inactive => {}
+        roundhouse_schema::Claim::Claimed | roundhouse_schema::Claim::Inactive => {}
     }
+    let components = context.components();
     if components.schemas.contains_key(&name) {
         return;
     }
@@ -81,8 +86,8 @@ pub fn register_self<T: utoipa::ToSchema + ?Sized>(components: &mut Components) 
 }
 
 /// A JSON body documented from `ToSchema` alone, without roundhouse hooks.
-pub fn json_body_to_schema<T: utoipa::ToSchema>(components: &mut Components) -> BodyDoc {
-    register_to_schema::<T>(components);
+pub fn json_body_to_schema<T: utoipa::ToSchema>(context: &mut dyn SchemaContext) -> BodyDoc {
+    register_to_schema::<T>(context);
     BodyDoc {
         content_type: "application/json".to_string(),
         schema: <T as utoipa::PartialSchema>::schema(),
@@ -93,7 +98,9 @@ pub fn json_body_to_schema<T: utoipa::ToSchema>(components: &mut Components) -> 
 }
 
 #[cfg(feature = "multipart")]
-pub fn multipart_body<F: crate::multipart::MultipartForm>(components: &mut Components) -> BodyDoc {
+pub fn multipart_body<F: crate::multipart::MultipartForm>(
+    context: &mut dyn SchemaContext,
+) -> BodyDoc {
     let encoding = F::fields()
         .iter()
         .filter(|field| field.kind.is_file() && !field.accept.is_empty())
@@ -109,7 +116,7 @@ pub fn multipart_body<F: crate::multipart::MultipartForm>(components: &mut Compo
         .collect();
     BodyDoc {
         content_type: "multipart/form-data".to_string(),
-        schema: F::schema(components),
+        schema: F::schema(context),
         encoding,
         required: true,
         description: None,
@@ -125,8 +132,8 @@ pub fn multipart_failures() -> Vec<ResponseDoc> {
     ]
 }
 
-pub fn form_body<T: ApiSchema>(components: &mut Components) -> BodyDoc {
-    T::register(components);
+pub fn form_body<T: ApiSchema>(context: &mut dyn SchemaContext) -> BodyDoc {
+    T::register(context);
     BodyDoc {
         content_type: "application/x-www-form-urlencoded".to_string(),
         schema: T::schema(),

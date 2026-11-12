@@ -5,9 +5,8 @@ use axum::body::Body;
 use axum::extract::{FromRef, FromRequestParts};
 use axum::http::request::Parts;
 use axum::http::{Request, StatusCode, header};
-use roundhouse::doc::{ExtractArg, HandlerDocs};
+use roundhouse::doc::{ArgDoc, DocContext, ExtractArg};
 use roundhouse::prelude::*;
-use roundhouse::utoipa::openapi::schema::Components;
 use roundhouse::{App, BuildError};
 
 #[derive(Clone)]
@@ -75,7 +74,9 @@ impl FromRequestParts<AppState> for DbExtractor {
 }
 
 impl ExtractArg for DbExtractor {
-    fn document(_components: &mut Components, _docs: &mut HandlerDocs) {}
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc::default()
+    }
 }
 
 fn app(module: &'static roundhouse::Module) -> roundhouse::Built {

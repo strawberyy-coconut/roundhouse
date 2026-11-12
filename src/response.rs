@@ -1,11 +1,9 @@
 //! Reusable response wrappers for the common created/no-content cases.
 
+use crate::doc::{ApiResponse, ResponseDoc, SchemaContext, json_response};
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use utoipa::openapi::schema::Components;
-
-use crate::doc::{ApiResponse, ResponseDoc, json_response};
 
 /// A `201 Created` JSON response.
 ///
@@ -34,8 +32,8 @@ impl<T: serde::Serialize> IntoResponse for Created<T> {
 impl<T: crate::doc::ApiSchema> ApiResponse for Created<T> {
     const SUCCESS: &'static [u16] = &[201];
 
-    fn responses(components: &mut Components) -> Vec<ResponseDoc> {
-        json_response::<T>(components, 201)
+    fn responses(context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
+        json_response::<T>(context, 201)
     }
 }
 
@@ -54,7 +52,7 @@ impl IntoResponse for NoContent {
 impl ApiResponse for NoContent {
     const SUCCESS: &'static [u16] = &[204];
 
-    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+    fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![ResponseDoc::new(204, "No Content")]
     }
 }

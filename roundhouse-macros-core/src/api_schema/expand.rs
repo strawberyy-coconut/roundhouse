@@ -68,28 +68,28 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
 
             fn register(
-                components: &mut #krate::utoipa::openapi::schema::Components,
+                context: &mut dyn #krate::doc::SchemaContext,
             ) {
                 let name = <Self as #krate::utoipa::ToSchema>::name().into_owned();
-                match #krate::doc::registration::claim::<Self>(&name, components) {
-                    #krate::doc::registration::Claim::Already
-                    | #krate::doc::registration::Claim::Collision => return,
-                    #krate::doc::registration::Claim::Claimed
-                    | #krate::doc::registration::Claim::Inactive => {}
+                match context.claim(&name, ::core::any::type_name::<Self>()) {
+                    #krate::doc::Claim::Already
+                    | #krate::doc::Claim::Collision => return,
+                    #krate::doc::Claim::Claimed
+                    | #krate::doc::Claim::Inactive => {}
                 }
-                if components.schemas.contains_key(&name) {
+                if context.components().schemas.contains_key(&name) {
                     return;
                 }
                 // Break recursive registration: a field that points back at this type sees the
                 // placeholder and stops before the real schema is inserted below.
-                components.schemas.insert(
+                context.components().schemas.insert(
                     name.clone(),
                     #krate::doc::schema::any_value(),
                 );
                 #(#register_calls)*
                 let mut schema = <Self as #krate::utoipa::PartialSchema>::schema();
                 #(#patches)*
-                components.schemas.insert(name, schema);
+                context.components().schemas.insert(name, schema);
             }
 
             fn validate_at(

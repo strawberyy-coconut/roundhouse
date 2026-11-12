@@ -311,7 +311,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             Kind::Text | Kind::OptionalText | Kind::Texts | Kind::OptionalTexts
         ) {
             registers.push(quote! {
-                <#ty as #krate::doc::ApiSchema>::register(components);
+                <#ty as #krate::doc::ApiSchema>::register(context);
             });
         }
     }
@@ -337,7 +337,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
 
             fn schema(
-                components: &mut #krate::utoipa::openapi::schema::Components,
+                context: &mut dyn #krate::doc::SchemaContext,
             ) -> #krate::utoipa::openapi::RefOr<
                 #krate::utoipa::openapi::schema::Schema,
             > {

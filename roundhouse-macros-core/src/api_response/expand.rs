@@ -8,16 +8,16 @@ use super::attrs::{FieldInfo, VariantAttrs, bindings, collect_fields};
 fn schema_expr(ty: &Type) -> TokenStream {
     let krate = crate::util::krate();
     quote!({
-        use #krate::doc::ProbeSchemaFor as _;
-        (&#krate::doc::SchemaFor::<#ty>::new()).probe_schema()
+        use #krate::__private::ProbeSchema as _;
+        (&#krate::__private::SchemaProbe::<#ty>::new()).probe_schema()
     })
 }
 
 fn register_expr(ty: &Type) -> TokenStream {
     let krate = crate::util::krate();
     quote!({
-        use #krate::doc::ProbeSchemaFor as _;
-        (&#krate::doc::SchemaFor::<#ty>::new()).probe_register(components)
+        use #krate::__private::ProbeSchema as _;
+        (&#krate::__private::SchemaProbe::<#ty>::new()).probe_register(context)
     })
 }
 
@@ -127,8 +127,8 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
                         field.ty.clone()
                     };
                     quote!({
-                        use #krate::doc::ProbeDescription as _;
-                        (&#krate::doc::DescriptionFor::<#doc_ty>::new())
+                        use #krate::__private::ProbeSchema as _;
+                        (&#krate::__private::SchemaProbe::<#doc_ty>::new())
                             .probe_description()
                             .unwrap_or(#canonical_lit)
                     })
@@ -357,9 +357,9 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
 
     let docs_fn = format_ident!("__roundhouse_responses_{}", ident);
     let docs_call = if type_params.is_empty() {
-        quote!(#docs_fn(components))
+        quote!(#docs_fn(context))
     } else {
-        quote!(#docs_fn::#ty_generics(components))
+        quote!(#docs_fn::#ty_generics(context))
     };
     let detail_prefix = if error_only {
         quote! {
@@ -396,7 +396,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
 
         #[allow(non_snake_case)]
         fn #docs_fn #doc_impl_generics (
-            components: &mut #krate::utoipa::openapi::schema::Components,
+            context: &mut dyn #krate::doc::SchemaContext,
         ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> #doc_where {
             let mut responses = ::std::vec::Vec::new();
             #(#registrations)*
@@ -408,7 +408,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
             const SUCCESS: &'static [u16] = &[#(#success_statuses),*];
 
             fn responses(
-                components: &mut #krate::utoipa::openapi::schema::Components,
+                context: &mut dyn #krate::doc::SchemaContext,
             ) -> ::std::vec::Vec<#krate::doc::ResponseDoc> {
                 #docs_call
             }

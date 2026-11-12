@@ -4,9 +4,10 @@ use axum::extract::FromRequestParts;
 use axum::http::{StatusCode, request::Parts};
 use axum::response::{IntoResponse, Response};
 use roundhouse::App;
-use roundhouse::doc::{ApiResponse, ExtractArg, HandlerDocs, Param, ParamIn, ResponseDoc, schema};
+use roundhouse::doc::{
+    ApiResponse, ArgDoc, DocContext, ExtractArg, Param, ParamIn, ResponseDoc, SchemaContext, schema,
+};
 use roundhouse::prelude::*;
-use roundhouse::utoipa::openapi::schema::Components;
 
 #[derive(Clone, Default)]
 pub struct State;
@@ -31,10 +32,13 @@ where
 }
 
 impl ExtractArg for Tenant {
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.params.push(
-            Param::new("x-tenant", ParamIn::Header, schema::string()).description("tenant id"),
-        );
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            params: vec![
+                Param::new("x-tenant", ParamIn::Header, schema::string()).description("tenant id"),
+            ],
+            ..ArgDoc::default()
+        }
     }
 }
 
@@ -55,7 +59,7 @@ impl IntoResponse for Csv {
 impl ApiResponse for Csv {
     const SUCCESS: &'static [u16] = &[200];
 
-    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+    fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![ResponseDoc {
             status: 200,
             description: "OK".to_string(),

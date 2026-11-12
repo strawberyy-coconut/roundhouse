@@ -77,9 +77,9 @@ pub fn build_with_observations(
     )>,
     route_bodies: &mut std::collections::BTreeMap<String, (std::any::TypeId, String)>,
 ) -> Result<OpenApi, BuildError> {
-    let _registration = crate::doc::registration::Guard::new();
     let info = info.into();
     let mut components = utoipa::openapi::schema::Components::new();
+    let mut context = crate::doc::DocContext::new(&mut components);
     let mut paths = Paths::new();
     let mut used_schemes: BTreeMap<String, (SchemeDoc, crate::build_error::Source)> =
         BTreeMap::new();
@@ -106,11 +106,11 @@ pub fn build_with_observations(
             continue;
         };
 
-        crate::doc::registration::set_source(route.record.source_ref());
-        let mut docs = (route.record.docs)(
-            &mut components,
-            route.record.validate && route.record.validate_body,
-        );
+        context.set_source(route.record.source_ref());
+        let mut docs = (route.record.docs)(&mut context);
+        if route.record.validate && route.record.validate_body && docs.body_verified {
+            docs.unverified = false;
+        }
         if let Some(custom) = route.record.doc {
             custom(&mut docs);
         }
@@ -182,7 +182,7 @@ pub fn build_with_observations(
         let operation = operation(
             route,
             docs,
-            &mut components,
+            &mut context,
             &mut used_schemes,
             include_rejections,
             strict,
@@ -194,7 +194,9 @@ pub fn build_with_observations(
         paths.add_path_operation(&route.path, vec![http_method], operation);
     }
 
-    if let Some(collision) = crate::doc::registration::finish().into_iter().next() {
+    let collisions = context.take_collisions();
+    drop(context);
+    if let Some(collision) = collisions.into_iter().next() {
         return Err(BuildError::ComponentCollision {
             name: collision.name,
             first_type: collision.first_type,

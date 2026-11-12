@@ -80,7 +80,7 @@ They fail `cargo check`, not the app build.
 | `any` conflict | An `any` entry next to a concrete method on the same template |
 | Duplicate operation id | Two explicit ids, or two entries that would derive the same id from method and handler name |
 | Undeclared success | A return shape the macro can classify as producing no 2xx/3xx response, unless the handler declares a success in `@responses:` |
-| Path capture subset | A `Path<T: PathNames>` whose `NAMES` omits a capture in the leaf template |
+| Path capture subset | A `Path<T: Params>` whose `NAMES` omits a capture in the leaf template |
 | Missing `#[handler]` | The marker type does not exist, reported once through a type alias |
 | Attribute syntax | Unknown options, non-type security schemes, removed attributes (see `tests/ui/`) |
 

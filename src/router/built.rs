@@ -7,7 +7,7 @@ use axum::response::Response;
 use tower::ServiceExt;
 
 use crate::auth::AuthGuard;
-use crate::doc::{self, HandlerDocs};
+use crate::doc::{self, OperationDoc};
 use crate::openapi::OpenApi;
 use crate::registry::{Method, RouteRecord};
 
@@ -31,9 +31,10 @@ pub struct ResolvedRoute {
 }
 
 impl ResolvedRoute {
-    pub fn docs(&self) -> HandlerDocs {
+    pub fn docs(&self) -> OperationDoc {
         let mut components = utoipa::openapi::schema::Components::new();
-        (self.record.docs)(&mut components, self.record.validate)
+        let mut context = crate::doc::DocContext::new(&mut components);
+        (self.record.docs)(&mut context)
     }
 }
 

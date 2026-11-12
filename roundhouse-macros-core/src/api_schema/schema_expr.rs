@@ -7,9 +7,9 @@ use super::attrs::Constraints;
 pub(super) fn validate_expr(ty: &Type, value: TokenStream, pointer: TokenStream) -> TokenStream {
     let krate = crate::util::krate();
     quote!({
-        use #krate::doc::ProbeValidateFor as _;
-        (&#krate::doc::ValidateFor::<#ty>::new())
-            .probe_validate_for(#value, &#pointer, errors)
+        use #krate::__private::ProbeSchema as _;
+        (&#krate::__private::SchemaProbe::<#ty>::new())
+            .probe_validate_at(#value, &#pointer, errors)
     })
 }
 
@@ -20,8 +20,8 @@ pub(super) fn validate_expr(ty: &Type, value: TokenStream, pointer: TokenStream)
 pub(crate) fn register_expr(ty: &Type) -> TokenStream {
     let krate = crate::util::krate();
     quote!({
-        use #krate::doc::ProbeSchemaFor as _;
-        (&#krate::doc::SchemaFor::<#ty>::new()).probe_register(components)
+        use #krate::__private::ProbeSchema as _;
+        (&#krate::__private::SchemaProbe::<#ty>::new()).probe_register(context)
     })
 }
 pub(crate) fn field_schema_expr(ty: &Type, constraints: &Constraints) -> TokenStream {
@@ -122,8 +122,8 @@ fn base_schema_expr(ty: &Type) -> TokenStream {
         None => {
             let krate = crate::util::krate();
             quote!({
-                use #krate::doc::ProbeSchemaFor as _;
-                (&#krate::doc::SchemaFor::<#ty>::new()).probe_schema()
+                use #krate::__private::ProbeSchema as _;
+                (&#krate::__private::SchemaProbe::<#ty>::new()).probe_schema()
             })
         }
     }

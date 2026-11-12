@@ -41,19 +41,7 @@
 //! be represented honestly fails the build, or returns a `roundhouse::BuildError` from
 //! `App::try_build`, rather than publishing a document that disagrees with the router.
 
-mod api_response;
-mod api_schema;
-mod doc_tags;
-mod handler;
-mod multipart;
-mod path_params;
-mod query_params;
-mod routes;
-mod serde_shape;
-mod util;
-
 use proc_macro::TokenStream;
-use syn::{DeriveInput, ItemFn, parse_macro_input};
 
 /// Declare the HTTP routes owned by the current module.
 ///
@@ -163,7 +151,7 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// - `path = "/v1/notes/{id}"` — assert the resolved path this entry declares, including every
 ///   parent module prefix. Useful for keeping a library's public URL stable.
 /// - `layer = expression` — a tower layer applied to this route's `MethodRouter`.
-/// - `doc = expression` — a hook of type `fn(&mut roundhouse::doc::HandlerDocs)` that runs after
+/// - `doc = expression` — a hook of type `fn(&mut roundhouse::doc::OperationDoc)` that runs after
 ///   the handler's inferred documentation and before document checks. It can set summary or
 ///   description and add hand-written parameters, bodies or responses; the additions still go
 ///   through conflict and capture validation.
@@ -255,15 +243,14 @@ use syn::{DeriveInput, ItemFn, parse_macro_input};
 /// ```
 #[proc_macro]
 pub fn routes(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as routes::RoutesInput);
-    routes::expand(input).into()
+    roundhouse_macros_core::expand_routes(input.into()).into()
 }
 
 /// Derive the routing metadata that [`routes!`](macro@routes) needs from a handler's signature.
 ///
 /// Apply `#[handler]` to a function item. The attribute takes no arguments; routing metadata
 /// belongs in the `routes!` table. It leaves the function untouched and appends a hidden marker
-/// type implementing `roundhouse::doc::HandlerMeta`, which supplies the state type, path capture
+/// type implementing `roundhouse::doc::HandlerSpec`, which supplies the state type, path capture
 /// names, request documentation and inferred responses.
 ///
 /// It also emits a hidden shim beside the marker. `routes!` registers the shim instead of the
@@ -351,16 +338,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "`#[handler]` takes no arguments; routing metadata lives in `routes!`",
-        )
-        .to_compile_error()
-        .into();
-    }
-    let item = parse_macro_input!(item as ItemFn);
-    handler::expand(item).into()
+    roundhouse_macros_core::expand_handler(attr.into(), item.into()).into()
 }
 
 /// Define the roundhouse extensions to a schema.
@@ -430,10 +408,7 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_derive(ApiSchema, attributes(schema, serde, roundhouse))]
 pub fn derive_api_schema(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    api_schema::expand(input)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+    roundhouse_macros_core::expand_api_schema(input.into()).into()
 }
 
 /// Derive both `ToSchema` and `ApiSchema` with one annotation.
@@ -458,64 +433,7 @@ pub fn derive_api_schema(input: TokenStream) -> TokenStream {
 /// attribute; do not also derive `ToSchema` or `ApiSchema` on the same item.
 #[proc_macro_attribute]
 pub fn schema(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "`#[roundhouse::schema]` takes no arguments; schema options belong in \
-             `#[schema(..)]`, `#[serde(..)]` or `#[roundhouse(..)]`",
-        )
-        .to_compile_error()
-        .into();
-    }
-    let item = parse_macro_input!(item as syn::Item);
-    let attrs = match &item {
-        syn::Item::Struct(item) => &item.attrs,
-        syn::Item::Enum(item) => &item.attrs,
-        other => {
-            return syn::Error::new_spanned(
-                other,
-                "`#[roundhouse::schema]` can only be applied to a struct or enum",
-            )
-            .to_compile_error()
-            .into();
-        }
-    };
-    if has_derive(attrs, "ToSchema") || has_derive(attrs, "ApiSchema") {
-        let message = "`#[roundhouse::schema]` already derives `ToSchema` and `ApiSchema`; \
-                       remove the separate derive";
-        if let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("derive")) {
-            return syn::Error::new_spanned(attr, message)
-                .to_compile_error()
-                .into();
-        }
-        return syn::Error::new(proc_macro2::Span::call_site(), message)
-            .to_compile_error()
-            .into();
-    }
-    let krate = util::krate();
-    quote::quote! {
-        #[derive(#krate::ToSchema, #krate::ApiSchema)]
-        #item
-    }
-    .into()
-}
-
-fn has_derive(attrs: &[syn::Attribute], name: &str) -> bool {
-    attrs
-        .iter()
-        .filter(|attr| attr.path().is_ident("derive"))
-        .filter_map(|attr| {
-            attr.parse_args_with(
-                syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
-            )
-            .ok()
-        })
-        .flatten()
-        .any(|path| {
-            path.segments
-                .last()
-                .is_some_and(|segment| segment.ident == name)
-        })
+    roundhouse_macros_core::expand_schema(attr.into(), item.into()).into()
 }
 
 /// Derive OpenAPI query-parameter documentation and validation for a struct.
@@ -553,10 +471,7 @@ fn has_derive(attrs: &[syn::Attribute], name: &str) -> bool {
 /// - `#[schema(..)]` constraints are published and validated with JSON Pointers.
 #[proc_macro_derive(QueryParams, attributes(serde, schema, roundhouse))]
 pub fn derive_query_params(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    query_params::expand(input)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+    roundhouse_macros_core::expand_query_params(input.into()).into()
 }
 
 /// Derive OpenAPI path-parameter documentation and capture checking for a struct.
@@ -593,10 +508,7 @@ pub fn derive_query_params(input: TokenStream) -> TokenStream {
 /// - `#[schema(..)]` constraints are published and validated for the extracted values.
 #[proc_macro_derive(PathParams, attributes(serde, schema, roundhouse))]
 pub fn derive_path_params(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    path_params::expand(input)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+    roundhouse_macros_core::expand_path_params(input.into()).into()
 }
 
 /// Derive `multipart/form-data` extraction and an OpenAPI request-body schema for a struct.
@@ -650,10 +562,7 @@ pub fn derive_path_params(input: TokenStream) -> TokenStream {
 /// visible.
 #[proc_macro_derive(Multipart, attributes(multipart, file, serde))]
 pub fn derive_multipart(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    multipart::expand(input)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+    roundhouse_macros_core::expand_multipart(input.into()).into()
 }
 
 /// Derive `IntoResponse` plus documented responses for a response enum.
@@ -714,10 +623,7 @@ pub fn derive_multipart(input: TokenStream) -> TokenStream {
     attributes(status, response, body, header, location, from)
 )]
 pub fn derive_api_response(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    api_response::expand(input, false)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+    roundhouse_macros_core::expand_api_response(input.into(), false).into()
 }
 
 /// Derive an error response enum: every `ApiResponse` behavior plus an error contract.
@@ -744,8 +650,5 @@ pub fn derive_api_response(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_derive(ApiError, attributes(status, response, body, header, location, from))]
 pub fn derive_api_error(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    api_response::expand(input, true)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+    roundhouse_macros_core::expand_api_response(input.into(), true).into()
 }

@@ -22,8 +22,7 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 A custom extractor is a normal axum extractor plus one impl:
 
 ```rust
-use roundhouse::doc::{ExtractArg, HandlerDocs, Param, ParamIn, schema};
-use roundhouse::utoipa::openapi::schema::Components;
+use roundhouse::doc::{ArgDoc, DocContext, ExtractArg, Param, ParamIn, SchemaContext, schema};
 
 pub struct Tenant(pub String);
 
@@ -47,11 +46,14 @@ where
 }
 
 impl ExtractArg for Tenant {
-    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
-        docs.params.push(
-            Param::new("x-tenant", ParamIn::Header, schema::string())
-                .description("tenant id"),
-        );
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            params: vec![
+                Param::new("x-tenant", ParamIn::Header, schema::string())
+                    .description("tenant id"),
+            ],
+            ..ArgDoc::default()
+        }
     }
 }
 ```
@@ -59,16 +61,18 @@ impl ExtractArg for Tenant {
 `#[handler]` now documents the header and the document builder accepts it. The extractor's
 rejection type is already `Problem`, so no mapping is needed.
 
+`document` returns `ArgDoc`; it does not mutate `OperationDoc`. The builder merges the contribution,
+so a trait cannot read or overwrite another argument's work. `Option<T>` and `Result<T, E>` are
+wrapper impls that adjust the returned value: optional parameters and bodies are relaxed into
+their optional form, and a `Result` drops extractor failure responses because the handler owns
+the rejection.
+
 The trait has more hooks for the cases axum's built-ins need:
 
 - `IS_BODY` — the argument consumes the request body. Set it when the extractor reads the body;
   it keeps the one-body rule and the validation marker honest.
 - `SHIM_VALIDATES` — the extractor already executed the operation's schema, so the shim should
   not execute it again. `Strict` and the byte/body extractors set this.
-- `document_optional` — the `Option<Self>` shape. Override it for an optional header, body or
-  auth alternative.
-- `document_result` — the `Result<Self, E>` shape. The handler owns the rejection, so failure
-  responses are not promised, but parameters and body shape still are.
 - `validate` — post-extraction checks. The default is a no-op. Return a `Problem` to reject.
 
 A body extractor that implements `validate` does not need `SHIM_VALIDATES`; that flag is only
@@ -83,8 +87,8 @@ it:
 pub struct SignedBody<T>(pub T);
 // ... FromRequest impl ...
 impl<T: ExtractArg> ExtractArg for SignedBody<T> {
-    fn document(components: &mut Components, docs: &mut HandlerDocs) {
-        T::document(components, docs);
+    fn document(context: &mut DocContext<'_>) -> ArgDoc {
+        T::document(components)
     }
 }
 ```
@@ -98,7 +102,7 @@ implement it must still compile. Instead it calls `ArgProbe::<T>::new().document
 resolves through autoref specialization:
 
 - if `T: ExtractArg`, the specific impl runs;
-- otherwise the fallback sets `docs.unverified_extractor = true`.
+- otherwise the fallback returns an `ArgDoc` with `unverified_extractor` set.
 
 The build emits a diagnostic, and `strict()` rejects the operation. This is why forgetting an
 impl is not a compile error but is a contract gap CI can catch. The same mechanism keeps any
@@ -128,7 +132,7 @@ impl axum::response::IntoResponse for Csv {
 impl ApiResponse for Csv {
     const SUCCESS: &'static [u16] = &[200];
 
-    fn responses(_components: &mut Components) -> Vec<ResponseDoc> {
+    fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![ResponseDoc {
             status: 200,
             description: "OK".to_string(),
@@ -224,16 +228,12 @@ pub struct NoteId {
 }
 ```
 
-`PathParams` also implements `PathNames`, which is what lets `routes!` check captures at compile
-time. For a hand-written parts type, the traits are:
+`PathParams` and `QueryParams` both implement `Params`, which is what lets `routes!` check
+captures at compile time and what the document builder uses for parameters, schemas and runtime
+validation. `Params` carries the capture names, the parameter table, the parts schema, the JSON
+value and the `validate_with` hooks.
 
-- `PathNames` — capture names and an optional scalar schema;
-- `QueryParams` — parameters plus `validate_at`;
-- `PartsSchema` — the schema compiled into the engine;
-- `PartsValue` — the value as JSON;
-- `PathValidate` — path `validate_with` hooks.
-
-Most applications never implement these by hand; the derives are the supported path.
+Most applications never implement `Params` by hand; the derives are the supported path.
 
 ## Layers
 
@@ -307,8 +307,9 @@ after the hook, so a hook cannot publish a path that contradicts its own paramet
 
 - **No parallel extractor types.** `roundhouse::Json` is `axum::Json`. The traits go on axum's
   types; a custom type is an impl, not a conversion layer.
-- **No runtime registry.** `ExtractArg` and `ApiResponse` are resolved at the concrete type by
-  the generated code. There is no global map to register into.
+- **No global registry.** `ExtractArg` and `ApiResponse` are resolved at the concrete type by
+  the generated code. The document build owns a `DocContext` and its component ledger; there is
+  no process-wide map to register into.
 - **Forgetting a trait is not a compile error.** It is an unverified marker plus a diagnostic,
   promoted by `strict()`. This keeps foreign types usable without forcing impls.
 - **The document checks still apply to extensions.** A custom parameter, body or response is

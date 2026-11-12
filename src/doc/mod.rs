@@ -34,29 +34,26 @@ pub mod layer;
 /// Schema derivation and constraint helpers, re-exported from `roundhouse-schema`.
 pub use roundhouse_schema::schema;
 
+pub use roundhouse_schema::{ApiSchema, Claim, Param, ParamIn, Params, PartsDoc, SchemaContext};
 use std::any::TypeId;
-use utoipa::openapi::schema::Components;
-
-pub use roundhouse_schema::{
-    ApiSchema, Param, ParamIn, PartsDoc, PartsSchema, PartsValue, PathNames, PathValidate,
-};
 
 pub use utoipa;
 
 mod arg;
 mod body;
+mod context;
 mod model;
 mod params;
-mod probe;
+pub(crate) mod probe;
 #[doc(hidden)]
 pub mod registration;
-mod response_doc;
+pub(crate) mod response_doc;
 
 pub use arg::*;
 pub use body::*;
+pub use context::*;
 pub use model::*;
 pub use params::*;
-pub use probe::*;
 pub use response_doc::*;
 
 /// Split public prose into an operation summary and description.
@@ -81,7 +78,7 @@ pub fn split_prose(text: &'static str) -> (Option<&'static str>, Option<&'static
 
 /// The documentation half a `#[handler]` attribute derives from the signature.
 #[derive(Clone, Default)]
-pub struct HandlerDocs {
+pub struct OperationDoc {
     /// Operation summary from the handler's `@summary:` tag, unless the route entry overrides it.
     pub summary: Option<String>,
     /// Operation description from the handler's `@description:` tag.
@@ -114,6 +111,9 @@ pub struct HandlerDocs {
     /// An extractor whose documented contribution the macro cannot infer (a custom `Tenant`,
     /// a bare `HeaderMap`, a typed header, ...).
     pub unverified_extractor: bool,
+    /// Whether every body argument enforces its own schema during extraction. The builder uses
+    /// this and the route's validation policy to clear [`Self::unverified`] when appropriate.
+    pub body_verified: bool,
     /// A `Result<_, E>` whose `E` registered no documented responses.
     pub undocumented_error: Option<&'static str>,
     /// The schema of a scalar `Path<T>`; the parameter's name comes from the template.
@@ -127,14 +127,20 @@ pub struct HandlerDocs {
     pub unbounded_file_fields: Vec<&'static str>,
 }
 
-/// Implemented by the marker type `#[handler]` emits beside each handler.
+/// Compatibility alias for the old name. New code should use [`OperationDoc`].
+pub type HandlerDocs = OperationDoc;
+
+/// The static facts a `#[handler]` marker exposes to `routes!`.
+///
+/// This is separate from [`DocSource`] so the route table can read state, captures, auth and
+/// success statuses without generating the operation document.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a roundhouse handler marker",
     label = "add `#[handler]` to the handler function",
     note = "`routes!` needs the marker that `#[handler]` generates beside the handler; \
             a plain `async fn` has no handler documentation to derive"
 )]
-pub trait HandlerMeta: Send + Sync + 'static {
+pub trait HandlerSpec: Send + Sync + 'static {
     /// The default router state when the `routes!` table does not declare `state = ...`.
     ///
     /// This is the first `State<T>` argument, the auth scheme's state, or `()`. A table's
@@ -166,20 +172,22 @@ pub trait HandlerMeta: Send + Sync + 'static {
     ///
     /// The route-table compile-time check uses this when the return type cannot prove success.
     const DECLARED_SUCCESS: Option<&'static [u16]> = None;
-
-    fn docs(components: &mut Components) -> HandlerDocs;
-
-    /// Documentation with the route's validation policy.
-    ///
-    /// The generated implementation clears the body marker when the route's shim validated the
-    /// body, so `strict()` does not reject a body the router enforces. A hand-written
-    /// implementation can ignore the flag.
-    fn docs_with(components: &mut Components, _validate: bool) -> HandlerDocs {
-        Self::docs(components)
-    }
 }
 
-pub fn handler_state<M: HandlerMeta>() -> Option<TypeId> {
+/// The operation documentation a `#[handler]` marker produces.
+pub trait DocSource {
+    fn operation(context: &mut DocContext<'_>) -> OperationDoc;
+}
+
+/// Marker for a type that is both a handler spec and a documentation source.
+///
+/// The blank implementation means `#[handler]` only emits [`HandlerSpec`] and [`DocSource`];
+/// downstream bounds can still name the combined marker.
+pub trait HandlerMeta: HandlerSpec + DocSource {}
+
+impl<T: HandlerSpec + DocSource> HandlerMeta for T {}
+
+pub fn handler_state<M: HandlerSpec>() -> Option<TypeId> {
     if M::HAS_STATE {
         Some(TypeId::of::<M::State>())
     } else {

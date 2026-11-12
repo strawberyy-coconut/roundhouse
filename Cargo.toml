@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "roundhouse-macros",
+    "roundhouse-macros-core",
     "roundhouse-problem",
     "roundhouse-schema",
     "roundhouse-multipart",

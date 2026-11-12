@@ -521,10 +521,10 @@ pub(crate) fn enforce_parts_schema<T>(
     status: StatusCode,
 ) -> Result<(), Problem>
 where
-    T: crate::doc::PartsValue + 'static,
+    T: crate::doc::Params + 'static,
 {
     if let Some(engine) = engine {
-        let value = crate::doc::PartsValue::parts_value(value);
+        let value = crate::doc::Params::parts_value(value);
         if let Some(result) = engine.validate_parts::<T>(&value) {
             result.map_err(|errors| validation_problem(errors, status))?;
         }
@@ -625,7 +625,7 @@ where
 
 impl<T, S> FromRequestParts<S> for Strict<axum::extract::Path<T>>
 where
-    T: DeserializeOwned + crate::PathValidate + crate::doc::PartsValue + Send + 'static,
+    T: DeserializeOwned + crate::doc::Params + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -644,7 +644,7 @@ where
 
 impl<T, S> OptionalFromRequestParts<S> for Strict<axum::extract::Path<T>>
 where
-    T: DeserializeOwned + crate::PathValidate + crate::doc::PartsValue + Send + 'static,
+    T: DeserializeOwned + crate::doc::Params + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -666,7 +666,7 @@ where
 
 impl<T, S> FromRequestParts<S> for Strict<axum::extract::Query<T>>
 where
-    T: DeserializeOwned + crate::doc::QueryParams + crate::doc::PartsValue + Send + 'static,
+    T: DeserializeOwned + crate::doc::Params + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -768,7 +768,7 @@ impl<T> DerefMut for RepeatedQuery<T> {
 
 impl<T, S> FromRequestParts<S> for RepeatedQuery<T>
 where
-    T: DeserializeOwned + crate::doc::QueryParams + crate::doc::PartsValue + Send + 'static,
+    T: DeserializeOwned + crate::doc::Params + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -787,7 +787,7 @@ where
             .map_err(|error| rejection_problem(StatusCode::BAD_REQUEST, error.to_string()))?;
         if !state.skip && state.mode != Validation::Off {
             if let Some(engine) = engine {
-                let value = crate::doc::PartsValue::parts_value(&value);
+                let value = crate::doc::Params::parts_value(&value);
                 if let Some(result) = engine.validate_parts::<T>(&value) {
                     result.map_err(|errors| problem_from_validation(errors, state.status))?;
                 }

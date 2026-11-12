@@ -9,6 +9,7 @@ frameworks.
 ```text
 roundhouse
 ├── roundhouse-macros      proc-macro entry: routes!, #[handler], the derives
+├── roundhouse-macros-core parsing and expansion for those macros
 ├── roundhouse-schema      ApiSchema, parts schemas, validation errors, schema engine
 ├── roundhouse-problem     the RFC 9457 Problem body
 └── roundhouse-multipart   Multipart<F>, FilePart, TempFile (optional)
@@ -32,7 +33,8 @@ exists to keep that path honest.
 | Crate | May depend on | axum? |
 |---|---|---|
 | `roundhouse` | macros, schema, problem, multipart (optional) | yes |
-| `roundhouse-macros` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate` | no |
+| `roundhouse-macros` | `roundhouse-macros-core`, `proc-macro2` | no |
+| `roundhouse-macros-core` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate` | no |
 | `roundhouse-schema` | serde, utoipa, jsonschema (optional) | no |
 | `roundhouse-problem` | axum (no default features), http, schema | yes |
 | `roundhouse-multipart` | axum (multipart only), problem, schema | yes |
@@ -136,9 +138,6 @@ this through the feature matrix in `.github/workflows/ci.yml`.
 
 ## Future
 
-- **`roundhouse-macros-core`.** Moving parsing, table validation and expansion into a normal
-  library crate would let the macro be unit-tested without `trybuild` and make the expansion
-  reusable. This is under consideration; the split has not been made.
 - **No framework-neutral core.** This is not planned. If a second framework ever appeared,
   the schema crate is the part that would be reused; the route/document model would be
   reimplemented, not abstracted in advance.

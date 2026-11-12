@@ -97,25 +97,36 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     }
 
     Ok(quote! {
-        impl #krate::doc::PathNames for #ident {
+        impl #krate::doc::Params for #ident {
             const NAMES: &'static [&'static str] = &[#(#names),*];
 
             fn register(
-                components: &mut #krate::utoipa::openapi::schema::Components,
+                context: &mut dyn #krate::doc::SchemaContext,
             ) {
                 #(#registrations)*
             }
 
-            fn params() -> ::std::vec::Vec<#krate::doc::Param> {
+            fn params(
+                _context: &mut dyn #krate::doc::SchemaContext,
+            ) -> ::std::vec::Vec<#krate::doc::Param> {
                 ::std::vec![#(#params),*]
             }
 
-            fn parts_doc() -> ::core::option::Option<#krate::doc::PartsDoc> {
-                ::core::option::Option::Some(#krate::doc::PartsDoc::new::<Self>())
+            fn parts_schema(
+                context: &mut dyn #krate::doc::SchemaContext,
+            ) -> #krate::utoipa::openapi::RefOr<#krate::utoipa::openapi::schema::Schema> {
+                <Self as #krate::doc::Params>::register(context);
+                #krate::doc::schema::object_from_params(
+                    <Self as #krate::doc::Params>::params(context),
+                )
             }
-        }
 
-        impl #krate::doc::PathValidate for #ident {
+            fn parts_value(&self) -> #krate::serde_json::Value {
+                let mut map = #krate::serde_json::Map::new();
+                #(#value_inserts)*
+                #krate::serde_json::Value::Object(map)
+            }
+
             fn validate_at(
                 &self,
                 pointer: &str,
@@ -123,24 +134,9 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             ) {
                 #(#validations)*
             }
-        }
 
-        impl #krate::doc::PartsSchema for #ident {
-            fn parts_schema(
-                components: &mut #krate::utoipa::openapi::schema::Components,
-            ) -> #krate::utoipa::openapi::RefOr<#krate::utoipa::openapi::schema::Schema> {
-                <Self as #krate::doc::PathNames>::register(components);
-                #krate::doc::schema::object_from_params(
-                    <Self as #krate::doc::PathNames>::params(),
-                )
-            }
-        }
-
-        impl #krate::doc::PartsValue for #ident {
-            fn parts_value(&self) -> #krate::serde_json::Value {
-                let mut map = #krate::serde_json::Map::new();
-                #(#value_inserts)*
-                #krate::serde_json::Value::Object(map)
+            fn parts_doc() -> ::core::option::Option<#krate::doc::PartsDoc> {
+                ::core::option::Option::Some(#krate::doc::PartsDoc::new::<Self>())
             }
         }
     })

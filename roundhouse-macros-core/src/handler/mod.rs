@@ -127,14 +127,14 @@ pub fn expand(item: ItemFn) -> TokenStream {
         // does not know.
         statements.push(quote! {
             {
-                use #krate::doc::ProbeArg as _;
-                (&#krate::doc::ArgProbe::<#ty>::new()).document(components, &mut docs);
+                use #krate::__private::ProbeArg as _;
+                docs.merge((&#krate::__private::ArgProbe::<#ty>::new()).document(context));
             }
         });
         verify_checks.push(quote! {
             {
-                use #krate::doc::ProbeArg as _;
-                let __rh_probe = &#krate::doc::ArgProbe::<#ty>::new();
+                use #krate::__private::ProbeArg as _;
+                let __rh_probe = &#krate::__private::ArgProbe::<#ty>::new();
                 if __rh_probe.body_arg() && !__rh_probe.verified() {
                     __rh_all_verified = false;
                 }
@@ -168,7 +168,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
     statements.extend(response_statements);
 
     let path_names = match &path_type {
-        Some(ty) => quote!(<#ty as #krate::doc::PathNames>::NAMES),
+        Some(ty) => quote!(<#ty as #krate::doc::Params>::NAMES),
         None => quote!(&[]),
     };
 
@@ -191,7 +191,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
             continue;
         }
         seen_substates.push(text);
-        substate_bounds.push(quote!(#state: #krate::shim::SubstateOf<S>));
+        substate_bounds.push(quote!(#state: #krate::__private::SubstateOf<S>));
     }
 
     // The shim that routes! registers instead of the handler itself. It has the handler's own
@@ -240,8 +240,8 @@ pub fn expand(item: ItemFn) -> TokenStream {
         });
         shim_checks.push(quote! {
             {
-                use #krate::doc::ProbeArg as _;
-                let __rh_probe = &#krate::doc::ArgProbe::<#ty>::new();
+                use #krate::__private::ProbeArg as _;
+                let __rh_probe = &#krate::__private::ArgProbe::<#ty>::new();
                 if __rh_ctx.arg_enabled(__rh_probe.body_arg())
                     && let ::core::result::Result::Err(__rh_problem) =
                         __rh_probe.validate(&#ident, &__rh_ctx)
@@ -270,7 +270,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
         None => quote!(::core::option::Option::None),
     };
     // The shim is generic over the router state. `routes!` chooses `S` from the table's
-    // `state = ...` option, or falls back to `HandlerMeta::State`. A handler's `State<T>`
+    // `state = ...` option, or falls back to `HandlerSpec::State`. A handler's `State<T>`
     // arguments then use axum's `FromRef` contract through `SubstateOf`.
     quote! {
         #item
@@ -280,12 +280,12 @@ pub fn expand(item: ItemFn) -> TokenStream {
             #[doc(hidden)]
             #[allow(dead_code, clippy::too_many_arguments)]
             #vis async fn __roundhouse_shim<P, S>(
-                __rh_ctx: #krate::shim::ValidationContext,
+                __rh_ctx: #krate::__private::ValidationContext,
                 __rh_state: #krate::axum::extract::State<S>,
                 #(#shim_params),*
             ) -> #krate::axum::response::Response
             where
-                P: #krate::shim::ShimPolicyFor<S>,
+                P: #krate::__private::ShimPolicyFor<S>,
                 S: ::core::clone::Clone + ::core::marker::Send + ::core::marker::Sync + 'static,
                 #(#substate_bounds,)*
             {
@@ -303,41 +303,31 @@ pub fn expand(item: ItemFn) -> TokenStream {
         #[allow(non_camel_case_types)]
         #vis struct #marker_type;
 
-        impl #krate::doc::HandlerMeta for #marker_type {
+        impl #krate::doc::HandlerSpec for #marker_type {
             type State = #state_ty;
             const HAS_STATE: bool = #has_state;
             const PATH_NAMES: &'static [&'static str] = #path_names;
             const REQUIRED_AUTH: &'static [&'static str] = &[#(#required_auth),*];
             const INFERRED_SUCCESS: ::core::option::Option<&'static [u16]> = #inferred_success;
             const DECLARED_SUCCESS: ::core::option::Option<&'static [u16]> = #declared_success;
+        }
 
-            fn docs(
-                components: &mut #krate::utoipa::openapi::schema::Components,
-            ) -> #krate::doc::HandlerDocs {
-                let mut docs = #krate::doc::HandlerDocs::default();
+        impl #krate::doc::DocSource for #marker_type {
+            fn operation(
+                context: &mut #krate::doc::DocContext<'_>,
+            ) -> #krate::doc::OperationDoc {
+                let mut docs = #krate::doc::OperationDoc::default();
                 #(#statements)*
-                docs
-            }
-
-            fn docs_with(
-                components: &mut #krate::utoipa::openapi::schema::Components,
-                validate: bool,
-            ) -> #krate::doc::HandlerDocs {
-                let mut docs = <Self as #krate::doc::HandlerMeta>::docs(components);
-                if validate {
-                    let mut __rh_all_verified = true;
-                    #(#verify_checks)*
-                    if __rh_all_verified {
-                        docs.unverified = false;
-                    }
-                }
+                let mut __rh_all_verified = true;
+                #(#verify_checks)*
+                docs.body_verified = __rh_all_verified;
                 docs
             }
         }
     }
 }
 
-/// Expand the handler's `@path:` block into `HandlerDocs.path_descriptions` statements.
+/// Expand the handler's `@path:` block into `OperationDoc.path_descriptions` statements.
 fn path_statements(tags: &DocTags) -> syn::Result<Vec<TokenStream>> {
     let Some(lines) = &tags.path else {
         return Ok(Vec::new());
@@ -383,7 +373,7 @@ fn path_statements(tags: &DocTags) -> syn::Result<Vec<TokenStream>> {
     Ok(statements)
 }
 
-/// Expand the handler's `@responses:` block into `HandlerDocs.declared_responses` statements.
+/// Expand the handler's `@responses:` block into `OperationDoc.declared_responses` statements.
 fn declared_response_statements(
     tags: &DocTags,
 ) -> syn::Result<(Vec<TokenStream>, Option<Vec<u16>>)> {
@@ -435,9 +425,9 @@ fn declared_response_statements(
             },
             ResponseBody::Json(ty) => quote! {
                 docs.declared_responses.push({
-                    use #krate::doc::ProbeJsonResponseDoc as _;
-                    (&#krate::doc::JsonResponseDocProbe::<#ty>::new())
-                        .probe_json_response_doc(components, #status)
+                    use #krate::__private::ProbeJsonResponseDoc as _;
+                    (&#krate::__private::JsonResponseDocProbe::<#ty>::new())
+                        .probe_json_response_doc(context, #status)
                 });
             },
         });

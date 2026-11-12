@@ -11,7 +11,5 @@ rust-version.workspace = true
 proc-macro = true
 
 [dependencies]
-proc-macro2 = { version = "1", features = ["span-locations"] }
-proc-macro-crate = "3"
-quote = "1"
-syn = { version = "2", features = ["full", "extra-traits", "parsing"] }
+proc-macro2 = "1"
+roundhouse-macros-core = { path = "../roundhouse-macros-core", version = "0.2.2" }

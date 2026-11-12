@@ -1205,6 +1205,14 @@ dependencies = [
 name = "roundhouse-macros"
 version = "0.2.2"
 dependencies = [
+ "proc-macro2",
+ "roundhouse-macros-core",
+]
+
+[[package]]
+name = "roundhouse-macros-core"
+version = "0.2.2"
+dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",

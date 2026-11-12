@@ -5,7 +5,7 @@
 //! returns an identity or a rejection.
 //!
 //! `Auth<A>` extracts that identity. `Auth<A, Scopes>` additionally publishes `Scopes` in the
-//! operation's security requirement and only compiles when `Scopes: Authorize<A>`. Several
+//! operation's security requirement and only compiles when `S: Scopes<A>`. Several
 //! required `Auth<A>` extractors AND into one requirement; `Option<Auth<A>>` adds the
 //! unauthenticated alternative.
 //!
@@ -77,10 +77,10 @@ pub struct AuthDoc {
     pub scopes: &'static [&'static str],
 }
 
-pub fn auth_doc<A: AuthScheme, Scopes: AuthScopes>() -> AuthDoc {
+pub fn auth_doc<A: AuthScheme, S: Scopes<A>>() -> AuthDoc {
     AuthDoc {
         name: A::NAME,
-        scopes: Scopes::SCOPES,
+        scopes: S::NAMES,
     }
 }
 
@@ -256,16 +256,9 @@ pub trait Authenticate: AuthScheme {
 /// Marker for an auth scheme without OAuth scopes.
 pub struct NoScopes;
 
-/// OAuth scopes carried by an `Auth<A, Scopes>` signature.
-pub trait AuthScopes {
-    const SCOPES: &'static [&'static str] = &[];
-}
-
-impl AuthScopes for NoScopes {}
-
-/// The authorization decision behind a scoped `Auth<A, Scopes>`.
+/// The scope names and authorization decision behind a scoped `Auth<A, Scopes>`.
 ///
-/// A scope marker is published to the document in a security requirement. Implementing this
+/// The scope names are published to the document in a security requirement. Implementing this
 /// trait is the handler's proof that the requirement is enforced: `Auth<A, Scopes>` does not
 /// compile without it. `NoScopes` is the only built-in implementation and grants everything.
 ///
@@ -274,32 +267,32 @@ impl AuthScopes for NoScopes {}
 /// needs path parameters or application state belongs in the handler after extraction; return a
 /// `403 Problem` from there. The operation still publishes the route's scope, because the scope
 /// gate and resource policy are separate checks.
-pub trait Authorize<A: AuthScheme>: AuthScopes {
-    /// Return `Ok(())` when `identity` may exercise this route, or the rejection to send.
-    #[allow(clippy::result_large_err)]
-    fn authorize(identity: &A::Identity) -> Result<(), Problem>;
-}
+pub trait Scopes<A: AuthScheme>: Send + Sync + 'static {
+    /// The scope names published in the operation's security requirement.
+    const NAMES: &'static [&'static str] = &[];
 
-impl<A: AuthScheme> Authorize<A> for NoScopes {
+    /// Return `Ok(())` when `identity` may exercise this route, or the rejection to send.
     #[allow(clippy::result_large_err)]
     fn authorize(_identity: &A::Identity) -> Result<(), Problem> {
         Ok(())
     }
 }
 
+impl<A: AuthScheme> Scopes<A> for NoScopes {}
+
 /// The authenticated principal, tagged with the scheme that produced it.
-pub struct Auth<A: AuthScheme, Scopes = NoScopes> {
+pub struct Auth<A: AuthScheme, S = NoScopes> {
     pub principal: A::Identity,
-    pub scopes: std::marker::PhantomData<Scopes>,
+    pub scopes: std::marker::PhantomData<S>,
 }
 
-impl<A: AuthScheme, Scopes> Auth<A, Scopes> {
+impl<A: AuthScheme, S> Auth<A, S> {
     pub fn into_inner(self) -> A::Identity {
         self.principal
     }
 }
 
-impl<A: AuthScheme, Scopes> std::ops::Deref for Auth<A, Scopes> {
+impl<A: AuthScheme, S> std::ops::Deref for Auth<A, S> {
     type Target = A::Identity;
     fn deref(&self) -> &Self::Target {
         &self.principal
@@ -307,10 +300,10 @@ impl<A: AuthScheme, Scopes> std::ops::Deref for Auth<A, Scopes> {
 }
 
 #[allow(clippy::manual_async_fn)]
-impl<A, Scopes> FromRequestParts<A::State> for Auth<A, Scopes>
+impl<A, S> FromRequestParts<A::State> for Auth<A, S>
 where
     A: Authenticate,
-    Scopes: Authorize<A> + Send + Sync + 'static,
+    S: Scopes<A>,
 {
     type Rejection = AuthRejection;
 
@@ -321,7 +314,7 @@ where
         async move {
             match A::authenticate(parts, state).await {
                 Ok(principal) => {
-                    Scopes::authorize(&principal).map_err(|problem| AuthRejection {
+                    S::authorize(&principal).map_err(|problem| AuthRejection {
                         problem,
                         scheme: A::KIND,
                     })?;
@@ -343,10 +336,10 @@ where
 }
 
 #[allow(clippy::manual_async_fn)]
-impl<A, Scopes> OptionalFromRequestParts<A::State> for Auth<A, Scopes>
+impl<A, S> OptionalFromRequestParts<A::State> for Auth<A, S>
 where
     A: Authenticate,
-    Scopes: Authorize<A> + Send + Sync + 'static,
+    S: Scopes<A>,
 {
     type Rejection = AuthRejection;
 
@@ -358,7 +351,7 @@ where
             if !A::presents_credentials(parts) {
                 return Ok(None);
             }
-            <Auth<A, Scopes> as FromRequestParts<A::State>>::from_request_parts(parts, state)
+            <Auth<A, S> as FromRequestParts<A::State>>::from_request_parts(parts, state)
                 .await
                 .map(Some)
         }
@@ -391,17 +384,14 @@ impl IntoResponse for AuthRejection {
     }
 }
 
-/// The required security requirement for an `Auth<A, Scopes>` handler argument.
-pub fn auth_requirement<A: AuthScheme, Scopes: AuthScopes>() -> SecurityRequirement {
-    SecurityRequirement::new(A::NAME, Scopes::SCOPES.iter().copied())
+/// The required security requirement for an `Auth<A, S>` handler argument.
+pub fn auth_requirement<A: AuthScheme, S: Scopes<A>>() -> SecurityRequirement {
+    SecurityRequirement::new(A::NAME, S::NAMES.iter().copied())
 }
 
 /// Optional security is OpenAPI's two alternatives: the scheme, or no scheme.
-pub fn optional_auth_requirements<A: AuthScheme, Scopes: AuthScopes>() -> Vec<SecurityRequirement> {
-    vec![
-        auth_requirement::<A, Scopes>(),
-        SecurityRequirement::default(),
-    ]
+pub fn optional_auth_requirements<A: AuthScheme, S: Scopes<A>>() -> Vec<SecurityRequirement> {
+    vec![auth_requirement::<A, S>(), SecurityRequirement::default()]
 }
 
 pub fn auth_scheme<A: AuthScheme>() -> SchemeDoc {

@@ -47,7 +47,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             // Serde flattens the inner keys into this struct's own namespace. The inner
             // `QueryParams` impl owns both its parameter list and its validation pass.
             params.push(quote! {
-                params.extend(<#ty as #krate::doc::QueryParams>::params(components));
+                params.extend(<#ty as #krate::doc::Params>::params(context));
             });
             validations.push(flatten_validation(field_ident, ty));
             value_inserts.push(flatten_value(field_ident, ty));
@@ -110,7 +110,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     Ok(quote! {
         #[allow(non_snake_case)]
         fn #fn_name(
-            components: &mut #krate::utoipa::openapi::schema::Components,
+            context: &mut dyn #krate::doc::SchemaContext,
         ) -> ::std::vec::Vec<#krate::doc::Param> {
             #(#registrations)*
             let mut params = ::std::vec::Vec::new();
@@ -118,11 +118,25 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             params
         }
 
-        impl #krate::doc::QueryParams for #ident {
+        impl #krate::doc::Params for #ident {
             fn params(
-                components: &mut #krate::utoipa::openapi::schema::Components,
+                context: &mut dyn #krate::doc::SchemaContext,
             ) -> ::std::vec::Vec<#krate::doc::Param> {
-                #fn_name(components)
+                #fn_name(context)
+            }
+
+            fn parts_schema(
+                context: &mut dyn #krate::doc::SchemaContext,
+            ) -> #krate::utoipa::openapi::RefOr<#krate::utoipa::openapi::schema::Schema> {
+                #krate::doc::schema::object_from_params(
+                    <Self as #krate::doc::Params>::params(context),
+                )
+            }
+
+            fn parts_value(&self) -> #krate::serde_json::Value {
+                let mut map = #krate::serde_json::Map::new();
+                #(#value_inserts)*
+                #krate::serde_json::Value::Object(map)
             }
 
             fn validate_at(
@@ -138,24 +152,6 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
         }
 
-        impl #krate::doc::PartsSchema for #ident {
-            fn parts_schema(
-                components: &mut #krate::utoipa::openapi::schema::Components,
-            ) -> #krate::utoipa::openapi::RefOr<#krate::utoipa::openapi::schema::Schema> {
-                #krate::doc::schema::object_from_params(
-                    <Self as #krate::doc::QueryParams>::params(components),
-                )
-            }
-        }
-
-        impl #krate::doc::PartsValue for #ident {
-            fn parts_value(&self) -> #krate::serde_json::Value {
-                let mut map = #krate::serde_json::Map::new();
-                #(#value_inserts)*
-                #krate::serde_json::Value::Object(map)
-            }
-        }
-
     })
 }
 
@@ -165,7 +161,7 @@ fn flatten_value(field_ident: &syn::Ident, ty: &syn::Type) -> TokenStream {
         quote! {
             if let ::core::option::Option::Some(value) = &self.#field_ident {
                 if let #krate::serde_json::Value::Object(inner) =
-                    #krate::doc::PartsValue::parts_value(value)
+                    #krate::doc::Params::parts_value(value)
                 {
                     map.extend(inner);
                 }
@@ -174,7 +170,7 @@ fn flatten_value(field_ident: &syn::Ident, ty: &syn::Type) -> TokenStream {
     } else {
         quote! {
             if let #krate::serde_json::Value::Object(inner) =
-                #krate::doc::PartsValue::parts_value(&self.#field_ident)
+                #krate::doc::Params::parts_value(&self.#field_ident)
             {
                 map.extend(inner);
             }
@@ -187,12 +183,12 @@ fn flatten_validation(field_ident: &syn::Ident, ty: &syn::Type) -> TokenStream {
     if is_option(ty).is_some() {
         quote! {
             if let ::core::option::Option::Some(value) = &self.#field_ident {
-                #krate::doc::QueryParams::validate_at(value, pointer, errors);
+                #krate::doc::Params::validate_at(value, pointer, errors);
             }
         }
     } else {
         quote! {
-            #krate::doc::QueryParams::validate_at(&self.#field_ident, pointer, errors);
+            #krate::doc::Params::validate_at(&self.#field_ident, pointer, errors);
         }
     }
 }

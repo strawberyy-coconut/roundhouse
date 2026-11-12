@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 use utoipa::openapi::RefOr;
-use utoipa::openapi::schema::{Components, KnownFormat, ObjectBuilder, Schema, SchemaFormat, Type};
+use utoipa::openapi::schema::{KnownFormat, ObjectBuilder, Schema, SchemaFormat, Type};
 
 use crate::validate::ValidationErrors;
 
+use super::SchemaContext;
 #[cfg(any(
     feature = "uuid",
     feature = "chrono",
@@ -208,8 +209,8 @@ impl<T: ApiSchema> ApiSchema for Option<T> {
         T::description()
     }
 
-    fn register(components: &mut Components) {
-        T::register(components);
+    fn register(context: &mut dyn SchemaContext) {
+        T::register(context);
     }
 
     fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
@@ -228,8 +229,8 @@ impl<T: ApiSchema> ApiSchema for Vec<T> {
         T::description()
     }
 
-    fn register(components: &mut Components) {
-        T::register(components);
+    fn register(context: &mut dyn SchemaContext) {
+        T::register(context);
     }
 
     fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
@@ -251,8 +252,8 @@ impl<T: ApiSchema> ApiSchema for [T] {
         T::description()
     }
 
-    fn register(components: &mut Components) {
-        T::register(components);
+    fn register(context: &mut dyn SchemaContext) {
+        T::register(context);
     }
 
     fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
@@ -274,8 +275,8 @@ impl<T: ApiSchema, S> ApiSchema for HashMap<String, T, S> {
         T::description()
     }
 
-    fn register(components: &mut Components) {
-        T::register(components);
+    fn register(context: &mut dyn SchemaContext) {
+        T::register(context);
     }
 
     fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
@@ -294,8 +295,8 @@ impl<T: ApiSchema> ApiSchema for Box<T> {
         T::description()
     }
 
-    fn register(components: &mut Components) {
-        T::register(components);
+    fn register(context: &mut dyn SchemaContext) {
+        T::register(context);
     }
 
     fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
@@ -312,8 +313,8 @@ impl<T: ApiSchema> ApiSchema for &T {
         T::description()
     }
 
-    fn register(components: &mut Components) {
-        T::register(components);
+    fn register(context: &mut dyn SchemaContext) {
+        T::register(context);
     }
 
     fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {

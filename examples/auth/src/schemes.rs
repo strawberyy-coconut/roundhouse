@@ -1,7 +1,7 @@
 //! Reference implementation, not a supported backend.
 //!
 //! This module demonstrates the full `Auth<A>` surface: `Authenticate` and
-//! `presents_credentials`, `Authorize` scope decisions, the 401/403 challenges produced by an
+//! `presents_credentials`, `Scopes` authorization decisions, the 401/403 challenges produced by an
 //! `AuthRejection`, and a two-scheme AND. It deliberately uses a tiny in-memory token store; use a
 //! maintained identity library or gateway for production verification.
 
@@ -87,11 +87,9 @@ impl Authenticate for ApiKeyAuth {
 
 /// OAuth scope marker: `Auth<BearerAuth, ReadPosts>`.
 pub struct ReadPosts;
-impl roundhouse::AuthScopes for ReadPosts {
-    const SCOPES: &'static [&'static str] = &["read:posts"];
-}
+impl roundhouse::Scopes<BearerAuth> for ReadPosts {
+    const NAMES: &'static [&'static str] = &["read:posts"];
 
-impl roundhouse::Authorize<BearerAuth> for ReadPosts {
     fn authorize(_user: &User) -> Result<(), Problem> {
         // Every authenticated user of this example may read posts.
         Ok(())
@@ -99,11 +97,9 @@ impl roundhouse::Authorize<BearerAuth> for ReadPosts {
 }
 
 pub struct WritePosts;
-impl roundhouse::AuthScopes for WritePosts {
-    const SCOPES: &'static [&'static str] = &["write:posts"];
-}
+impl roundhouse::Scopes<BearerAuth> for WritePosts {
+    const NAMES: &'static [&'static str] = &["write:posts"];
 
-impl roundhouse::Authorize<BearerAuth> for WritePosts {
     fn authorize(user: &User) -> Result<(), Problem> {
         if user.admin {
             Ok(())

@@ -130,6 +130,65 @@ Generated `ToSchema`-only types can opt into the schema adapter without a hand-w
 roundhouse::impl_api_schema!(generated::Row);
 ```
 
+## Traits and extractors
+
+`AuthScopes` and `Authorize<A>` are one trait now. The scope names and the decision live together:
+
+```rust
+// 0.2
+impl AuthScopes for ReadPosts {
+    const SCOPES: &'static [&'static str] = &["read:posts"];
+}
+impl Authorize<BearerAuth> for ReadPosts {
+    fn authorize(user: &User) -> Result<(), Problem> { Ok(()) }
+}
+
+// 0.3
+impl Scopes<BearerAuth> for ReadPosts {
+    const NAMES: &'static [&'static str] = &["read:posts"];
+    fn authorize(user: &User) -> Result<(), Problem> { Ok(()) }
+}
+```
+
+`ExtractArg::document` now returns an `ArgDoc` instead of mutating `HandlerDocs`. The
+`document_optional` and `document_result` hooks are gone; `Option<T>` and `Result<T, E>` are
+wrapper impls that adjust the returned value.
+
+```rust
+// 0.2
+impl ExtractArg for Tenant {
+    fn document(_components: &mut Components, docs: &mut HandlerDocs) {
+        docs.params.push(Param::new("x-tenant", ParamIn::Header, schema::string()));
+    }
+}
+
+// 0.3
+impl ExtractArg for Tenant {
+    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
+        ArgDoc {
+            params: vec![Param::new("x-tenant", ParamIn::Header, schema::string())],
+            ..ArgDoc::default()
+        }
+    }
+}
+```
+
+`Params` is the single bound for path, query and form types. `PathNames`, `PathValidate`,
+`PartsSchema`, `PartsValue` and the `QueryParams` trait are gone; `Path<T>`, `Query<T>` and
+`RepeatedQuery<T>` require `Params`, and the `PathParams` and `QueryParams` derives emit it.
+
+Macro probes and the shim policy traits moved to `roundhouse::__private`. They were never a stable
+extension point; use the domain traits (`ExtractArg`, `ApiSchema`, `ApiResponse`, `Scopes`) instead.
+
+`ApiSchema::register`, `ApiResponse::responses`, `Params` and `MultipartForm::schema` now take a
+`SchemaContext` (`DocContext` in the facade) instead of `&mut Components`. The component-collision
+ledger is part of the context, not a thread-local, so registration is explicit and reentrant.
+
+`HandlerMeta` is split into `HandlerSpec` (state, captures, required auth and success statuses)
+and `DocSource` (the operation document). The old `HandlerMeta` remains as a combined marker.
+`HandlerDocs` is now `OperationDoc`; the old name remains as a compatibility alias, and the
+`doc = |docs|` hook still receives it.
+
 ## Routers
 
 `App::router()` is deprecated. Use:

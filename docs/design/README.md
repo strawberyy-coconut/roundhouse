@@ -22,6 +22,8 @@ User-facing documentation lives elsewhere:
   request pipeline, the schema engine, and response validation.
 - [Extensibility](extensibility.md) — the trait seams, how to document a custom extractor
   or response, and where a `doc` hook is the right tool instead.
+- [Traits and internal API](traits.md) — the target trait map: domain specs versus macro
+  probes and shim plumbing, the probe consolidation, and the migration order.
 - [Macros](macros.md) — why `routes!` is the product, how the expansion is organised, and
   the diagnostic philosophy.
 - [Doc tags](doc-tags.md) — the explicit `@summary:`, `@description:` and `@responses:` metadata

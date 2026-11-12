@@ -12,9 +12,9 @@ contributions into an operation.
 ```text
 #[handler] async fn show(Path(id): Path<NoteId>, Query(q): Query<Filter>) -> Result<Json<Note>, NoteError>
     │
-    ├─ marker type + HandlerMeta (state, path names, required auth, inferred success)
+    ├─ marker type + HandlerSpec (state, path names, required auth, inferred success)
     ├─ generated shim (extractors + ValidationContext + policy)
-    └─ docs_with(components, validate) ──► HandlerDocs
+    └─ DocSource::operation(context) ──► OperationDoc
             │
             ▼
     doc::build::build_with_observations
@@ -28,23 +28,23 @@ contributions into an operation.
         OpenApi 3.1
 ```
 
-`HandlerDocs` is a plain value; the document is built when the app is built, not when the
-macro expands. The macro emits the code that fills `HandlerDocs`.
+`OperationDoc` is a plain value; the document is built when the app is built, not when the
+macro expands. The macro emits the code that fills `OperationDoc`.
 
-## `#[handler]` and `HandlerMeta`
+## `#[handler]`, `HandlerSpec` and `DocSource`
 
 The attribute leaves the function untouched and emits a hidden marker type beside it. The
-marker implements `roundhouse::doc::HandlerMeta`:
+marker implements `roundhouse::doc::HandlerSpec` and `roundhouse::doc::DocSource`:
 
 | Item | Source |
 |---|---|
 | `State` / `HAS_STATE` | `State<T>` in the signature, or `()` |
-| `PATH_NAMES` | `Path<T>` where `T: PathNames` |
+| `PATH_NAMES` | `Path<T>` where `T: Params` |
 | `REQUIRED_AUTH` | `Auth<A>` (not `Option<Auth<A>>`) |
 | `INFERRED_SUCCESS` | A small return-type classification, or `None` when unknown |
 | `DECLARED_SUCCESS` | Success statuses declared by `@responses:` |
-| `docs(components)` | Doc tags, one statement per argument plus the response statements |
-| `docs_with(components, validate)` | `docs()` plus the body-verification pass |
+| `operation(context)` | Doc tags, one statement per argument plus the response statements |
+| `body_verified` | Whether every body argument enforces its own schema during extraction |
 
 `routes!` registers a generated shim (`__roundhouse_shim::<P>`), not the function. The shim has
 the handler's extractors plus a `ValidationContext` and the route policy's auth extractor; it
@@ -67,18 +67,16 @@ pub trait ExtractArg {
     const IS_BODY: bool = false;
     const SHIM_VALIDATES: bool = false;
 
-    fn document(components: &mut Components, docs: &mut HandlerDocs);
-    fn document_optional(components: &mut Components, docs: &mut HandlerDocs) { .. }
-    fn document_result(components: &mut Components, docs: &mut HandlerDocs) { .. }
+    fn document(context: &mut DocContext<'_>) -> ArgDoc;
     fn validate(&self, context: &ValidationContext) -> Result<(), Problem> { Ok(()) }
 }
 ```
 
-- `document` is the normal case.
-- `document_optional` handles `Option<Self>`: optional bodies, optional query parameters,
-  optional auth (a security alternative rather than a requirement).
-- `document_result` handles `Result<Self, E>`: the successful shape is documented, but the
-  extractor's failure responses are not promised because the handler owns the rejection.
+- `document` returns the argument's contribution as `ArgDoc`; it does not mutate a shared bag.
+  The builder owns the merge rules.
+- `Option<Self>` and `Result<Self, E>` are wrapper impls. `Option` relaxes parameters, the body
+  and required auth into their optional form; `Result` drops extractor failure responses because
+  the handler owns the rejection.
 - `validate` is the shim's post-extraction hook. The default is a no-op, which is right for an
   extractor that enforces its own contract.
 - `IS_BODY` keeps the one-body rule and the validation marker honest.
@@ -102,12 +100,12 @@ impl<T>           ProbeArg<T> for &&ArgProbe<T> { /* mark unverified */ }
 ```
 
 The compiler prefers the more specific receiver when the bound holds. When it does not, the
-argument is documented as an extractor the framework cannot infer:
-`docs.unverified_extractor = true`. The build emits a diagnostic, and `strict()` rejects it.
-This is the same fallback that keeps a handler using any unregistered extractor compiling.
+argument's `ArgDoc` has `unverified_extractor` set. The build emits a diagnostic, and `strict()`
+rejects it. This is the same fallback that keeps a handler using any unregistered extractor
+compiling.
 
-A body extractor that claims `SHIM_VALIDATES` clears the `docs.unverified` marker during
-`docs_with`; an unverified body keeps it, so the document carries
+The builder clears `OperationDoc::unverified` when the route validates and the marker reports
+`body_verified`; an unverified body keeps it, so the document carries
 `x-roundhouse-unverified-body`.
 
 ## Responses: `ApiResponse`
@@ -117,12 +115,12 @@ A return type documents itself through `ApiResponse`:
 ```rust
 pub trait ApiResponse {
     const SUCCESS: &'static [u16] = &[200];
-    fn responses(components: &mut Components) -> Vec<ResponseDoc>;
+    fn responses(context: &mut dyn SchemaContext) -> Vec<ResponseDoc>;
 }
 ```
 
 `SUCCESS` declares the success statuses the type can produce. The macro's compile-time check uses
-its own syntactic classification (`HandlerMeta::INFERRED_SUCCESS`), because a return type need
+its own syntactic classification (`HandlerSpec::INFERRED_SUCCESS`), because a return type need
 not implement `ApiResponse`; the trait constant is the contract for a custom response type.
 `&[]` means "known, but no success" (`Option<T>`, `Infallible`); `&[0]` means "status chosen at
 runtime" and is documented as OpenAPI's `default` response.
@@ -221,9 +219,9 @@ the component name with dots: `module.Name`).
 1. **Skip hidden routes.** A hidden route is served but omitted; the document is marked
    `x-roundhouse-hidden`.
 2. **Omit `any`.** An `any` method set cannot be one operation; a diagnostic is recorded.
-3. **Compute `HandlerDocs`.** `(record.docs)(components, record.validate)` runs the marker's
-   statements (including `@summary`, `@description` and `@responses`), then the entry's `doc`
-   hook runs.
+3. **Compute `OperationDoc`.** `(record.docs)(context)` runs the marker's statements
+   (including `@summary`, `@description` and `@responses`), applies the route's validation
+   policy to the body marker, then runs the entry's `doc` hook.
 4. **Merge layer docs.** Parameters, body, responses, auth and schemes from module/global
    `LayerDoc`s are added. A layer body only fills an absent body.
 5. **Merge guards.** Security guards installed by construction are promoted into requirements
@@ -325,3 +323,7 @@ Two tests keep the artifact honest:
 - The `Result<T, E>`, `Vec<u8>` and `impl Trait` special cases could shrink if Rust gained a
   way to express the needed bounds. Until then they stay in the macro, because the alternative
   is guessing at wire shapes.
+- **Compile-time document fragments.** If utoipa ever exposes const-friendly schema builders,
+  the operation skeleton could become a `const` and the runtime build would only merge
+  configuration. The document model does not assume this; see
+  [Traits and internal API](traits.md).

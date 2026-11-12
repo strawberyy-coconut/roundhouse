@@ -73,7 +73,7 @@
 //! | [`router`] | `App`, `Built`, `Fragment`, `Module` |
 //! | [`extract`] | `Json`, `Form`, `Path`, `Query`, `RepeatedQuery`, `Strict`, `Mapped`, `Validation` |
 //! | [`doc`] | `ExtractArg`, `ApiSchema`, `ApiResponse`, parameter tables, layer docs |
-//! | [`auth`] | `Auth<A>`, `AuthScheme`, `Authenticate`, `Authorize` |
+//! | [`auth`] | `Auth<A>`, `AuthScheme`, `Authenticate`, `Scopes` |
 //! | [`problem`] | the RFC 9457 `Problem` body |
 //! | [`attachment`] | `Attachment`, `File`, SSE responses |
 //! | [`openapi`] | `Info`, `OpenApi`, `Components` |
@@ -127,8 +127,16 @@ pub mod problem;
 pub mod registry;
 pub mod response;
 pub mod router;
+pub(crate) mod shim;
+
+/// Macro plumbing. Nothing in this module is part of the stable API; generated code is the only
+/// caller. The public extension points are the domain traits re-exported from the crate root.
 #[doc(hidden)]
-pub mod shim;
+pub mod __private {
+    pub use crate::doc::probe::*;
+    pub use crate::extract::ValidationContext;
+    pub use crate::shim::{Authed, Plain, ShimPolicy, ShimPolicyFor, SubstateOf};
+}
 
 /// Typed multipart extraction, re-exported from `roundhouse-multipart`.
 #[cfg(feature = "multipart")]
@@ -138,14 +146,10 @@ pub use roundhouse_schema as schema;
 pub use roundhouse_schema::validate;
 
 pub use attachment::{Attachment, AttachmentType, File};
-pub use auth::{
-    Auth, AuthDoc, AuthScheme, AuthScopes, Authenticate, Authorize, NoScopes, SecuritySchemeKind,
-};
+pub use auth::{Auth, AuthDoc, AuthScheme, Authenticate, NoScopes, Scopes, SecuritySchemeKind};
 pub use axum::response::sse::{Event, KeepAlive, Sse};
 pub use build_error::{BuildError, Source};
-pub use doc::{
-    ApiError, ApiResponse, ApiSchema, ExtractArg, PathNames, QueryParams, validate_document,
-};
+pub use doc::{ApiError, ApiResponse, ApiSchema, ExtractArg, Params, validate_document};
 pub use extract::{
     Extension, Form, Json, Mapped, Path, Query, Rejection, RepeatedQuery, Strict, Validation,
 };
@@ -156,7 +160,7 @@ pub use multipart::{FilePart, Multipart, MultipartForm};
 pub use problem::Problem;
 pub use registry::Module;
 pub use response::{Created, NoContent};
-pub use roundhouse_schema::{Param, ParamIn, PathValidate, ValidationError, ValidationErrors};
+pub use roundhouse_schema::{Param, ParamIn, ValidationError, ValidationErrors};
 pub use router::{App, Built, DocumentRejections, Fragment, MergeRecord, ResolvedRoute};
 pub use utoipa::{PartialSchema, ToSchema};
 
@@ -199,12 +203,12 @@ macro_rules! impl_api_schema {
                 }
 
                 fn register(
-                    components: &mut $crate::utoipa::openapi::schema::Components,
+                    context: &mut dyn $crate::doc::SchemaContext,
                 ) {
                     // `ToSchema::schemas()` lists referenced types, not necessarily the type
                     // itself, so insert this component first and then walk its references.
-                    $crate::doc::register_self::<$ty>(components);
-                    $crate::doc::register_to_schema::<$ty>(components);
+                    $crate::doc::register_self::<$ty>(context);
+                    $crate::doc::register_to_schema::<$ty>(context);
                 }
             }
         )*
@@ -246,8 +250,8 @@ pub mod prelude {
     #[cfg(feature = "multipart-tempfile")]
     pub use crate::TempFile;
     pub use crate::attachment::{Attachment, File};
-    pub use crate::auth::{Auth, AuthScheme, AuthScopes, Authenticate, Authorize, NoScopes};
-    pub use crate::doc::{ExtractArg, PathNames};
+    pub use crate::auth::{Auth, AuthScheme, Authenticate, NoScopes, Scopes};
+    pub use crate::doc::{ExtractArg, Params};
     pub use crate::extract::{Extension, Form, Json, Mapped, Path, Query, RepeatedQuery, Strict};
     pub use crate::problem::Problem;
     pub use crate::response::{Created, NoContent};

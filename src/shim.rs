@@ -22,8 +22,6 @@
 
 use axum::extract::FromRequestParts;
 
-pub use crate::extract::ValidationContext;
-
 /// A state type that can be extracted from a handler's declared router state.
 ///
 /// `#[handler]` emits this bound for every `State<T>` argument. `routes!` instantiates the shim
