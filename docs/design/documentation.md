@@ -179,10 +179,11 @@ A `Result` type alias is visible through the same blanket `ApiResponse for Resul
 long as both sides implement `ApiResponse`; the macro's compile-time success check remains
 syntactic and is skipped for aliases, so the build-time check is authoritative.
 
-Response descriptions are resolved in this order: `#[status(description = "…")]`, the variant's
-`@description:` tag, the body type's `ApiSchema::description()`, then the canonical HTTP reason
-phrase. The body type description also feeds a direct `Json<T>` or `Vec<T>` response, and a
-handler can override an individual status with `response_description(..)`. `ApiError` uses the
+Response descriptions are resolved in this order: the variant's
+`#[status(description = "…")]`, the variant's `@description:` tag, the body type's
+`ApiSchema::description()`, then the canonical HTTP reason phrase. A typed
+`response_description(status, ..)` is applied after the response table is merged and wins over
+those; the body type description also feeds a direct `Json<T>` or `Vec<T>` response. `ApiError` uses the
 resolved text as the `Problem` title as well; `problem_type = "…"` only sets the RFC 9457 `type`
 URI (`https://roundhouse.rs/problems/…`).
 

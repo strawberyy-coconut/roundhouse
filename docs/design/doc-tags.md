@@ -64,8 +64,8 @@ Operation prose:
 
 Response descriptions:
 
-1. `#[status(description = "…")]`,
-2. `response_description(status, "…")`,
+1. `response_description(status, "…")` (applied after the response table is merged),
+2. `#[status(description = "…")]`,
 3. the response variant's `@description:`,
 4. the response body type's `@description:`,
 5. the canonical HTTP reason phrase.

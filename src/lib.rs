@@ -235,6 +235,7 @@ macro_rules! impl_api_schema {
 #[macro_export]
 macro_rules! app_state {
     ($state:ty) => {
+        /// The crate-wide application state declared by `app_state!`.
         #[doc(hidden)]
         pub type __RoundhouseAppState = $state;
     };
