@@ -37,8 +37,6 @@ pub fn rate_limit(status: u16) -> LayerDoc {
         vec![HeaderDoc {
             name: "Retry-After".to_string(),
             schema: super::schema::integer(utoipa::openapi::schema::KnownFormat::Int64),
-            required: true,
-            append: false,
         }],
     )
 }

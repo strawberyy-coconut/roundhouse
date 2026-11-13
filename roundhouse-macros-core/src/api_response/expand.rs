@@ -258,8 +258,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
 
         // Documentation.
         let mut header_docs = Vec::new();
-        if let Some(location) = location {
-            let required = !location.optional;
+        if location.is_some() {
             header_docs.push(quote! {
                 #krate::doc::HeaderDoc {
                     name: "Location".to_string(),
@@ -268,23 +267,18 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
                             "uri".to_string()
                         )
                     ),
-                    required: #required,
-                    append: false,
                 }
             });
         }
         for header in &headers {
-            let (name, append) = header.header.clone().unwrap();
+            let (name, _append) = header.header.clone().unwrap();
             let ty = &header.ty;
-            let required = !header.optional;
             let schema = schema_expr(ty);
             registrations.push(register_expr(ty));
             header_docs.push(quote! {
                 #krate::doc::HeaderDoc {
                     name: #name.to_string(),
                     schema: #schema,
-                    required: #required,
-                    append: #append,
                 }
             });
         }

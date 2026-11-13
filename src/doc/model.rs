@@ -15,12 +15,14 @@ pub struct BodyDoc {
 }
 
 /// A documented response header.
+///
+/// Response headers are documentation-only: the runtime decides whether to emit one. OpenAPI's
+/// header object has no reliable "required" representation in the utoipa model this crate uses,
+/// so a header's presence in this list describes a possible value, not a promise.
 #[derive(Clone)]
 pub struct HeaderDoc {
     pub name: String,
     pub schema: RefOr<Schema>,
-    pub required: bool,
-    pub append: bool,
 }
 
 /// One documented response.

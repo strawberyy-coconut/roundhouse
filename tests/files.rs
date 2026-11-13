@@ -208,11 +208,24 @@ async fn missing_and_invalid_parts_return_problem_statuses() {
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
+#[test]
+fn an_attachment_without_a_filename_still_declares_the_disposition() {
+    let response = Attachment::new(b"hello".to_vec()).into_response();
+    assert_eq!(
+        response.headers()[header::CONTENT_DISPOSITION],
+        "attachment"
+    );
+}
+
 #[tokio::test]
 async fn attachments_and_raw_files_set_download_headers() {
     let app = app();
     let response = app.oneshot_get("/files/download").await;
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()[header::CONTENT_DISPOSITION],
+        "attachment; filename=\"hello.txt\""
+    );
     assert_eq!(
         response.headers()[header::CONTENT_TYPE],
         "application/octet-stream"

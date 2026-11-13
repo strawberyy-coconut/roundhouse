@@ -66,12 +66,16 @@ impl<T: Into<Body>> IntoResponse for Attachment<T> {
         let mut builder = Response::builder()
             .status(axum::http::StatusCode::OK)
             .header(header::CONTENT_TYPE, self.content_type);
+        // The documented response always carries `Content-Disposition`; a filename is optional
+        // metadata, not the trigger for the header itself.
+        let mut disposition = HeaderValue::from_static("attachment");
         if let Some(filename) = &self.filename {
             let safe = filename.replace(['"', '\\', '\r', '\n'], "");
             if let Ok(value) = HeaderValue::try_from(format!("attachment; filename=\"{safe}\"")) {
-                builder = builder.header(header::CONTENT_DISPOSITION, value);
+                disposition = value;
             }
         }
+        builder = builder.header(header::CONTENT_DISPOSITION, disposition);
         builder
             .body(self.body.into())
             .unwrap_or_else(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response())
@@ -122,8 +126,6 @@ pub fn attachment_response<T: AttachmentType>(status: u16) -> ResponseDoc {
         headers: vec![HeaderDoc {
             name: "Content-Disposition".to_string(),
             schema: doc::schema::string(),
-            required: true,
-            append: false,
         }],
     }
 }
@@ -139,8 +141,6 @@ pub fn file_response(status: u16) -> ResponseDoc {
         headers: vec![HeaderDoc {
             name: "Content-Disposition".to_string(),
             schema: doc::schema::string(),
-            required: false,
-            append: false,
         }],
     }
 }
