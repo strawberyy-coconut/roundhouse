@@ -1,4 +1,6 @@
 use roundhouse::prelude::*;
+
+roundhouse::app_state!(());
 use serde::Deserialize;
 
 #[derive(Deserialize, PathParams)]

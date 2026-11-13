@@ -21,6 +21,8 @@
 //! ```no_run
 //! use roundhouse::prelude::*;
 //!
+//! roundhouse::app_state!(());
+//!
 //! #[derive(serde::Serialize, ToSchema)]
 //! pub struct Hello {
 //!     pub message: String,
@@ -215,6 +217,25 @@ macro_rules! impl_api_schema {
     };
 }
 
+/// Declare the application state used by every `routes!` table in this crate.
+///
+/// Call it once at the crate root, before the modules that declare routes:
+///
+/// ```ignore
+/// roundhouse::app_state!(crate::AppState);
+/// ```
+///
+/// It expands to a hidden `pub type __RoundhouseAppState = ...;` that `routes!` uses when a table
+/// does not set `state = ...`. A table can still name a different state explicitly, and
+/// `state = infer` restores the pre-0.3 per-handler inference.
+#[macro_export]
+macro_rules! app_state {
+    ($state:ty) => {
+        #[doc(hidden)]
+        pub type __RoundhouseAppState = $state;
+    };
+}
+
 /// Start an app from the fragment declared in the calling module.
 ///
 /// ```ignore
@@ -257,7 +278,7 @@ pub mod prelude {
     pub use crate::response::{Created, NoContent};
     pub use crate::utoipa;
     pub use crate::validate::{ValidationError, ValidationErrors};
-    pub use crate::{ApiError, ApiResponse, ApiSchema, ToSchema, app, impl_api_schema};
+    pub use crate::{ApiError, ApiResponse, ApiSchema, ToSchema, app, app_state, impl_api_schema};
     #[cfg(feature = "multipart")]
     pub use crate::{FilePart, Multipart};
     pub use crate::{PathParams, QueryParams, handler, routes};

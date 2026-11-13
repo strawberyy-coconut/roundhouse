@@ -173,3 +173,5 @@ fn a_declared_route_cannot_claim_a_swagger_asset_path() {
     ));
     assert!(error.to_string().contains("Swagger UI asset"));
 }
+
+roundhouse::app_state!(State);

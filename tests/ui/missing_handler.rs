@@ -1,5 +1,7 @@
 use roundhouse::prelude::*;
 
+roundhouse::app_state!(());
+
 routes! {
     prefix = "/ui",
  "/x" => { get(show) } }

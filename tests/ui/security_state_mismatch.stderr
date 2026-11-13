@@ -2,8 +2,9 @@ error[E0277]: `HandlerState` cannot be extracted from the handler's router state
   --> tests/ui/security_state_mismatch.rs:31:1
    |
 31 | / routes! {
-32 | |     prefix = "/x",
-33 | |  "/" => { get(show, security = [Bearer]) } }
+32 | |     state = infer,
+33 | |     prefix = "/x",
+34 | |  "/" => { get(show, security = [Bearer]) } }
    | |____________________________________________^ `HandlerState` does not implement `axum::extract::FromRef<SchemeState>`
    |
 help: the trait `FromRef<SchemeState>` is not implemented for `HandlerState`
@@ -14,8 +15,8 @@ help: the trait `FromRef<SchemeState>` is not implemented for `HandlerState`
    = note: implement `FromRef<SchemeState>` for `HandlerState` (or derive `FromRef` on the app state), and set the `routes!` table's `state = SchemeState`
    = note: required for `HandlerState` to implement `roundhouse::__private::SubstateOf<SchemeState>`
 note: required by a bound in `show_missing_roundhouse_handler_attribute::__roundhouse_shim`
-  --> tests/ui/security_state_mismatch.rs:35:1
+  --> tests/ui/security_state_mismatch.rs:36:1
    |
-35 | #[handler]
+36 | #[handler]
    | ^^^^^^^^^^ required by this bound in `show_missing_roundhouse_handler_attribute::__roundhouse_shim`
    = note: this error originates in the macro `routes` which comes from the expansion of the attribute macro `handler` (in Nightly builds, run with -Z macro-backtrace for more info)

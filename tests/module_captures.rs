@@ -797,3 +797,5 @@ async fn response_validation_actually_runs_under_a_dynamic_module() {
     let text = String::from_utf8_lossy(&body);
     assert!(text.contains("response validation failed"), "body: {text}");
 }
+
+roundhouse::app_state!(State);

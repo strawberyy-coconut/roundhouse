@@ -12,7 +12,7 @@ pub struct OtherState;
 mod wrong {
     use super::*;
 
-    routes! { prefix = "/wrong", "/x" => { get(x) } }
+    routes! { state = infer, prefix = "/wrong", "/x" => { get(x) } }
 
     #[handler]
     pub async fn x(State(_): State<OtherState>) -> &'static str {
@@ -61,3 +61,5 @@ fn try_build_never_panics_on_negative_fixtures() {
         );
     }
 }
+
+roundhouse::app_state!(AppState);

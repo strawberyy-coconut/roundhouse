@@ -8,6 +8,8 @@ use rh::prelude::*;
 #[derive(Clone, Default)]
 pub struct AppState;
 
+rh::app_state!(AppState);
+
 pub mod routes {
     use super::*;
 

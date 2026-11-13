@@ -125,3 +125,5 @@ async fn the_custom_extractor_still_runs() {
         .await;
     assert_eq!(response.status(), StatusCode::OK);
 }
+
+roundhouse::app_state!(State);

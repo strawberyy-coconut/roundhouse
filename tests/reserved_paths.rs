@@ -93,3 +93,5 @@ fn a_merged_router_collision_is_a_build_error() {
     assert!(matches!(error, BuildError::RouteConflict { .. }));
     assert!(error.to_string().contains("App::merge"));
 }
+
+roundhouse::app_state!(State);

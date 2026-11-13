@@ -14,3 +14,5 @@ fn an_app_with_no_routes_is_an_error() {
     assert!(matches!(error, BuildError::EmptyApp));
     assert!(error.to_string().contains("resolved no routes"));
 }
+
+roundhouse::app_state!(State);

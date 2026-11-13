@@ -117,3 +117,5 @@ fn an_example_field_named_pattern_is_not_compiled_as_a_regex() {
     });
     validate_document(&document).expect("example data is not a schema pattern");
 }
+
+roundhouse::app_state!(State);

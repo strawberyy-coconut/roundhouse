@@ -637,3 +637,5 @@ fn a_status_code_return_documents_a_default_response() {
     let document = document(app);
     assert!(document["paths"]["/default-status/x"]["get"]["responses"]["default"].is_object());
 }
+
+roundhouse::app_state!(State);

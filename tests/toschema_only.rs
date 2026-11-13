@@ -127,3 +127,5 @@ fn an_api_schema_container_can_hold_plain_to_schema_fields() {
     let outer = serde_json::to_value(&components.schemas["HookOuter"]).unwrap();
     assert_eq!(outer["properties"]["tags"]["uniqueItems"], true);
 }
+
+roundhouse::app_state!(State);

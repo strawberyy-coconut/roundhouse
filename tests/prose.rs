@@ -63,3 +63,5 @@ fn a_const_string_supplies_summary_and_description() {
     assert_eq!(operation["summary"], "An inline summary.");
     assert_eq!(operation["description"], "An inline description.");
 }
+
+roundhouse::app_state!(State);

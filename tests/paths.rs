@@ -282,3 +282,5 @@ fn a_path_assertion_names_both_sides_when_a_module_move_changes_the_url() {
     assert!(message.contains("/old/x"));
     assert!(message.contains("/moved/x"));
 }
+
+roundhouse::app_state!(State);

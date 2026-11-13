@@ -301,3 +301,5 @@ fn a_dangling_component_reference_is_a_document_error() {
     assert!(matches!(error, BuildError::InvalidDocument { .. }));
     assert!(error.to_string().contains("has no component `Missing`"));
 }
+
+roundhouse::app_state!(State);

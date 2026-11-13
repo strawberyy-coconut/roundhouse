@@ -131,3 +131,5 @@ fn the_compact_nested_syntax_is_the_same_tree() {
     );
     assert!(document["paths"]["/api/notes/{id}"]["get"].is_object());
 }
+
+roundhouse::app_state!(State);

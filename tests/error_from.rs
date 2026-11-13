@@ -61,3 +61,5 @@ async fn a_shared_infrastructure_error_answers_a_problem() {
             .contains("disk unavailable")
     );
 }
+
+roundhouse::app_state!(State);

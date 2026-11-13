@@ -1,10 +1,10 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, quote_spanned};
-use syn::{Ident, LitStr, Result, Type};
+use syn::{Ident, LitStr, Result};
 
 use crate::util::{auth_slice, last_segment, marker_type, string_slice};
 
-use super::parse::{Body, Entry, LayerMode, ModuleOptions, RoutesInput};
+use super::parse::{Body, Entry, LayerMode, ModuleOptions, RoutesInput, StateOption};
 use super::validate::{flatten, validate_entries};
 
 pub fn expand(input: RoutesInput) -> TokenStream {
@@ -23,12 +23,15 @@ pub fn expand(input: RoutesInput) -> TokenStream {
     let krate = crate::util::krate();
     let mut ids = 0usize;
     let mut definitions = TokenStream::new();
+    // Every table defaults to the crate-level state declared with `app_state!(..)`. A table can
+    // still set `state = ...` or opt back into per-handler inference with `state = infer`.
+    let default_state = StateOption::Type(syn::parse_quote!(crate::__RoundhouseAppState));
     emit_module(
         &format_ident!("MODULE"),
         true,
         input.options.prefix.as_ref(),
         &input.options,
-        None,
+        Some(&default_state),
         &input.body,
         &mut ids,
         &mut definitions,
@@ -51,7 +54,7 @@ pub(super) fn emit_module(
     public: bool,
     prefix: Option<&LitStr>,
     options: &ModuleOptions,
-    inherited_state: Option<&Type>,
+    inherited_state: Option<&StateOption>,
     body: &Body,
     ids: &mut usize,
     definitions: &mut TokenStream,
@@ -192,7 +195,7 @@ pub(super) fn method_variant(method: &Ident) -> Result<TokenStream> {
 pub(super) fn expand_entry(
     entry: &Entry,
     index: usize,
-    table_state: Option<&Type>,
+    table_state: Option<&StateOption>,
 ) -> ExpandedEntry {
     let krate = crate::util::krate();
     if !entry.path.value().starts_with('/') {
@@ -241,7 +244,11 @@ pub(super) fn expand_entry(
         _ => None,
     };
     let default_state = quote!(<#marker_type as #krate::doc::HandlerSpec>::State);
-    let shim_state = match table_state {
+    let table_type = match table_state {
+        Some(StateOption::Type(ty)) => Some(ty),
+        Some(StateOption::Infer) | None => None,
+    };
+    let shim_state = match table_type {
         Some(state) => quote!(#state),
         None => match single_scheme {
             Some(scheme) => quote!(<#scheme as #krate::auth::AuthScheme>::State),
@@ -252,7 +259,7 @@ pub(super) fn expand_entry(
         (Some(scheme), _) => quote!(#krate::__private::Authed::<#scheme>),
         (None, _) => quote!(#krate::__private::Plain::<#shim_state>),
     };
-    let state = match table_state {
+    let state = match table_type {
         Some(state) => quote!(
             || ::core::option::Option::Some(
                 ::core::any::TypeId::of::<#state>(),
@@ -267,7 +274,7 @@ pub(super) fn expand_entry(
             None => quote!(|| #krate::doc::handler_state::<#marker_type>()),
         },
     };
-    let state_name = match table_state {
+    let state_name = match table_type {
         Some(state) => quote!(|| ::core::any::type_name::<#state>()),
         None => match single_scheme {
             Some(_) => quote!(|| ::core::any::type_name::<#shim_state>()),

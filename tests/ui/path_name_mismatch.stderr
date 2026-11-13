@@ -1,7 +1,7 @@
 error[E0080]: evaluation panicked: roundhouse: Path<T> in handler `show` does not declare every capture in `/{id}`
-  --> tests/ui/path_name_mismatch.rs:9:1
+  --> tests/ui/path_name_mismatch.rs:11:1
    |
- 9 | / routes! {
-10 | |     prefix = "/ui",
-11 | |  "/{id}" => { get(show) } }
+11 | / routes! {
+12 | |     prefix = "/ui",
+13 | |  "/{id}" => { get(show) } }
    | |___________________________^ evaluation of `_::_` failed here

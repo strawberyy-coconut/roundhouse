@@ -1,11 +1,11 @@
 error: `validate_body = true` has no effect when `validate = false`; remove it
-  --> tests/ui/contradictory_validation.rs:10:51
+  --> tests/ui/contradictory_validation.rs:12:51
    |
-10 |         post(x, validate = false, validate_body = true),
+12 |         post(x, validate = false, validate_body = true),
    |                                                   ^^^^
 
 error: this disables the whole route
-  --> tests/ui/contradictory_validation.rs:10:28
+  --> tests/ui/contradictory_validation.rs:12:28
    |
-10 |         post(x, validate = false, validate_body = true),
+12 |         post(x, validate = false, validate_body = true),
    |                            ^^^^^

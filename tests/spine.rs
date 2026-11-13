@@ -224,3 +224,5 @@ fn openapi_golden() {
     let expected = include_str!("openapi.golden.json");
     assert_eq!(json, expected);
 }
+
+roundhouse::app_state!(TestState);

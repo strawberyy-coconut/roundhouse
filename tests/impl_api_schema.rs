@@ -54,3 +54,5 @@ fn a_toschema_only_generated_type_can_be_documented() {
         "#/components/schemas/Row"
     );
 }
+
+roundhouse::app_state!(State);

@@ -1,5 +1,5 @@
 error: route entries must be inside a path group; write `"/path" => { get(handler) }`
- --> tests/ui/flat_entry.rs:9:5
-  |
-9 |     get("/x", x),
-  |     ^^^
+  --> tests/ui/flat_entry.rs:11:5
+   |
+11 |     get("/x", x),
+   |     ^^^

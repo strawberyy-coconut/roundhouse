@@ -29,6 +29,7 @@ impl Authenticate for Bearer {
 }
 
 routes! {
+    state = infer,
     prefix = "/x",
  "/" => { get(show, security = [Bearer]) } }
 

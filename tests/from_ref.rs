@@ -244,3 +244,5 @@ fn a_table_state_that_differs_from_the_app_state_is_a_build_error() {
         .expect("a different table state must not build");
     assert!(matches!(error, BuildError::StateMismatch { .. }));
 }
+
+roundhouse::app_state!(AppState);

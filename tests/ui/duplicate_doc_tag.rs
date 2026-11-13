@@ -1,5 +1,7 @@
 use roundhouse::prelude::*;
 
+roundhouse::app_state!(());
+
 /// @summary: One.
 /// @summary: Two.
 #[handler]

@@ -795,3 +795,5 @@ async fn an_optional_extractor_is_wrapped_too() {
         .await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
+
+roundhouse::app_state!(AuthState);

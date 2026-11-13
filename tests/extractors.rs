@@ -258,3 +258,5 @@ async fn mapped_maps_the_rejection_without_enforcing() {
         "application/problem+json"
     );
 }
+
+roundhouse::app_state!(State);

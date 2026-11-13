@@ -430,3 +430,5 @@ fn a_path_tag_without_a_capture_is_a_build_error() {
         roundhouse::BuildError::UnknownPathParameter { .. }
     ));
 }
+
+roundhouse::app_state!(State);

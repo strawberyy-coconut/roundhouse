@@ -180,3 +180,5 @@ async fn path_field_rename_all_matches_serde() {
         (StatusCode::OK, "2".to_string())
     );
 }
+
+roundhouse::app_state!(State);

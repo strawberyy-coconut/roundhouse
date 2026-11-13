@@ -6,6 +6,8 @@ pub mod state;
 pub use error::InternalError;
 pub use state::AppState;
 
+roundhouse::app_state!(AppState);
+
 use roundhouse::openapi::Info;
 use tower_http::trace::TraceLayer;
 

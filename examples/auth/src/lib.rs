@@ -13,6 +13,8 @@ pub struct AppState {
     api_keys: Arc<HashSet<String>>,
 }
 
+roundhouse::app_state!(AppState);
+
 impl Default for AppState {
     fn default() -> Self {
         let tokens = HashMap::from([

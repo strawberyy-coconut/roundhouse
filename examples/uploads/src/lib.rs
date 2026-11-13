@@ -3,6 +3,8 @@ pub mod routes;
 #[derive(Clone, Default)]
 pub struct AppState;
 
+roundhouse::app_state!(AppState);
+
 use roundhouse::openapi::Info;
 
 pub fn app(state: AppState) -> roundhouse::App<AppState> {

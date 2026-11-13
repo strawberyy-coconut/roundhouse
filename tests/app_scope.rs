@@ -35,3 +35,5 @@ async fn app_macro_finds_routes_from_a_submodule() {
         axum::http::StatusCode::OK
     );
 }
+
+roundhouse::app_state!(State);

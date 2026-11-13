@@ -52,3 +52,5 @@ fn a_result_alias_documents_both_sides() {
     );
     assert_eq!(responses["404"]["description"], "Not Found");
 }
+
+roundhouse::app_state!(State);

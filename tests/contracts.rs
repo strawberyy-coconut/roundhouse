@@ -281,3 +281,5 @@ async fn a_module_reference_composes_without_a_string_path() {
     );
     assert!(document(&built)["paths"]["/inner/x/{id}"]["get"].is_object());
 }
+
+roundhouse::app_state!(State);

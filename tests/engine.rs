@@ -338,3 +338,5 @@ fn the_engine_reports_stable_codes_and_pointers() {
         serde_json::from_str(r#"{"title":"ok","views":1,"slug":"a-b"}"#).unwrap();
     assert!(engine::validate_with(&validator, &valid).is_ok());
 }
+
+roundhouse::app_state!(State);

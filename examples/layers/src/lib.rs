@@ -9,6 +9,8 @@ use axum::routing::get;
 #[derive(Clone, Default)]
 pub struct AppState;
 
+roundhouse::app_state!(AppState);
+
 pub fn app(state: AppState) -> roundhouse::App<AppState> {
     roundhouse::app!(state, routes)
         .layer(middleware::from_fn(headers::global))

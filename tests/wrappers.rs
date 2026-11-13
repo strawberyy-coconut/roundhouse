@@ -69,3 +69,5 @@ async fn wrappers_answer_the_status() {
     let deleted = built.oneshot(request).await;
     assert_eq!(deleted.status(), axum::http::StatusCode::NO_CONTENT);
 }
+
+roundhouse::app_state!(State);

@@ -1104,3 +1104,5 @@ async fn the_default_body_limit_is_two_mib() {
         .await;
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+roundhouse::app_state!(State);

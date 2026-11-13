@@ -117,3 +117,5 @@ async fn generic_response_enums_answer_the_status() {
     let header = response.headers().get("x-next-cursor").unwrap();
     assert_eq!(header, "next");
 }
+
+roundhouse::app_state!(State);

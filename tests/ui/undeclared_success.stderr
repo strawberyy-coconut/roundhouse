@@ -1,5 +1,5 @@
 error[E0080]: evaluation panicked: roundhouse: `get /x` has no success response; return a concrete response type or declare `@responses:` on the handler
- --> tests/ui/undeclared_success.rs:5:2
+ --> tests/ui/undeclared_success.rs:7:2
   |
-5 |  "/x" => { get(x, operation_id = "undeclared_x") } }
+7 |  "/x" => { get(x, operation_id = "undeclared_x") } }
   |  ^^^^ evaluation of `_::_` failed here

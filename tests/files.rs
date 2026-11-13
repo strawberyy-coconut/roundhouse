@@ -426,3 +426,5 @@ fn unbounded_file_fields_are_reported_and_strict_rejects_them() {
     assert!(error.to_string().contains("max_bytes"));
     let _ = diagnostic;
 }
+
+roundhouse::app_state!(State);

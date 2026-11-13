@@ -162,3 +162,5 @@ fn an_unacknowledged_whole_route_opt_out_fails_strict() {
         roundhouse::BuildError::UnverifiedBody { .. }
     ));
 }
+
+roundhouse::app_state!(State);

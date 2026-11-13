@@ -1,5 +1,5 @@
 error: operation summaries come from the handler's `/// @summary:` doc tag (or a `doc =` hook for a per-route override)
-  --> tests/ui/removed_summary.rs:10:16
+  --> tests/ui/removed_summary.rs:12:16
    |
-10 |         get(x, summary = "x"),
+12 |         get(x, summary = "x"),
    |                ^^^^^^^

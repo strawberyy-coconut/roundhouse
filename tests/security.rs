@@ -289,3 +289,5 @@ fn a_guard_against_another_state_is_a_build_error() {
     ));
     assert!(error.to_string().contains("OtherState"));
 }
+
+roundhouse::app_state!(State);

@@ -4,6 +4,15 @@ use syn::{Attribute, Expr, Ident, LitStr, Path, Result, Token, Type};
 
 use crate::util::parse_security_types;
 
+/// The router state a table declares.
+///
+/// A type path is the normal form. `state = infer` restores the pre-0.3 behaviour: each entry
+/// derives its state from its handler or its single auth scheme.
+pub(super) enum StateOption {
+    Type(Type),
+    Infer,
+}
+
 #[derive(Clone, Copy, Default)]
 pub(super) enum LayerMode {
     #[default]
@@ -14,7 +23,7 @@ pub(super) enum LayerMode {
 #[derive(Default)]
 pub(super) struct ModuleOptions {
     pub(super) prefix: Option<LitStr>,
-    pub(super) state: Option<Type>,
+    pub(super) state: Option<StateOption>,
     pub(super) tags: Vec<LitStr>,
     pub(super) security: Vec<Type>,
     pub(super) layer: Option<Expr>,
@@ -379,7 +388,13 @@ fn parse_module_key(input: ParseStream<'_>, options: &mut ModuleOptions, key: Id
         }
         "state" => {
             input.parse::<Token![=]>()?;
-            options.state = Some(input.parse()?);
+            let ty: Type = input.parse()?;
+            options.state = Some(match &ty {
+                Type::Path(path) if path.qself.is_none() && path.path.is_ident("infer") => {
+                    StateOption::Infer
+                }
+                _ => StateOption::Type(ty),
+            });
         }
         "tags" => {
             input.parse::<Token![=]>()?;

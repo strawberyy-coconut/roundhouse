@@ -161,3 +161,5 @@ fn the_same_type_on_two_routes_is_registered_once() {
         .try_build()
         .expect("the same type may appear on several routes");
 }
+
+roundhouse::app_state!(State);

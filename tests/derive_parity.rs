@@ -450,3 +450,5 @@ fn a_foreign_extension_is_marked_rather_than_documented_as_a_problem() {
     assert_eq!(operation["x-roundhouse-unverified-extractor"], true);
     assert!(operation["responses"]["500"].is_null());
 }
+
+roundhouse::app_state!(State);

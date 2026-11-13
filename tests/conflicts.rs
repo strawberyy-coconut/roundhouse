@@ -29,3 +29,5 @@ fn duplicate_routes_panic_with_both_locations() {
         .include(&two::MODULE)
         .build();
 }
+
+roundhouse::app_state!(State);

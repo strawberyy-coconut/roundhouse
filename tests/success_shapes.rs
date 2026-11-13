@@ -205,3 +205,5 @@ fn a_tuple_with_response_parts_still_needs_a_declaration() {
         roundhouse::BuildError::UndeclaredSuccess { .. }
     ));
 }
+
+roundhouse::app_state!(State);

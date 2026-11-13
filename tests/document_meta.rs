@@ -45,3 +45,5 @@ fn servers_and_the_document_hook_reach_the_built_document() {
         "Everything about things"
     );
 }
+
+roundhouse::app_state!(State);
