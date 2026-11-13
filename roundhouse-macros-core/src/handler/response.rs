@@ -69,7 +69,8 @@ pub(super) fn classify_return(output: &ReturnType) -> ReturnShape<'_> {
 /// Classify a type nested in a return position (a `Result` arm or a tuple body).
 pub(super) fn classify_return_type(ty: &Type) -> ReturnShape<'_> {
     // `impl Trait` cannot be named in a turbofish, so it can never be probed. `Sse` and `File`
-    // have a fixed documented shape; every other hidden type must be declared with `@responses:`.
+    // have a fixed documented shape; every other hidden type must be declared with
+    // `#[handler(response(..))]`.
     if contains_impl_trait(ty) {
         return match outer_ident(ty).as_deref() {
             Some("Sse") => ReturnShape::Known {

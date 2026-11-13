@@ -8,7 +8,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{FnArg, ItemFn, LitStr, Type};
 
-use crate::doc_tags::{AllowedTags, DocLine, DocTags};
+use crate::doc_tags::AllowedTags;
 use crate::util::{outer_ident, single_generic};
 
 pub(crate) use self::args::HandlerArgs;
@@ -61,11 +61,11 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
         Ok(tags) => tags,
         Err(error) => return error.to_compile_error(),
     };
-    let (declared_responses, declared_success) = match declared_response_statements(&tags, &args) {
+    let (declared_responses, declared_success) = match declared_response_statements(&args) {
         Ok(statements) => statements,
         Err(error) => return error.to_compile_error(),
     };
-    let response_descriptions = match response_description_statements(&tags, &args) {
+    let response_descriptions = match response_description_statements(&args) {
         Ok(statements) => statements,
         Err(error) => return error.to_compile_error(),
     };
@@ -158,7 +158,7 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
     }
     statements.extend(declared_responses);
     statements.extend(response_descriptions);
-    match path_statements(&tags, &args) {
+    match path_statements(&args) {
         Ok(path_statements) => statements.extend(path_statements),
         Err(error) => return error.to_compile_error(),
     }
@@ -330,24 +330,9 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
     }
 }
 
-/// Expand `#[handler(path(..))]` and `@path:` into path-description statements.
-fn path_statements(tags: &DocTags, args: &HandlerArgs) -> syn::Result<Vec<TokenStream>> {
+/// Expand `#[handler(path(..))]` into path-description statements.
+fn path_statements(args: &HandlerArgs) -> syn::Result<Vec<TokenStream>> {
     let mut descriptions: Vec<(String, String, proc_macro2::Span)> = Vec::new();
-    if let Some(lines) = &tags.path {
-        for line in lines {
-            let Some((name, description)) = line.text.split_once(':') else {
-                return Err(syn::Error::new(
-                    line.span,
-                    "`@path:` lines must be `name: description`",
-                ));
-            };
-            descriptions.push((
-                name.trim().to_string(),
-                description.trim().to_string(),
-                line.span,
-            ));
-        }
-    }
     for path in &args.paths {
         descriptions.push((path.name.clone(), path.description.clone(), path.span));
     }
@@ -371,8 +356,8 @@ fn path_statements(tags: &DocTags, args: &HandlerArgs) -> syn::Result<Vec<TokenS
             return Err(syn::Error::new(
                 span,
                 format!(
-                    "`{name}` is described more than once; typed `#[handler(path(..))]` and \
-                     `@path:` cannot both describe it"
+                    "`{name}` is described more than once; each path parameter may be \
+                     described once"
                 ),
             ));
         }
@@ -388,33 +373,13 @@ fn path_statements(tags: &DocTags, args: &HandlerArgs) -> syn::Result<Vec<TokenS
     Ok(statements)
 }
 
-/// Expand `#[handler(response(..))]` and `@responses:` into declared-response statements.
+/// Expand `#[handler(response(..))]` into declared-response statements.
 fn declared_response_statements(
-    tags: &DocTags,
     args: &HandlerArgs,
 ) -> syn::Result<(Vec<TokenStream>, Option<Vec<u16>>)> {
     let krate = crate::util::krate();
-    let mut declarations = Vec::new();
-    let mut override_existing = args.override_existing;
-
-    if let Some(section) = &tags.responses {
-        if section.lines.is_empty() {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "`@responses:` needs at least one `status[: Type]` line",
-            ));
-        }
-        override_existing |= section.override_existing;
-        for line in &section.lines {
-            let (status, body) = response_line(line)?;
-            declarations.push(self::args::DeclaredResponse {
-                status,
-                body,
-                span: line.span,
-            });
-        }
-    }
-    declarations.extend(args.responses.iter().cloned());
+    let declarations = args.responses.clone();
+    let override_existing = args.override_existing;
 
     if declarations.is_empty() {
         return Ok((Vec::new(), None));
@@ -434,10 +399,7 @@ fn declared_response_statements(
         if !seen.insert(status_u16) {
             return Err(syn::Error::new(
                 declaration.span,
-                format!(
-                    "status {status_u16} is declared more than once; typed \
-                     `#[handler(response(..))]` and `@responses:` cannot both declare it"
-                ),
+                format!("status {status_u16} is declared more than once"),
             ));
         }
         if status_u16 == 0 || (200..400).contains(&status_u16) {
@@ -471,40 +433,9 @@ fn declared_response_statements(
     Ok((statements, Some(success)))
 }
 
-/// Expand `#[handler(response_description(..))]` and `@response-descriptions:` into overrides.
-fn response_description_statements(
-    tags: &DocTags,
-    args: &HandlerArgs,
-) -> syn::Result<Vec<TokenStream>> {
+/// Expand `#[handler(response_description(..))]` into overrides.
+fn response_description_statements(args: &HandlerArgs) -> syn::Result<Vec<TokenStream>> {
     let mut descriptions: Vec<(u16, String, proc_macro2::Span)> = Vec::new();
-    if let Some(lines) = &tags.response_descriptions {
-        for line in lines {
-            let Some((status, description)) = line.text.split_once(':') else {
-                return Err(syn::Error::new(
-                    line.span,
-                    "`@response-descriptions:` lines must be `status: description`",
-                ));
-            };
-            let status = status.trim();
-            let status = if status.eq_ignore_ascii_case("default") {
-                0
-            } else {
-                status.parse::<u16>().map_err(|_| {
-                    syn::Error::new(
-                        line.span,
-                        format!("`{status}` is not an HTTP status or `default`"),
-                    )
-                })?
-            };
-            if status != 0 && !(100..=599).contains(&status) {
-                return Err(syn::Error::new(
-                    line.span,
-                    format!("`{status}` is not an HTTP status code"),
-                ));
-            }
-            descriptions.push((status, description.trim().to_string(), line.span));
-        }
-    }
     for description in &args.response_descriptions {
         descriptions.push((
             description.status,
@@ -519,11 +450,7 @@ fn response_description_statements(
         if !seen.insert(status) {
             return Err(syn::Error::new(
                 span,
-                format!(
-                    "status {status} is described more than once; typed \
-                     `#[handler(response_description(..))]` and `@response-descriptions:` \
-                     cannot both describe it"
-                ),
+                format!("status {status} is described more than once"),
             ));
         }
         if description.is_empty() {
@@ -546,51 +473,4 @@ enum ResponseBody {
     Empty,
     Problem,
     Json(Box<Type>),
-}
-
-fn response_line(line: &DocLine) -> syn::Result<(u16, ResponseBody)> {
-    let (status_text, body_text) = match line.text.split_once(':') {
-        Some((status, body)) => (status.trim(), body.trim()),
-        None => (line.text.trim(), ""),
-    };
-    let status = if status_text.eq_ignore_ascii_case("default") {
-        0
-    } else {
-        status_text.parse::<u16>().map_err(|_| {
-            syn::Error::new(
-                line.span,
-                format!("`{status_text}` is not an HTTP status or `default`"),
-            )
-        })?
-    };
-    if status != 0 && !(100..=599).contains(&status) {
-        return Err(syn::Error::new(
-            line.span,
-            format!("`{status}` is not an HTTP status code"),
-        ));
-    }
-
-    if body_text.is_empty() {
-        return Ok((status, ResponseBody::Empty));
-    }
-    let ty: Type = syn::parse_str(body_text).map_err(|error| {
-        syn::Error::new(
-            line.span,
-            format!("invalid response type `{body_text}`: {error}"),
-        )
-    })?;
-    let body = match outer_ident(&ty).as_deref() {
-        Some("Problem" | "ValidationErrors") => ResponseBody::Problem,
-        Some("Json") => {
-            let inner = single_generic(&ty).ok_or_else(|| {
-                syn::Error::new(
-                    line.span,
-                    "`Json<T>` needs exactly one type argument in `@responses:`",
-                )
-            })?;
-            ResponseBody::Json(Box::new(inner))
-        }
-        _ => ResponseBody::Json(Box::new(ty)),
-    };
-    Ok((status, body))
 }

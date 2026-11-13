@@ -49,9 +49,7 @@ mod things {
     }
 
     /// @summary: Delete a thing.
-    /// @responses:
-    ///   204
-    #[handler]
+    #[handler(response(204))]
     pub async fn destroy() -> axum::http::StatusCode {
         axum::http::StatusCode::NO_CONTENT
     }
@@ -87,16 +85,12 @@ mod declared {
     use super::*;
 
     /// @summary: Declare responses without an enum.
-    /// @responses:
-    ///   201: Json<Thing>
-    #[handler]
+    #[handler(response(201, Thing))]
     pub async fn create() -> Json<Thing> {
         Json(Thing { id: 1 })
     }
 
-    /// @responses:
-    ///   204
-    #[handler]
+    #[handler(response(204))]
     pub async fn destroy() -> axum::http::StatusCode {
         axum::http::StatusCode::NO_CONTENT
     }
@@ -119,9 +113,7 @@ mod hooked {
     use crate::things::Thing;
 
     /// @summary: The hook owns the prose.
-    /// @responses:
-    ///   200: Thing
-    #[handler]
+    #[handler(response(200, Thing))]
     pub async fn show() -> Json<Thing> {
         Json(Thing { id: 1 })
     }
@@ -141,9 +133,7 @@ mod hooked {
 mod problem_response {
     use super::*;
 
-    /// @responses:
-    ///   400: Problem
-    #[handler]
+    #[handler(response(400, Problem))]
     pub async fn bad() -> axum::http::StatusCode {
         axum::http::StatusCode::BAD_REQUEST
     }
@@ -178,8 +168,7 @@ mod scalar_path {
     use super::*;
 
     /// @summary: A scalar path.
-    /// @path: id: The scalar identifier.
-    #[handler]
+    #[handler(path(id, "The scalar identifier."))]
     pub async fn show(Path(id): Path<String>) -> String {
         id
     }
@@ -200,8 +189,7 @@ mod path_precedence {
         pub id: i64,
     }
 
-    /// @path: id: The handler description.
-    #[handler]
+    #[handler(path(id, "The handler description."))]
     pub async fn show(Path(args): Path<Args>) -> String {
         args.id.to_string()
     }
@@ -215,8 +203,7 @@ mod path_precedence {
 mod unknown_path {
     use super::*;
 
-    /// @path: missing: No such capture.
-    #[handler]
+    #[handler(path(missing, "No such capture."))]
     pub async fn show() -> &'static str {
         "x"
     }
@@ -288,7 +275,7 @@ fn a_single_body_response_uses_the_type_description() {
 }
 
 #[test]
-fn at_responses_accepts_json_wrappers_and_empty_statuses() {
+fn declared_responses_accept_json_wrappers_and_empty_statuses() {
     let document = document(&declared::MODULE);
     let responses = &document["paths"]["/declared"]["post"]["responses"];
     assert_eq!(
@@ -312,7 +299,7 @@ fn a_doc_hook_description_survives_the_declared_response_merge() {
 }
 
 #[test]
-fn at_responses_special_cases_problem_bodies() {
+fn declared_problem_responses_use_the_problem_schema() {
     let document = document(&problem_response::MODULE);
     let response = &document["paths"]["/problem"]["get"]["responses"]["400"];
     assert!(response["content"]["application/problem+json"]["schema"].is_object());
@@ -373,9 +360,7 @@ mod described {
         Outcome::Found(Json(SchemaThing { id: 1 }))
     }
 
-    /// @response-descriptions:
-    ///   200: A route-specific description.
-    #[handler]
+    #[handler(response_description(200, "A route-specific description."))]
     pub async fn overridden() -> Json<SchemaThing> {
         Json(SchemaThing { id: 1 })
     }
@@ -419,12 +404,12 @@ fn a_response_description_tag_overrides_the_body_type() {
 }
 
 #[test]
-fn a_path_tag_without_a_capture_is_a_build_error() {
+fn a_path_description_without_a_capture_is_a_build_error() {
     let error = roundhouse::App::new(State)
         .include(&unknown_path::MODULE)
         .try_build()
         .err()
-        .expect("an unknown @path name must not build");
+        .expect("an unknown path name must not build");
     assert!(matches!(
         error,
         roundhouse::BuildError::UnknownPathParameter { .. }

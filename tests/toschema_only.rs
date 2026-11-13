@@ -38,9 +38,7 @@ mod more {
         })
     }
 
-    /// @responses:
-    ///   200: Payload
-    #[handler]
+    #[handler(response(200, Payload))]
     pub async fn declared() -> axum::http::StatusCode {
         axum::http::StatusCode::NO_CONTENT
     }

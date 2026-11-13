@@ -420,9 +420,6 @@ impl OperationDoc {
     }
 }
 
-/// Compatibility alias for the old name. New code should use [`OperationDoc`].
-pub type HandlerDocs = OperationDoc;
-
 /// The static facts a `#[handler]` marker exposes to `routes!`.
 ///
 /// This is separate from [`DocSource`] so the route table can read state, captures, auth and

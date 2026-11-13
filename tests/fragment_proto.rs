@@ -97,9 +97,7 @@ mod compact {
         Json(vec![])
     }
 
-    /// @responses:
-    ///   201: Note
-    #[handler]
+    #[handler(response(201, Note))]
     pub async fn create() -> Json<Note> {
         Json(Note { id: 1 })
     }

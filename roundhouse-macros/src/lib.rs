@@ -138,8 +138,7 @@ use proc_macro::TokenStream;
 /// and `override_response(status, Type)` replaces an inferred shape.
 /// `response_description(status, "...")` overrides one description, and
 /// `path(name, "...")` describes a path parameter with no field description. `Json<T>` is
-/// unwrapped to `T`. The older `@responses:`, `@response-descriptions:` and `@path:` tags remain
-/// compatibility syntax; declaring the same status in both forms is a compile error.
+/// unwrapped to `T`.
 ///
 /// # Entry options
 ///
@@ -331,9 +330,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// The handler's doc block carries prose: `@summary:` (ends at a blank line) and `@description:`
 /// (keeps paragraphs). Untagged prose stays rustdoc-only; use `prose = include_str!(..)` on the
 /// route entry when one public document should supply both summary and description. Structured
-/// response and path metadata belongs in the attribute, not the doc block. The older
-/// `@responses:`, `@response-descriptions:` and `@path:` tags are still parsed as compatibility
-/// syntax.
+/// response and path metadata belongs in the attribute, not the doc block.
 ///
 /// # Example
 ///

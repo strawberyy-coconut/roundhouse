@@ -1,8 +1,9 @@
-//! Explicit `@summary:`, `@description:` and `@responses:` doc tags.
+//! Explicit `@summary:` and `@description:` doc tags.
 //!
 //! Proc macros cannot see ordinary `//` comments, so the tags live in `///` doc comments.
 //! Untagged prose is deliberately ignored: publishing it to OpenAPI would make the document
-//! depend on comments written for rustdoc.
+//! depend on comments written for rustdoc. Structured response, path and failure metadata lives
+//! on the handler attribute instead.
 
 use proc_macro2::Span;
 use syn::{Attribute, Expr, ExprLit, Lit, Meta, Result};
@@ -12,41 +13,18 @@ use syn::{Attribute, Expr, ExprLit, Lit, Meta, Result};
 pub(crate) struct AllowedTags {
     pub(crate) summary: bool,
     pub(crate) description: bool,
-    pub(crate) responses: bool,
-    pub(crate) response_descriptions: bool,
-    pub(crate) path: bool,
 }
 
 impl AllowedTags {
     pub(crate) const HANDLER: Self = Self {
         summary: true,
         description: true,
-        responses: true,
-        response_descriptions: true,
-        path: true,
     };
 
     pub(crate) const DESCRIPTION_ONLY: Self = Self {
         summary: false,
         description: true,
-        responses: false,
-        response_descriptions: false,
-        path: false,
     };
-}
-
-/// One line of a tagged section, kept with its source span for diagnostics.
-#[derive(Clone, Debug)]
-pub(crate) struct DocLine {
-    pub(crate) text: String,
-    pub(crate) span: Span,
-}
-
-/// The body of a `@responses:` section, before its types are parsed.
-#[derive(Default, Debug)]
-pub(crate) struct ResponseSection {
-    pub(crate) lines: Vec<DocLine>,
-    pub(crate) override_existing: bool,
 }
 
 /// The tagged sections found in one doc block.
@@ -54,21 +32,12 @@ pub(crate) struct ResponseSection {
 pub(crate) struct DocTags {
     pub(crate) summary: Option<String>,
     pub(crate) description: Option<String>,
-    pub(crate) responses: Option<ResponseSection>,
-    /// `@response-descriptions:` lines, still `status: description`; the handler expansion
-    /// resolves statuses and strings.
-    pub(crate) response_descriptions: Option<Vec<DocLine>>,
-    /// `@path:` lines, still `name: description`; the handler expansion splits them.
-    pub(crate) path: Option<Vec<DocLine>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Summary,
     Description,
-    Responses,
-    ResponseDescriptions,
-    Path,
 }
 
 pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags> {
@@ -87,37 +56,26 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
             let line = line.trim_end_matches('\r');
             let trimmed = line.trim_start();
 
-            // `@summary:`, `@path:` and `@responses:` are compact sections: a blank line ends
-            // them, so following rustdoc prose is not swallowed. Descriptions keep blank lines
-            // as paragraphs.
+            // `@summary:` is a compact section: a blank line ends it, so following rustdoc
+            // prose is not swallowed. Descriptions keep blank lines as paragraphs.
             if trimmed.is_empty() {
                 match current {
                     Some(Kind::Description) => description_lines.push(String::new()),
-                    Some(
-                        Kind::Summary | Kind::Path | Kind::Responses | Kind::ResponseDescriptions,
-                    ) => current = None,
+                    Some(Kind::Summary) => current = None,
                     None => {}
                 }
                 continue;
             }
 
             let tag = if let Some(rest) = trimmed.strip_prefix("@summary:") {
-                Some((Kind::Summary, rest, false))
-            } else if let Some(rest) = trimmed.strip_prefix("@description:") {
-                Some((Kind::Description, rest, false))
-            } else if let Some(rest) = trimmed.strip_prefix("@responses(override):") {
-                Some((Kind::Responses, rest, true))
-            } else if let Some(rest) = trimmed.strip_prefix("@response-descriptions:") {
-                Some((Kind::ResponseDescriptions, rest, false))
-            } else if let Some(rest) = trimmed.strip_prefix("@path:") {
-                Some((Kind::Path, rest, false))
+                Some((Kind::Summary, rest))
             } else {
                 trimmed
-                    .strip_prefix("@responses:")
-                    .map(|rest| (Kind::Responses, rest, false))
+                    .strip_prefix("@description:")
+                    .map(|rest| (Kind::Description, rest))
             };
 
-            if let Some((kind, rest, override_existing)) = tag {
+            if let Some((kind, rest)) = tag {
                 match kind {
                     Kind::Summary if !allowed.summary => {
                         return Err(syn::Error::new(
@@ -132,32 +90,12 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                              response, parameter or documented type",
                         ));
                     }
-                    Kind::Responses if !allowed.responses => {
-                        return Err(syn::Error::new(
-                            span,
-                            "`@responses:` is only valid on a handler; declare response \
-                             descriptions on the response type instead",
-                        ));
-                    }
-                    Kind::ResponseDescriptions if !allowed.response_descriptions => {
-                        return Err(syn::Error::new(
-                            span,
-                            "`@response-descriptions:` is only valid on a handler; declare \
-                             response descriptions on the response type instead",
-                        ));
-                    }
-                    Kind::Path if !allowed.path => {
-                        return Err(syn::Error::new(span, "`@path:` is only valid on a handler"));
-                    }
                     _ => {}
                 }
 
                 let already = match kind {
                     Kind::Summary => tags.summary.is_some(),
                     Kind::Description => tags.description.is_some(),
-                    Kind::Responses => tags.responses.is_some(),
-                    Kind::ResponseDescriptions => tags.response_descriptions.is_some(),
-                    Kind::Path => tags.path.is_some(),
                 };
                 if already {
                     return Err(syn::Error::new(
@@ -183,45 +121,6 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                             description_lines.push(rest.to_string());
                         }
                     }
-                    Kind::Responses => {
-                        tags.responses = Some(ResponseSection {
-                            lines: Vec::new(),
-                            override_existing,
-                        });
-                        let rest = rest.trim();
-                        if !rest.is_empty()
-                            && let Some(section) = &mut tags.responses
-                        {
-                            section.lines.push(DocLine {
-                                text: rest.to_string(),
-                                span,
-                            });
-                        }
-                    }
-                    Kind::ResponseDescriptions => {
-                        tags.response_descriptions = Some(Vec::new());
-                        let rest = rest.trim();
-                        if !rest.is_empty()
-                            && let Some(lines) = &mut tags.response_descriptions
-                        {
-                            lines.push(DocLine {
-                                text: rest.to_string(),
-                                span,
-                            });
-                        }
-                    }
-                    Kind::Path => {
-                        tags.path = Some(Vec::new());
-                        let rest = rest.trim();
-                        if !rest.is_empty()
-                            && let Some(lines) = &mut tags.path
-                        {
-                            lines.push(DocLine {
-                                text: rest.to_string(),
-                                span,
-                            });
-                        }
-                    }
                 }
                 continue;
             }
@@ -235,39 +134,6 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                 }
                 Some(Kind::Description) => {
                     description_lines.push(trimmed.to_string());
-                }
-                Some(Kind::Responses) => {
-                    let text = trimmed.trim();
-                    if !text.is_empty()
-                        && let Some(section) = &mut tags.responses
-                    {
-                        section.lines.push(DocLine {
-                            text: text.to_string(),
-                            span,
-                        });
-                    }
-                }
-                Some(Kind::ResponseDescriptions) => {
-                    let text = trimmed.trim();
-                    if !text.is_empty()
-                        && let Some(lines) = &mut tags.response_descriptions
-                    {
-                        lines.push(DocLine {
-                            text: text.to_string(),
-                            span,
-                        });
-                    }
-                }
-                Some(Kind::Path) => {
-                    let text = trimmed.trim();
-                    if !text.is_empty()
-                        && let Some(lines) = &mut tags.path
-                    {
-                        lines.push(DocLine {
-                            text: text.to_string(),
-                            span,
-                        });
-                    }
                 }
                 None => {}
             }
@@ -300,22 +166,6 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                 "`@description:` needs some text",
             ));
         }
-    }
-    if tags
-        .response_descriptions
-        .as_ref()
-        .is_some_and(Vec::is_empty)
-    {
-        return Err(syn::Error::new(
-            current_span,
-            "`@response-descriptions:` needs at least one `status: description` line",
-        ));
-    }
-    if tags.path.as_ref().is_some_and(Vec::is_empty) {
-        return Err(syn::Error::new(
-            current_span,
-            "`@path:` needs at least one `name: description` line",
-        ));
     }
 
     Ok(tags)
@@ -388,44 +238,6 @@ mod tests {
     }
 
     #[test]
-    fn responses_stop_at_a_blank_line() {
-        let tags = parse(
-            &attrs(quote! {
-                /// @responses:
-                ///   201: Note
-                ///
-                /// Internal rustdoc prose.
-                #[handler]
-                fn create() {}
-            }),
-            AllowedTags::HANDLER,
-        )
-        .expect("tags parse");
-
-        assert_eq!(tags.responses.expect("responses").lines.len(), 1);
-    }
-
-    #[test]
-    fn parses_path_descriptions() {
-        let tags = parse(
-            &attrs(quote! {
-                /// @path:
-                ///   id: The note identifier.
-                ///   slug: The note slug.
-                #[handler]
-                fn show() {}
-            }),
-            AllowedTags::HANDLER,
-        )
-        .expect("tags parse");
-
-        let path = tags.path.expect("path section");
-        assert_eq!(path.len(), 2);
-        assert_eq!(path[0].text, "id: The note identifier.");
-        assert_eq!(path[1].text, "slug: The note slug.");
-    }
-
-    #[test]
     fn ignores_untagged_prose() {
         let tags = parse(
             &attrs(quote! {
@@ -469,26 +281,5 @@ mod tests {
         .expect_err("summary is not allowed here");
 
         assert!(error.to_string().contains("only valid"));
-    }
-
-    #[test]
-    fn parses_response_lines_and_override() {
-        let tags = parse(
-            &attrs(quote! {
-                /// @responses(override):
-                ///   201: Json<Vec<User>>
-                ///   204
-                #[handler]
-                fn create() {}
-            }),
-            AllowedTags::HANDLER,
-        )
-        .expect("tags parse");
-
-        let section = tags.responses.expect("responses section");
-        assert!(section.override_existing);
-        assert_eq!(section.lines.len(), 2);
-        assert_eq!(section.lines[0].text, "201: Json<Vec<User>>");
-        assert_eq!(section.lines[1].text, "204");
     }
 }

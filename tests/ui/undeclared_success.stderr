@@ -1,4 +1,4 @@
-error[E0080]: evaluation panicked: roundhouse: `get /x` has no success response; return a concrete response type or declare `@responses:` on the handler
+error[E0080]: evaluation panicked: roundhouse: `get /x` has no success response; return a concrete response type or declare `#[handler(response(..))]`
  --> tests/ui/undeclared_success.rs:7:2
   |
 7 |  "/x" => { get(x, operation_id = "undeclared_x") } }

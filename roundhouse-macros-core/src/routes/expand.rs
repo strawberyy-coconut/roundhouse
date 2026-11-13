@@ -317,7 +317,7 @@ pub(super) fn expand_entry(
     let no_success_message = LitStr::new(
         &format!(
             "roundhouse: `{} {}` has no success response; return a concrete response type or \
-             declare `@responses:` on the handler",
+             declare `#[handler(response(..))]`",
             method_ident,
             entry.path.value().replace('{', "{{").replace('}', "}}")
         ),

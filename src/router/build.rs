@@ -320,19 +320,6 @@ where
         self.build().router
     }
 
-    /// The escape hatch: a real `axum::Router<S>`.
-    ///
-    /// State has already been provided inside; wrapping the ready router as a fallback service
-    /// keeps the return type exactly what an axum user expects while preserving module layers and
-    /// `404`/`405` semantics.
-    #[deprecated(
-        note = "use `App::into_router()`; state is already applied and the router needs no second `with_state` call"
-    )]
-    pub fn router(self) -> Router<S> {
-        let built = self.build();
-        Router::<S>::new().fallback_service(built.router)
-    }
-
     /// Build and serve on `addr`, without a graceful-shutdown signal.
     ///
     /// Use [`App::serve_with`] to stop accepting connections and let in-flight requests finish

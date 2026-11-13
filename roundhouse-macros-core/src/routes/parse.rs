@@ -310,8 +310,8 @@ fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> R
         "responses" => {
             return Err(syn::Error::new(
                 key.span(),
-                "response declarations live on the handler; write `/// @responses:` in its doc \
-                 block",
+                "response declarations live on the handler; write \
+                 `#[handler(response(..))]`",
             ));
         }
         "layer" => {
@@ -333,7 +333,7 @@ fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> R
         "override" => {
             return Err(syn::Error::new(
                 key.span(),
-                "replace `override` with `@responses(override):` on the handler",
+                "replace `override` with `#[handler(override_response(..))]`",
             ));
         }
         "validate" => {
