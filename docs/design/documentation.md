@@ -44,7 +44,7 @@ marker implements `roundhouse::doc::HandlerSpec` and `roundhouse::doc::DocSource
 | `INFERRED_SUCCESS` | A small return-type classification, or `None` when unknown |
 | `DECLARED_SUCCESS` | Success statuses declared by `@responses:` |
 | `operation(context)` | Doc tags, one statement per argument plus the response statements |
-| `body_verified` | Whether every body argument enforces its own schema during extraction |
+| `verification.body_verified()` | Whether every body argument enforces its own schema during extraction |
 
 `routes!` registers a generated shim (`__roundhouse_shim::<P>`), not the function. The shim has
 the handler's extractors plus a `ValidationContext` and the route policy's auth extractor; it
@@ -104,8 +104,8 @@ argument's `ArgDoc` has `unverified_extractor` set. The build emits a diagnostic
 rejects it. This is the same fallback that keeps a handler using any unregistered extractor
 compiling.
 
-The builder clears `OperationDoc::unverified` when the route validates and the marker reports
-`body_verified`; an unverified body keeps it, so the document carries
+The builder clears `OperationDoc::verification`'s body marker when the route validates and the
+marker reports `body_verified()`; an unverified body keeps it, so the document carries
 `x-roundhouse-unverified-body`.
 
 ## Responses: `ApiResponse`
@@ -128,7 +128,8 @@ runtime" and is documented as OpenAPI's `default` response.
 The macro still special-cases three shapes:
 
 - **`Result<T, E>`** — the success and error types are documented independently, so an
-  undocumented `E` becomes a diagnostic (`undocumented_error`) rather than a missing success.
+  undocumented `E` becomes a diagnostic (`verification.undocumented_error()`) rather than a
+  missing success.
 - **`Vec<u8>`** — bytes on the wire, not a JSON array of integers; documented as
   `application/octet-stream`.
 - **`impl Trait`** — cannot be named in a turbofish. `Sse<impl Stream>` and `File` keep their

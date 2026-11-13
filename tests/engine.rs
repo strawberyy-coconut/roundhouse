@@ -87,6 +87,31 @@ mod lying {
     }
 }
 
+mod dynamic_lying {
+    use super::*;
+
+    routes! {
+        prefix = "/dynamic-lying",
+        "/x" => { get(x, operation_id = "dynamic_lying_x") },
+    }
+
+    #[derive(Serialize, ToSchema, ApiSchema)]
+    pub struct Out {
+        #[schema(min_length = 3)]
+        pub name: String,
+    }
+
+    #[handler]
+    pub async fn x() -> (StatusCode, Json<Out>) {
+        (
+            StatusCode::OK,
+            Json(Out {
+                name: "x".to_string(),
+            }),
+        )
+    }
+}
+
 mod schema_mode {
     use super::*;
 
@@ -221,6 +246,17 @@ async fn response_validation_uses_the_engine_keywords() {
             .unwrap()
             .contains("response validation failed")
     );
+}
+
+#[tokio::test]
+async fn response_validation_checks_an_openapi_default_response() {
+    let app = App::new(State)
+        .include(&dynamic_lying::MODULE)
+        .openapi(|| roundhouse::openapi::Info::new("Engine", "0.1.0"))
+        .validate_responses()
+        .build();
+    let response = app.oneshot_get("/dynamic-lying/x").await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
 #[test]

@@ -20,7 +20,7 @@ mod manual {
         "/items/{id}" => { get(show,
             operation_id = "manual_show",
             doc = |docs| {
-                docs.unverified_extractor = false;
+                docs.verification.clear_extractor();
                 docs.params.push(
                     roundhouse::Param::new(
                         "trace",

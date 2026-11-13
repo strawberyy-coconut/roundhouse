@@ -1,6 +1,6 @@
 [package]
 name = "roundhouse-schema"
-version = "0.2.1"
+version.workspace = true
 edition.workspace = true
 description = "Schema derivation, constraints and validation for roundhouse."
 license.workspace = true

@@ -10,6 +10,7 @@ frameworks.
 roundhouse
 ├── roundhouse-macros      proc-macro entry: routes!, #[handler], the derives
 ├── roundhouse-macros-core parsing and expansion for those macros
+├── roundhouse-path        path joining/template validation shared with the macros
 ├── roundhouse-schema      ApiSchema, parts schemas, validation errors, schema engine
 ├── roundhouse-problem     the RFC 9457 Problem body
 └── roundhouse-multipart   Multipart<F>, FilePart, TempFile (optional)
@@ -34,13 +35,15 @@ exists to keep that path honest.
 |---|---|---|
 | `roundhouse` | macros, schema, problem, multipart (optional) | yes |
 | `roundhouse-macros` | `roundhouse-macros-core`, `proc-macro2` | no |
-| `roundhouse-macros-core` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate` | no |
+| `roundhouse-macros-core` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate`, path | no |
+| `roundhouse-path` | `matchit` | no |
 | `roundhouse-schema` | serde, utoipa, jsonschema (optional) | no |
-| `roundhouse-problem` | axum (no default features), http, schema | yes |
+| `roundhouse-problem` | axum (no default features), http, schema, utoipa | yes |
 | `roundhouse-multipart` | axum (multipart only), problem, schema | yes |
 
-The arrows only point one way: `schema` → `problem` → `multipart` → `roundhouse`. The macro
-crate emits token streams and has no runtime dependency on any of them.
+The arrows only point one way: `schema` → `problem` → `multipart` → `roundhouse`, and
+`path` is shared by the facade and `roundhouse-macros-core`. The macro crates emit token
+streams and have no runtime dependency on the server crates.
 
 ## Constraints
 
@@ -68,8 +71,9 @@ feature-gated; the authoring model is not.
 
 A `--no-default-features` build still exposes `routes!`, `#[handler]`, the derives and the
 document builder. What it loses is the schema engine and the server runtime. There is no
-supported macro-free way to declare a route: `Module::__new` and `RouteRecord::__new` are
-public only because macro expansions in other crates need to call them.
+supported macro-free way to declare a route: `Module::from_spec`/`RouteRecord::from_spec` and
+their `ModuleSpec`/`RouteSpec` inputs are public only because macro expansions in other crates
+need to call them.
 
 ### Extractor types are axum's
 
@@ -114,10 +118,10 @@ The result is the intended dependency shape:
 
 ```text
 cargo tree -p roundhouse --no-default-features
-  axum, axum-core, utoipa
+  axum, axum-core, utoipa, roundhouse-path, matchit
 
 cargo tree -p roundhouse --no-default-features --features serve
-  axum, hyper, hyper-util, tokio, tracing
+  axum, hyper, hyper-util, tokio, tracing, roundhouse-path, matchit
 ```
 
 The no-default build must not pull in tokio, hyper, tracing, `jsonschema` or `regex`. CI checks

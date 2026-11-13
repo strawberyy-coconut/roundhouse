@@ -96,9 +96,14 @@ impl OperationDoc {
         if arg.path_schema.is_some() {
             self.path_schema = arg.path_schema;
         }
-        self.unverified |= arg.unverified_body;
-        self.unverified_extractor |= arg.unverified_extractor;
-        self.unbounded_file_fields.extend(arg.unbounded_file_fields);
+        if arg.unverified_body {
+            self.verification.mark_body();
+        }
+        if arg.unverified_extractor {
+            self.verification.mark_extractor();
+        }
+        self.verification
+            .extend_unbounded_file_fields(arg.unbounded_file_fields);
     }
 }
 
@@ -234,12 +239,16 @@ impl ExtractArg for String {
     }
 }
 
-// A `Request` body has already consumed the request; it contributes no schema.
+// A `Request` hands the whole request to the handler. The framework cannot know how the body
+// will be read, so the operation keeps the unverified-body marker instead of claiming no body.
 impl ExtractArg for axum::extract::Request {
     const IS_BODY: bool = true;
 
     fn document(_context: &mut DocContext<'_>) -> ArgDoc {
-        ArgDoc::default()
+        ArgDoc {
+            unverified_body: true,
+            ..ArgDoc::default()
+        }
     }
 }
 
@@ -482,12 +491,6 @@ impl<T: Params + 'static> ExtractArg for Strict<axum::extract::Path<T>> {
 impl<T: Params + 'static> ExtractArg for Strict<axum::extract::Query<T>> {
     fn document(context: &mut DocContext<'_>) -> ArgDoc {
         <axum::extract::Query<T> as ExtractArg>::document(context)
-    }
-}
-
-impl<T: Params + 'static> ExtractArg for Strict<RepeatedQuery<T>> {
-    fn document(context: &mut DocContext<'_>) -> ArgDoc {
-        <RepeatedQuery<T> as ExtractArg>::document(context)
     }
 }
 

@@ -88,7 +88,7 @@ pub struct SignedBody<T>(pub T);
 // ... FromRequest impl ...
 impl<T: ExtractArg> ExtractArg for SignedBody<T> {
     fn document(context: &mut DocContext<'_>) -> ArgDoc {
-        T::document(components)
+        T::document(context)
     }
 }
 ```

@@ -1,0 +1,11 @@
+[package]
+name = "roundhouse-path"
+version.workspace = true
+edition.workspace = true
+description = "Path joining and template validation shared by roundhouse and its macros."
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+matchit = "0.8"

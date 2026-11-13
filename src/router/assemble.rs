@@ -341,7 +341,10 @@ async fn validate_json_body(
     }
 
     let (parts, body) = request.into_parts();
-    let limit = state.max_body.or(max_body).unwrap_or(2 * 1024 * 1024);
+    let limit = state
+        .max_body
+        .or(max_body)
+        .unwrap_or(crate::extract::DEFAULT_MAX_BODY);
     let bytes = match axum::body::to_bytes(body, limit).await {
         Ok(bytes) => bytes,
         Err(_) => {

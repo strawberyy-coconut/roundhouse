@@ -8,10 +8,11 @@
 use axum::body::Body;
 use axum::response::{IntoResponse, Response};
 use http::{StatusCode, header};
+use roundhouse_schema::{ValidationError, ValidationErrors, schema};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-use roundhouse_schema::{ValidationError, ValidationErrors};
+use utoipa::openapi::RefOr;
+use utoipa::openapi::schema::{ArrayBuilder, ObjectBuilder, Schema, SchemaFormat, Type};
 
 /// The one error body the framework produces.
 ///
@@ -130,32 +131,48 @@ impl From<ValidationErrors> for Problem {
     }
 }
 
+/// The Problem body as an OpenAPI schema, for the document builder.
+pub fn problem_schema_ref() -> RefOr<Schema> {
+    let error = ObjectBuilder::new()
+        .schema_type(Type::Object)
+        .property("pointer", schema::string())
+        .property("code", schema::string())
+        .property("message", schema::string())
+        .property("limit", schema::any_value())
+        .required("pointer")
+        .required("code")
+        .required("message")
+        .build();
+
+    ObjectBuilder::new()
+        .schema_type(Type::Object)
+        .property(
+            "type",
+            schema::string_with_format(SchemaFormat::Custom("uri".to_string())),
+        )
+        .property("title", schema::string())
+        .property(
+            "status",
+            ObjectBuilder::new()
+                .schema_type(Type::Integer)
+                .minimum(Some(100u16))
+                .maximum(Some(599u16)),
+        )
+        .property("detail", schema::nullable(schema::string()))
+        .property("instance", schema::nullable(schema::string()))
+        .property("errors", ArrayBuilder::new().items(error))
+        .required("type")
+        .required("title")
+        .required("status")
+        .into()
+}
+
 /// The Problem body as JSON Schema, for callers that emit it directly.
-pub fn problem_schema() -> serde_json::Value {
-    serde_json::json!({
-        "type": "object",
-        "required": ["type", "title", "status"],
-        "properties": {
-            "type": { "type": "string", "format": "uri" },
-            "title": { "type": "string" },
-            "status": { "type": "integer", "minimum": 100, "maximum": 599 },
-            "detail": { "type": ["string", "null"] },
-            "instance": { "type": ["string", "null"] },
-            "errors": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "required": ["pointer", "code", "message"],
-                    "properties": {
-                        "pointer": { "type": "string" },
-                        "code": { "type": "string" },
-                        "message": { "type": "string" },
-                        "limit": {}
-                    }
-                }
-            }
-        }
-    })
+///
+/// It is the serialized [`problem_schema_ref`], so the document and the standalone schema cannot
+/// drift apart.
+pub fn problem_schema() -> Value {
+    serde_json::to_value(problem_schema_ref()).expect("the Problem schema serializes")
 }
 
 pub fn problem_value(status: u16, title: &str) -> Value {

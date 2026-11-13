@@ -222,6 +222,8 @@ impl ApiResponse for () {
     }
 }
 
+/// An `Option<T>` does not itself promise a response shape, so the macro cannot claim a success
+/// status. Return a concrete response type or declare the statuses with `@responses:`.
 impl<T: ApiResponse> ApiResponse for Option<T> {
     const SUCCESS: &'static [u16] = &[];
 

@@ -1175,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "roundhouse"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "axum",
  "bytes",
@@ -1187,6 +1187,7 @@ dependencies = [
  "regex",
  "roundhouse-macros",
  "roundhouse-multipart",
+ "roundhouse-path",
  "roundhouse-problem",
  "roundhouse-schema",
  "serde",
@@ -1203,7 +1204,7 @@ dependencies = [
 
 [[package]]
 name = "roundhouse-macros"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "proc-macro2",
  "roundhouse-macros-core",
@@ -1211,17 +1212,18 @@ dependencies = [
 
 [[package]]
 name = "roundhouse-macros-core"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
+ "roundhouse-path",
  "syn 2.0.119",
 ]
 
 [[package]]
 name = "roundhouse-multipart"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "axum",
  "bytes",
@@ -1234,19 +1236,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "roundhouse-path"
+version = "0.3.0"
+dependencies = [
+ "matchit",
+]
+
+[[package]]
 name = "roundhouse-problem"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "axum",
  "http",
  "roundhouse-schema",
  "serde",
  "serde_json",
+ "utoipa",
 ]
 
 [[package]]
 name = "roundhouse-schema"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "bytes",
  "chrono",

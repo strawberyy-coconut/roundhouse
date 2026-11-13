@@ -79,7 +79,6 @@ pub fn register_self<T: utoipa::ToSchema + ?Sized>(context: &mut dyn SchemaConte
     if components.schemas.contains_key(&name) {
         return;
     }
-    components.schemas.insert(name.clone(), schema::any_value());
     components
         .schemas
         .insert(name, <T as utoipa::PartialSchema>::schema());

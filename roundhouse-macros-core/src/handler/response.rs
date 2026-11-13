@@ -123,9 +123,7 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
                     docs.responses.extend(__rh_responses);
                 }
                 ::core::option::Option::None => {
-                    docs.undocumented_error = ::core::option::Option::Some(
-                        ::core::any::type_name::<#err>(),
-                    );
+                    docs.verification.set_undocumented_error(::core::any::type_name::<#err>());
                 }
             }
         }]);
@@ -141,7 +139,7 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
 
     let unknown = match outer_ident(ty).as_deref() {
         Some("Json" | "Vec") => quote! {
-            docs.unverified_response = true;
+            docs.verification.mark_response();
             docs.responses.push(#krate::doc::ResponseDoc::new(200, "OK"));
         },
         _ => quote!(),

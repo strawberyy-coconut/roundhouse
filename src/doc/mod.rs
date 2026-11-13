@@ -76,6 +76,84 @@ pub fn split_prose(text: &'static str) -> (Option<&'static str>, Option<&'static
     (summary, description)
 }
 
+/// The honesty markers an operation carries.
+///
+/// Keeping these together means a caller cannot accidentally treat "the body was verified" and
+/// "the body is unverified" as independent facts; the builder owns the transitions.
+#[derive(Clone, Debug, Default)]
+pub struct Verification {
+    body: bool,
+    response: bool,
+    extractor: bool,
+    body_verified: bool,
+    undocumented_error: Option<&'static str>,
+    unbounded_file_fields: Vec<&'static str>,
+}
+
+impl Verification {
+    /// A body extractor the framework cannot verify at runtime.
+    pub fn body(&self) -> bool {
+        self.body
+    }
+
+    /// A response type the document cannot describe.
+    pub fn response(&self) -> bool {
+        self.response
+    }
+
+    /// An extractor whose documented contribution the macro cannot infer.
+    pub fn extractor(&self) -> bool {
+        self.extractor
+    }
+
+    /// Whether every body argument enforces its own schema during extraction.
+    pub fn body_verified(&self) -> bool {
+        self.body_verified
+    }
+
+    /// A `Result<_, E>` whose `E` registered no documented responses.
+    pub fn undocumented_error(&self) -> Option<&'static str> {
+        self.undocumented_error
+    }
+
+    /// File fields declared without `max_bytes`.
+    pub fn unbounded_file_fields(&self) -> &[&'static str] {
+        &self.unbounded_file_fields
+    }
+
+    pub fn mark_body(&mut self) {
+        self.body = true;
+    }
+
+    pub fn clear_body(&mut self) {
+        self.body = false;
+    }
+
+    pub fn mark_response(&mut self) {
+        self.response = true;
+    }
+
+    pub fn mark_extractor(&mut self) {
+        self.extractor = true;
+    }
+
+    pub fn clear_extractor(&mut self) {
+        self.extractor = false;
+    }
+
+    pub fn set_body_verified(&mut self, verified: bool) {
+        self.body_verified = verified;
+    }
+
+    pub fn set_undocumented_error(&mut self, type_name: &'static str) {
+        self.undocumented_error = Some(type_name);
+    }
+
+    pub fn extend_unbounded_file_fields(&mut self, names: impl IntoIterator<Item = &'static str>) {
+        self.unbounded_file_fields.extend(names);
+    }
+}
+
 /// The documentation half a `#[handler]` attribute derives from the signature.
 #[derive(Clone, Default)]
 pub struct OperationDoc {
@@ -101,30 +179,14 @@ pub struct OperationDoc {
     pub required_auth: Vec<crate::auth::AuthDoc>,
     pub optional_auth: Vec<crate::auth::AuthDoc>,
     pub schemes: Vec<crate::auth::SchemeDoc>,
-    /// A body extractor the framework can see syntactically but cannot verify at runtime
-    /// (`axum::Json`, `axum::Form`, `axum::extract::Multipart`). A route that validates the body
-    /// through its shim clears this before the document is checked.
-    pub unverified: bool,
-    /// A response type the document cannot describe (`axum::Json<T>`, `axum::Html<T>` returned
-    /// directly rather than through a derived response).
-    pub unverified_response: bool,
-    /// An extractor whose documented contribution the macro cannot infer (a custom `Tenant`,
-    /// a bare `HeaderMap`, a typed header, ...).
-    pub unverified_extractor: bool,
-    /// Whether every body argument enforces its own schema during extraction. The builder uses
-    /// this and the route's validation policy to clear [`Self::unverified`] when appropriate.
-    pub body_verified: bool,
-    /// A `Result<_, E>` whose `E` registered no documented responses.
-    pub undocumented_error: Option<&'static str>,
+    /// Honesty markers: what this operation could not verify or describe.
+    pub verification: Verification,
     /// The schema of a scalar `Path<T>`; the parameter's name comes from the template.
     pub path_schema:
         Option<fn() -> Option<utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>>>,
     /// The Rust type of the request body, so schema mode can compile the body's own schema even
     /// when it is composite (`Vec<T>`, `Option<T>`, maps, tuples).
     pub body_type: Option<fn() -> std::any::TypeId>,
-    /// File fields declared without `max_bytes`; they fall back to the app-wide body limit.
-    /// The build warns (and `strict` rejects) so the most permissive declaration is visible.
-    pub unbounded_file_fields: Vec<&'static str>,
 }
 
 /// Compatibility alias for the old name. New code should use [`OperationDoc`].

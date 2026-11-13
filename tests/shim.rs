@@ -358,7 +358,7 @@ fn a_body_without_api_schema_still_builds_as_an_unverified_extractor() {
     let mut docs = roundhouse::doc::OperationDoc::default();
     let arg = (&ArgProbe::<axum::Json<NotASchema>>::new()).document(&mut context);
     docs.merge(arg);
-    assert!(docs.unverified_extractor);
+    assert!(docs.verification.extractor());
 }
 
 #[derive(Debug, serde::Deserialize)]

@@ -3,8 +3,6 @@ use std::collections::BTreeMap;
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::Schema;
 
-use super::schema;
-
 /// A documented request body.
 #[derive(Clone)]
 pub struct BodyDoc {
@@ -85,41 +83,11 @@ impl ResponseDoc {
 }
 
 /// The Problem body as a schema, for documented rejection responses.
+///
+/// The wire shape has one definition in `roundhouse-problem`, so the documented schema cannot
+/// drift from the runtime body.
 pub fn problem_schema() -> RefOr<Schema> {
-    use utoipa::openapi::schema::{ArrayBuilder, ObjectBuilder, SchemaFormat, Type};
-
-    let error = ObjectBuilder::new()
-        .schema_type(Type::Object)
-        .property("pointer", schema::string())
-        .property("code", schema::string())
-        .property("message", schema::string())
-        .property("limit", schema::any_value())
-        .required("pointer")
-        .required("code")
-        .required("message")
-        .build();
-
-    ObjectBuilder::new()
-        .schema_type(Type::Object)
-        .property(
-            "type",
-            schema::string_with_format(SchemaFormat::Custom("uri".to_string())),
-        )
-        .property("title", schema::string())
-        .property(
-            "status",
-            ObjectBuilder::new()
-                .schema_type(Type::Integer)
-                .minimum(Some(100u16))
-                .maximum(Some(599u16)),
-        )
-        .property("detail", schema::nullable(schema::string()))
-        .property("instance", schema::nullable(schema::string()))
-        .property("errors", ArrayBuilder::new().items(error))
-        .required("type")
-        .required("title")
-        .required("status")
-        .into()
+    roundhouse_problem::problem_schema_ref()
 }
 
 pub fn canonical_reason(status: u16) -> &'static str {

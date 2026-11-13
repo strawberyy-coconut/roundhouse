@@ -20,15 +20,25 @@ use utoipa::openapi::{OpenApi, RefOr, Response as DocResponse};
 
 use crate::problem::Problem;
 
+/// Bound on the response body buffered for validation in tests and debug builds.
+const MAX_RESPONSE_BODY: usize = 32 * 1024 * 1024;
+
 #[derive(Clone)]
 struct ResponseEntry {
     content_type: Option<String>,
     validator: Option<Validator>,
 }
 
+/// The documented responses for one operation, with OpenAPI's `default` kept separate.
+#[derive(Default)]
+struct OperationResponses {
+    by_status: HashMap<u16, ResponseEntry>,
+    default: Option<ResponseEntry>,
+}
+
 /// Precomputed response validators keyed by method and matched path.
 pub struct ResponseValidator {
-    entries: HashMap<(http::Method, String), HashMap<u16, ResponseEntry>>,
+    entries: HashMap<(http::Method, String), OperationResponses>,
 }
 
 impl ResponseValidator {
@@ -37,23 +47,26 @@ impl ResponseValidator {
         let defs = Value::Object(defs_from_components(&components)?);
         let mut entries = HashMap::new();
         for (path, item) in &document.paths.paths {
-            add_path(&mut entries, path, item, &defs)?;
+            add_path(&mut entries, path, item, &defs, &components.responses)?;
         }
         Ok(Self { entries })
     }
 
     fn entry(&self, method: &http::Method, path: &str, status: u16) -> Option<&ResponseEntry> {
-        self.entries
-            .get(&(method.clone(), path.to_string()))?
+        let responses = self.entries.get(&(method.clone(), path.to_string()))?;
+        responses
+            .by_status
             .get(&status)
+            .or(responses.default.as_ref())
     }
 }
 
 fn add_path(
-    entries: &mut HashMap<(http::Method, String), HashMap<u16, ResponseEntry>>,
+    entries: &mut HashMap<(http::Method, String), OperationResponses>,
     path: &str,
     item: &PathItem,
     defs: &Value,
+    components: &std::collections::BTreeMap<String, RefOr<DocResponse>>,
 ) -> Result<(), SchemaError> {
     for (method, operation) in [
         (http::Method::GET, &item.get),
@@ -68,7 +81,7 @@ fn add_path(
         if let Some(operation) = operation {
             entries.insert(
                 (method, path.to_string()),
-                response_entries(operation, defs)?,
+                response_entries(operation, defs, components)?,
             );
         }
     }
@@ -78,20 +91,14 @@ fn add_path(
 fn response_entries(
     operation: &Operation,
     defs: &Value,
-) -> Result<HashMap<u16, ResponseEntry>, SchemaError> {
-    let mut entries = HashMap::new();
+    components: &std::collections::BTreeMap<String, RefOr<DocResponse>>,
+) -> Result<OperationResponses, SchemaError> {
+    let mut entries = OperationResponses::default();
     for (status, response) in &operation.responses.responses {
-        let Ok(status) = status.parse::<u16>() else {
+        let Some(response) = resolve_response(response, components) else {
             continue;
         };
-        let response = match response {
-            RefOr::T(response) => Some(response.clone()),
-            RefOr::Ref(_) => None,
-        };
-        let Some(response) = response else {
-            continue;
-        };
-        let (content_type, schema) = first_content(&response);
+        let (content_type, schema) = first_content(response);
         let validator = match schema {
             Some(schema) => {
                 let value = serde_json::to_value(&schema)?;
@@ -99,15 +106,35 @@ fn response_entries(
             }
             None => None,
         };
-        entries.insert(
-            status,
-            ResponseEntry {
-                content_type,
-                validator,
-            },
-        );
+        let entry = ResponseEntry {
+            content_type,
+            validator,
+        };
+        if status == "default" {
+            entries.default = Some(entry);
+        } else if let Ok(status) = status.parse::<u16>() {
+            entries.by_status.insert(status, entry);
+        }
     }
     Ok(entries)
+}
+
+fn resolve_response<'a>(
+    response: &'a RefOr<DocResponse>,
+    components: &'a std::collections::BTreeMap<String, RefOr<DocResponse>>,
+) -> Option<&'a DocResponse> {
+    match response {
+        RefOr::T(response) => Some(response),
+        RefOr::Ref(reference) => {
+            let name = reference
+                .ref_location
+                .strip_prefix("#/components/responses/")?;
+            match components.get(name)? {
+                RefOr::T(response) => Some(response),
+                RefOr::Ref(_) => None,
+            }
+        }
+    }
 }
 
 fn first_content(response: &DocResponse) -> (Option<String>, Option<RefOr<Schema>>) {
@@ -169,7 +196,7 @@ pub async fn validate_response(
     }
 
     let (parts, body) = response.into_parts();
-    let bytes = match axum::body::to_bytes(body, 32 * 1024 * 1024).await {
+    let bytes = match axum::body::to_bytes(body, MAX_RESPONSE_BODY).await {
         Ok(bytes) => bytes,
         Err(error) => {
             return Problem::internal(format!(

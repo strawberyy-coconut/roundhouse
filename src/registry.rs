@@ -130,63 +130,69 @@ pub struct RouteRecord {
     pub(crate) doc: Option<fn(&mut OperationDoc)>,
 }
 
+/// The named fields `routes!` uses to construct a [`RouteRecord`].
+///
+/// This exists so generated code can name each field instead of relying on the positional order
+/// of a large constructor. It is macro plumbing, not part of the stable API.
+#[doc(hidden)]
+pub struct RouteSpec {
+    pub module_path: &'static str,
+    pub file: &'static str,
+    pub line: u32,
+    pub method: Method,
+    pub path: &'static str,
+    pub assert_path: Option<&'static str>,
+    pub operation_id: Option<&'static str>,
+    pub handler_name: &'static str,
+    pub tags: &'static [&'static str],
+    pub security: &'static [AuthGuard],
+    pub required_auth: &'static [&'static str],
+    pub shim_auth: &'static [&'static str],
+    pub hidden: bool,
+    pub absolute: bool,
+    pub validate: bool,
+    pub validate_body: bool,
+    pub unverified: Option<&'static str>,
+    pub deprecated: bool,
+    pub public: bool,
+    pub state: fn() -> Option<std::any::TypeId>,
+    pub state_name: fn() -> &'static str,
+    pub handler: fn() -> Box<dyn Any + Send + Sync>,
+    pub layer: Option<RouteLayer>,
+    pub docs: fn(&mut DocContext<'_>) -> OperationDoc,
+    pub doc: Option<fn(&mut OperationDoc)>,
+}
+
 impl RouteRecord {
-    /// Construct a record. Called by `routes!`; not part of the stable API.
+    /// Construct a record from named fields. Called by `routes!`; not part of the stable API.
     #[doc(hidden)]
-    #[allow(clippy::too_many_arguments)]
-    pub const fn __new(
-        module_path: &'static str,
-        file: &'static str,
-        line: u32,
-        method: Method,
-        path: &'static str,
-        assert_path: Option<&'static str>,
-        operation_id: Option<&'static str>,
-        handler_name: &'static str,
-        tags: &'static [&'static str],
-        security: &'static [AuthGuard],
-        required_auth: &'static [&'static str],
-        shim_auth: &'static [&'static str],
-        hidden: bool,
-        absolute: bool,
-        validate: bool,
-        validate_body: bool,
-        unverified: Option<&'static str>,
-        deprecated: bool,
-        public: bool,
-        state: fn() -> Option<std::any::TypeId>,
-        state_name: fn() -> &'static str,
-        handler: fn() -> Box<dyn Any + Send + Sync>,
-        layer: Option<RouteLayer>,
-        docs: fn(&mut DocContext<'_>) -> OperationDoc,
-        doc: Option<fn(&mut OperationDoc)>,
-    ) -> Self {
+    pub const fn from_spec(spec: RouteSpec) -> Self {
         Self {
-            module_path,
-            file,
-            line,
-            method,
-            path,
-            assert_path,
-            operation_id,
-            handler_name,
-            tags,
-            security,
-            required_auth,
-            shim_auth,
-            hidden,
-            absolute,
-            validate,
-            validate_body,
-            unverified,
-            deprecated,
-            public,
-            state,
-            state_name,
-            handler,
-            layer,
-            docs,
-            doc,
+            module_path: spec.module_path,
+            file: spec.file,
+            line: spec.line,
+            method: spec.method,
+            path: spec.path,
+            assert_path: spec.assert_path,
+            operation_id: spec.operation_id,
+            handler_name: spec.handler_name,
+            tags: spec.tags,
+            security: spec.security,
+            required_auth: spec.required_auth,
+            shim_auth: spec.shim_auth,
+            hidden: spec.hidden,
+            absolute: spec.absolute,
+            validate: spec.validate,
+            validate_body: spec.validate_body,
+            unverified: spec.unverified,
+            deprecated: spec.deprecated,
+            public: spec.public,
+            state: spec.state,
+            state_name: spec.state_name,
+            handler: spec.handler,
+            layer: spec.layer,
+            docs: spec.docs,
+            doc: spec.doc,
         }
     }
 
@@ -234,35 +240,40 @@ impl fmt::Debug for Module {
     }
 }
 
+/// The named fields `routes!` uses to construct a [`Module`].
+///
+/// Macro plumbing; not part of the stable API.
+#[doc(hidden)]
+pub struct ModuleSpec {
+    pub module_path: &'static str,
+    pub file: &'static str,
+    pub line: u32,
+    pub prefix: &'static str,
+    pub tags: &'static [&'static str],
+    pub security: &'static [AuthGuard],
+    pub hidden: bool,
+    pub layer: Option<ModuleLayer>,
+    pub doc: Option<fn() -> crate::doc::layer::LayerDoc>,
+    pub routes: &'static [RouteRecord],
+    pub children: &'static [&'static Module],
+}
+
 impl Module {
-    /// Construct a module. Called by `routes!`; not part of the stable API.
+    /// Construct a module from named fields. Called by `routes!`; not part of the stable API.
     #[doc(hidden)]
-    #[allow(clippy::too_many_arguments)]
-    pub const fn __new(
-        module_path: &'static str,
-        file: &'static str,
-        line: u32,
-        prefix: &'static str,
-        tags: &'static [&'static str],
-        security: &'static [AuthGuard],
-        hidden: bool,
-        layer: Option<ModuleLayer>,
-        doc: Option<fn() -> crate::doc::layer::LayerDoc>,
-        routes: &'static [RouteRecord],
-        children: &'static [&'static Module],
-    ) -> Self {
+    pub const fn from_spec(spec: ModuleSpec) -> Self {
         Self {
-            module_path,
-            file,
-            line,
-            prefix,
-            tags,
-            security,
-            hidden,
-            layer,
-            doc,
-            routes,
-            children,
+            module_path: spec.module_path,
+            file: spec.file,
+            line: spec.line,
+            prefix: spec.prefix,
+            tags: spec.tags,
+            security: spec.security,
+            hidden: spec.hidden,
+            layer: spec.layer,
+            doc: spec.doc,
+            routes: spec.routes,
+            children: spec.children,
         }
     }
 

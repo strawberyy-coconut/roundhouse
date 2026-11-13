@@ -1,8 +1,8 @@
 //! The procedural macros behind `roundhouse`.
 //!
 //! Most users should import these through `roundhouse::prelude::*` rather than depend on this
-//! crate directly. The macros are re-exported by `roundhouse` when its `macros` feature is
-//! enabled (and `Multipart` additionally needs the `multipart` feature).
+//! crate directly. The macros are always re-exported by `roundhouse` (`Multipart` additionally
+//! needs roundhouse's `multipart` feature).
 //!
 //! The crate has two kinds of macros:
 //!

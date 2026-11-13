@@ -52,6 +52,12 @@ pub use axum::Form;
 pub use axum::Json;
 pub use axum::extract::{Extension, Path, Query};
 
+/// Default request-body limit when the app does not configure one.
+pub(crate) const DEFAULT_MAX_BODY: usize = 2 * 1024 * 1024;
+
+/// Bound on the bytes read from an extractor rejection while mapping it to a `Problem`.
+const MAX_REJECTION_BODY: usize = 64 * 1024;
+
 /// Which enforcer an app uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Validation {
@@ -233,7 +239,7 @@ where
         async move {
             let response = self.into_response();
             let status = normalize_rejection_status(response.status());
-            let detail = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            let detail = axum::body::to_bytes(response.into_body(), MAX_REJECTION_BODY)
                 .await
                 .ok()
                 .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
@@ -464,7 +470,7 @@ fn engine(parts: &Parts) -> Option<Arc<roundhouse_schema::engine::SchemaEngine>>
 fn body_limit(parts: &Parts) -> usize {
     ValidationState::read(&parts.extensions)
         .max_body
-        .unwrap_or(2 * 1024 * 1024)
+        .unwrap_or(DEFAULT_MAX_BODY)
 }
 
 fn is_json(parts: &Parts) -> bool {

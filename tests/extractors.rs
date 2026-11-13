@@ -199,6 +199,21 @@ mod mapped_only {
     }
 }
 
+mod raw_request {
+    use super::*;
+    use axum::extract::Request;
+
+    routes! {
+        prefix = "/raw-request",
+        "/" => { post(echo, operation_id = "raw_request_echo") },
+    }
+
+    #[handler]
+    pub async fn echo(_request: Request) -> StatusCode {
+        StatusCode::NO_CONTENT
+    }
+}
+
 /// `Strict` is enforced by the extractor, so it resolves through an alias too.
 #[tokio::test]
 async fn a_strict_extractor_enforces_through_an_alias() {
@@ -210,6 +225,17 @@ async fn a_strict_extractor_enforces_through_an_alias() {
     assert_eq!(
         response.headers()[header::CONTENT_TYPE],
         "application/problem+json"
+    );
+}
+
+/// A raw `Request` can read any body, so the document must not claim there is none.
+#[test]
+fn a_raw_request_is_marked_as_an_unverified_body() {
+    let built = app(&raw_request::MODULE);
+    let document = serde_json::to_value(built.document()).unwrap();
+    assert_eq!(
+        document["paths"]["/raw-request"]["post"]["x-roundhouse-unverified-body"],
+        true
     );
 }
 

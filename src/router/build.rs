@@ -41,19 +41,42 @@ where
     /// and document gates as [`App::build`] but never unwinds.
     pub fn try_build(self) -> Result<Built, BuildError> {
         let mut diagnostics = Vec::new();
-        #[cfg(feature = "swagger")]
-        let serve_swagger = self.swagger_route.is_some();
-        #[cfg(not(feature = "swagger"))]
-        let serve_swagger = false;
-        let serve_openapi = self.info.is_some()
-            || self.openapi_route.is_some()
-            || self.docs_route.is_some()
-            || serve_swagger;
+        let serve_openapi = self.serves_openapi();
         let resolved = self.resolve(&mut diagnostics)?;
         self.check_reserved_paths(serve_openapi, &resolved)?;
+        self.report_merges(&mut diagnostics)?;
+
+        let (document, mut observations) = self.build_document(&resolved, &mut diagnostics)?;
+        let schema_engine = self.compile_schema_engine(&document, &mut observations)?;
+        let document = Arc::new(document);
+        let merge_ledger = self.merge_ledger();
+        let router = self.assemble_app(&resolved, &document, schema_engine, &observations)?;
+
+        Ok(Built {
+            router,
+            routes: resolved,
+            document,
+            merges: merge_ledger,
+            diagnostics,
+        })
+    }
+
+    fn serves_openapi(&self) -> bool {
+        #[cfg(feature = "swagger")]
+        let swagger = self.swagger_route.is_some();
+        #[cfg(not(feature = "swagger"))]
+        let swagger = false;
+
+        self.info.is_some() || self.openapi_route.is_some() || self.docs_route.is_some() || swagger
+    }
+
+    fn report_merges(
+        &self,
+        diagnostics: &mut Vec<crate::build_error::Diagnostic>,
+    ) -> Result<(), BuildError> {
         for merge in &self.merges {
             crate::build_error::report(
-                &mut diagnostics,
+                diagnostics,
                 self.strict,
                 crate::build_error::Diagnostic::new(
                     merge.source,
@@ -62,24 +85,30 @@ where
                 ),
             )?;
         }
+        Ok(())
+    }
+
+    fn build_document(
+        &self,
+        resolved: &[ResolvedRoute],
+        diagnostics: &mut Vec<crate::build_error::Diagnostic>,
+    ) -> Result<(OpenApi, doc::build::Observations), BuildError> {
         let info = self
             .info
             .as_ref()
             .map(|info| info())
             .unwrap_or_else(|| Info::new("API", "0.1.0"));
-        let mut bodies = Vec::new();
-        let mut parts = Vec::new();
-        let mut route_bodies = BTreeMap::new();
-        let mut built_document = doc::build::build_with_observations(
+        let mut observations = doc::build::Observations::default();
+        let result = doc::build::build_with_observations(
             info.into_utoipa(),
-            &resolved,
+            resolved,
             self.document_rejections == DocumentRejections::Auto,
             self.strict,
-            &mut diagnostics,
-            &mut bodies,
-            &mut parts,
-            &mut route_bodies,
-        )?;
+            &mut observations,
+        );
+        diagnostics.append(&mut observations.diagnostics);
+        let mut built_document = result?;
+
         if !self.merges.is_empty() {
             let extensions = utoipa::openapi::extensions::ExtensionsBuilder::new()
                 .add("x-roundhouse-merged", true)
@@ -89,6 +118,7 @@ where
                 None => built_document.extensions = Some(extensions),
             }
         }
+
         let mut document = OpenApi::from(built_document);
         if !self.servers.is_empty() {
             document
@@ -104,34 +134,51 @@ where
         // publish a path that contradicts its own parameters.
         doc::validate_document(document.as_utoipa())
             .map_err(|message| BuildError::InvalidDocument { message })?;
+        Ok((document, observations))
+    }
 
-        let schema_engine = if self.validation == crate::extract::Validation::Schema {
-            let components = document.as_utoipa().components.clone().unwrap_or_default();
-            Some(Arc::new(
-                roundhouse_schema::engine::SchemaEngine::from_components_bodies_and_parts(
-                    &components,
-                    std::iter::empty::<(TypeId, String)>(),
-                    bodies,
-                    parts,
-                )
-                .map_err(|error| BuildError::SchemaCompilation {
-                    message: error.to_string(),
-                })?,
-            ))
-        } else {
-            None
-        };
-        let document = Arc::new(document);
+    fn compile_schema_engine(
+        &self,
+        document: &OpenApi,
+        observations: &mut doc::build::Observations,
+    ) -> Result<Option<Arc<roundhouse_schema::engine::SchemaEngine>>, BuildError> {
+        if self.validation != crate::extract::Validation::Schema {
+            return Ok(None);
+        }
+        let components = document.as_utoipa().components.clone().unwrap_or_default();
+        let bodies = std::mem::take(&mut observations.bodies);
+        let parts = std::mem::take(&mut observations.parts);
+        let engine = roundhouse_schema::engine::SchemaEngine::from_components_bodies_and_parts(
+            &components,
+            std::iter::empty::<(TypeId, String)>(),
+            bodies,
+            parts,
+        )
+        .map_err(|error| BuildError::SchemaCompilation {
+            message: error.to_string(),
+        })?;
+        Ok(Some(Arc::new(engine)))
+    }
 
-        let merge_ledger: Vec<MergeRecord> = self
-            .merges
+    fn merge_ledger(&self) -> Vec<MergeRecord> {
+        self.merges
             .iter()
             .map(|merge| MergeRecord {
                 source: merge.source,
             })
-            .collect();
+            .collect()
+    }
 
-        let mut router = self.assemble(&resolved, schema_engine.as_ref(), &route_bodies)?;
+    fn assemble_app(
+        self,
+        resolved: &[ResolvedRoute],
+        document: &Arc<OpenApi>,
+        schema_engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
+        observations: &doc::build::Observations,
+    ) -> Result<Router<()>, BuildError> {
+        let serve_openapi = self.serves_openapi();
+        let mut router =
+            self.assemble(resolved, schema_engine.as_ref(), &observations.route_bodies)?;
 
         for merged in &self.merges {
             router = merge_router(router, merged.router.clone(), merged.source)?;
@@ -258,13 +305,7 @@ where
             router = layer(router);
         }
 
-        Ok(Built {
-            router,
-            routes: resolved,
-            document,
-            merges: merge_ledger,
-            diagnostics,
-        })
+        Ok(router)
     }
 
     /// The ready `axum::Router<()>`.
@@ -281,7 +322,7 @@ where
     /// keeps the return type exactly what an axum user expects while preserving module layers and
     /// `404`/`405` semantics.
     #[deprecated(
-        note = "use `App::into_router()`; state is already applied and the router needs no                 second `with_state` call"
+        note = "use `App::into_router()`; state is already applied and the router needs no second `with_state` call"
     )]
     pub fn router(self) -> Router<S> {
         let built = self.build();

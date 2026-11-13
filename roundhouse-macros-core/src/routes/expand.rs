@@ -139,19 +139,20 @@ pub(super) fn emit_module(
     let visibility = if public { quote!(pub) } else { quote!() };
 
     definitions.extend(quote! {
-        #visibility const #name: #krate::registry::Module = #krate::registry::Module::__new(
-            module_path!(),
-            file!(),
-            #line,
-            #prefix_lit,
-            #tags,
-            #security,
-            #hidden,
-            #layer_value,
-            #doc_value,
-            &[#(#routes),*],
-            &[#(#children),*],
-        );
+        #visibility const #name: #krate::registry::Module =
+            #krate::registry::Module::from_spec(#krate::registry::ModuleSpec {
+                module_path: module_path!(),
+                file: file!(),
+                line: #line,
+                prefix: #prefix_lit,
+                tags: #tags,
+                security: #security,
+                hidden: #hidden,
+                layer: #layer_value,
+                doc: #doc_value,
+                routes: &[#(#routes),*],
+                children: &[#(#children),*],
+            });
     });
 }
 
@@ -411,33 +412,34 @@ pub(super) fn expand_entry(
 
         #(#attrs)*
         #[allow(non_upper_case_globals)]
-        const #record_name: #krate::registry::RouteRecord = #krate::registry::RouteRecord::__new(
-            module_path!(),
-            file!(),
-            #line,
-            #method,
-            #path,
-            #assert_path,
-            #operation_id,
-            #handler_name,
-            #tags,
-            #security,
-            #required_auth,
-            #shim_auth,
-            #hidden,
-            #absolute,
-            #validate,
-            #validate_body,
-            #unverified,
-            #deprecated,
-            #public,
-            #state,
-            #state_name,
-            #route_fn,
-            #layer_value,
-            <#marker_type as #krate::doc::DocSource>::operation,
-            #doc_value,
-        );
+        const #record_name: #krate::registry::RouteRecord =
+            #krate::registry::RouteRecord::from_spec(#krate::registry::RouteSpec {
+                module_path: module_path!(),
+                file: file!(),
+                line: #line,
+                method: #method,
+                path: #path,
+                assert_path: #assert_path,
+                operation_id: #operation_id,
+                handler_name: #handler_name,
+                tags: #tags,
+                security: #security,
+                required_auth: #required_auth,
+                shim_auth: #shim_auth,
+                hidden: #hidden,
+                absolute: #absolute,
+                validate: #validate,
+                validate_body: #validate_body,
+                unverified: #unverified,
+                deprecated: #deprecated,
+                public: #public,
+                state: #state,
+                state_name: #state_name,
+                handler: #route_fn,
+                layer: #layer_value,
+                docs: <#marker_type as #krate::doc::DocSource>::operation,
+                doc: #doc_value,
+            });
     };
 
     ExpandedEntry {

@@ -280,11 +280,10 @@ pub enum BodyPolicy {
 }
 ```
 
-`Verification` replaces `unverified`, `unverified_response`, `unverified_extractor`,
-`undocumented_error` and `unbounded_file_fields` as five independent fields. `BodyPolicy`
-replaces the `validate` / `validate_body` / `unverified` triple on `RouteRecord`. Illegal
-combinations become unrepresentable: a route cannot be `validate = false` and also claim its body
-was verified.
+`Verification` *(implemented)* groups the old `unverified`, `unverified_response`,
+`unverified_extractor`, `undocumented_error` and `unbounded_file_fields` fields behind private
+state and explicit transitions, so the builder owns the invariants. `BodyPolicy` — replacing the
+`validate` / `validate_body` / `unverified` triple on `RouteRecord` — remains the target.
 
 The field list of `OperationDoc` is not the important change. The name, the builder methods and the
 merge rules are. The `doc = |docs| …` hook still receives `OperationDoc` with public fields;
@@ -426,8 +425,6 @@ until a phase explicitly changes behaviour.
    a breaking change for existing hooks.
 5. **Should `ApiError` remain a marker?** It lets the derive enforce a 4xx/5xx-only contract. If
    that contract moves into `ApiResponse::SUCCESS` validation, the marker can go.
-6. **Is `ApiError` worth keeping?** It is a marker that lets the derive enforce a 4xx/5xx-only
-   contract. If that contract moves into `ApiResponse::SUCCESS` validation, the marker can go.
 
 ## Future work elsewhere
 

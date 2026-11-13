@@ -320,7 +320,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
                 #(#statements)*
                 let mut __rh_all_verified = true;
                 #(#verify_checks)*
-                docs.body_verified = __rh_all_verified;
+                docs.verification.set_body_verified(__rh_all_verified);
                 docs
             }
         }

@@ -308,8 +308,8 @@ impl fmt::Display for BuildError {
             BuildError::EmptyApp => write!(
                 f,
                 "error: the app resolved no routes\n\
-                 hint: compose a module tree with `routes!` and root the app with `app!(state, module) \
-                 or `App::include(..)`"
+                 hint: compose a module tree with `routes!` and root the app with \
+                 `app!(state, module)` or `App::include(..)`"
             ),
             BuildError::HandlerBuild {
                 operation_id,
