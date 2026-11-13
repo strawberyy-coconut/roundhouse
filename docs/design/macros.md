@@ -52,8 +52,9 @@ interpreting the marker path as a module and cascading.
 
 `#[cfg(..)]` and other outer attributes on an entry are copied to every generated item for that
 entry, and to direct entries in a group. They are not interpreted by the macro. A nested group or
-spread is a separate item and must carry its own `cfg`; table-local duplicate checks also see
-conditional entries as present because the macro cannot evaluate `cfg`.
+spread is a separate item and must carry its own `cfg`. Table-local duplicate checks skip
+`cfg`-gated entries because the macro cannot evaluate the predicate; a collision that survives
+`cfg` is still caught by the resolved route table at build time.
 
 The macro never parses a function body. `#[handler]` reads the signature and doc attributes only;
 routing metadata cannot be inferred from what the function does.

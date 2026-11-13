@@ -38,6 +38,12 @@ pub(super) fn validate_entries(entries: &[(String, &Entry)]) -> Result<()> {
     let mut derived_ids: HashMap<(String, String), &Entry> = HashMap::new();
 
     for (full_path, entry) in entries {
+        // A `#[cfg(..)]` entry may not exist in the compiled crate. The macro cannot evaluate
+        // the predicate, so table-local duplicates involving it are deferred to the resolved
+        // route table, which sees only the entries that survived `cfg`.
+        if cfg_gated(entry) {
+            continue;
+        }
         let method = entry.method.to_string();
         let path = normalise_template(full_path);
 
@@ -108,6 +114,10 @@ pub(super) fn validate_entries(entries: &[(String, &Entry)]) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn cfg_gated(entry: &Entry) -> bool {
+    entry.attrs.iter().any(|attr| attr.path().is_ident("cfg"))
 }
 
 fn duplicate_route_error(first: &Entry, second: &Entry, method: &str, path: &str) -> syn::Error {
