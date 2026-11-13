@@ -30,7 +30,9 @@ use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::{ObjectBuilder, Schema, Type};
 
 /// The global body limit used when the app does not set one.
-pub const DEFAULT_MAX_BODY: usize = 32 * 1024 * 1024;
+///
+/// This matches the facade's default. `App::max_body` raises or lowers it.
+pub const DEFAULT_MAX_BODY: usize = 2 * 1024 * 1024;
 /// The part-count bound used when the app does not set one.
 pub const DEFAULT_MAX_PARTS: usize = 1024;
 

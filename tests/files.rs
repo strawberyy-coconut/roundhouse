@@ -361,6 +361,18 @@ async fn a_non_multipart_content_type_is_415() {
 }
 
 #[tokio::test]
+async fn the_default_body_limit_applies_to_multipart() {
+    let app = app();
+    let payload = "x".repeat(2 * 1024 * 1024);
+    let body = multipart(
+        "test-boundary",
+        &[("file", Some("big.txt"), Some("text/plain"), &payload)],
+    );
+    let response = send_multipart(&app, &body).await;
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
 async fn max_parts_bounds_the_part_count() {
     let app = roundhouse::App::new(State)
         .include(&files::MODULE)

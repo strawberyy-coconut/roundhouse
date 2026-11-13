@@ -426,7 +426,7 @@ pub(super) async fn inject_validation_config(
     request
         .extensions_mut()
         .insert(crate::multipart::MultipartLimits {
-            max_body,
+            max_body: Some(max_body.unwrap_or(crate::extract::DEFAULT_MAX_BODY)),
             max_parts,
         });
     #[cfg(not(feature = "multipart"))]

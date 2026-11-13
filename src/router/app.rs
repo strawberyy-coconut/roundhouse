@@ -78,7 +78,7 @@ where
             document_rejections: DocumentRejections::Auto,
             validation_status: axum::http::StatusCode::BAD_REQUEST,
             validate_responses: false,
-            max_body: None,
+            max_body: Some(crate::extract::DEFAULT_MAX_BODY),
             #[cfg(feature = "multipart")]
             max_parts: None,
             strict: false,
@@ -286,8 +286,8 @@ where
 
     /// Set the global request body limit. Body extractors answer `413` above it.
     ///
-    /// This is the default for every body extractor, including multipart when that feature is
-    /// enabled, where a field's `max_bytes` can only narrow it.
+    /// The default is 2 MiB. This applies to every body extractor, including multipart when that
+    /// feature is enabled, where a field's `max_bytes` can only narrow it.
     pub fn max_body(mut self, bytes: usize) -> Self {
         self.max_body = Some(bytes);
         self

@@ -1091,3 +1091,16 @@ async fn max_body_is_a_global_limit() {
         .await;
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+#[tokio::test]
+async fn the_default_body_limit_is_two_mib() {
+    let app = app();
+    let body = format!(
+        r#"{{"email":"a@example.com","padding":"{}"}}"#,
+        "x".repeat(2 * 1024 * 1024)
+    );
+    let response = app
+        .oneshot_json(http::Method::POST, "/shapes/contact", &body)
+        .await;
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
