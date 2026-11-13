@@ -357,9 +357,7 @@ where
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         let built = self.build();
         tracing::info!("listening on http://{}", listener.local_addr()?);
-        axum::serve(listener, built.router)
-            .with_graceful_shutdown(shutdown)
-            .await
+        serve_listener(listener, built.router, shutdown).await
     }
 
     fn check_reserved_paths(
@@ -502,5 +500,73 @@ where
         }
 
         Ok(router.fallback(|| async { Problem::not_found("no route matched this request") }))
+    }
+}
+
+/// Serve an already-bound listener with connection metadata installed.
+///
+/// `axum::serve(listener, router)` does not insert `ConnectInfo`; the
+/// `into_make_service_with_connect_info` wrapper is required for handlers that take
+/// `ConnectInfo<T>`.
+#[cfg(feature = "serve")]
+async fn serve_listener<F>(
+    listener: tokio::net::TcpListener,
+    router: Router<()>,
+    shutdown: F,
+) -> std::io::Result<()>
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await
+}
+
+#[cfg(all(test, feature = "serve"))]
+mod tests {
+    use super::*;
+    use axum::extract::ConnectInfo;
+    use axum::routing::get;
+    use std::net::SocketAddr;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn peer(ConnectInfo(address): ConnectInfo<SocketAddr>) -> String {
+        address.ip().to_string()
+    }
+
+    #[tokio::test]
+    async fn serve_listener_exposes_connect_info() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test listener");
+        let address = listener.local_addr().expect("listener address");
+        let router = Router::new().route("/", get(peer));
+        let server = tokio::spawn(serve_listener(
+            listener,
+            router,
+            std::future::pending::<()>(),
+        ));
+
+        let mut stream = tokio::net::TcpStream::connect(address)
+            .await
+            .expect("connect to test server");
+        stream
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .expect("write request");
+        let mut response = String::new();
+        stream
+            .read_to_string(&mut response)
+            .await
+            .expect("read response");
+
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        assert!(response.contains("127.0.0.1"), "{response}");
+
+        server.abort();
+        let _ = server.await;
     }
 }
