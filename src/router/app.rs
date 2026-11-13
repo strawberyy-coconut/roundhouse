@@ -17,13 +17,15 @@ use super::fragment::{DocumentRejections, Fragment, PendingMerge};
 pub(crate) type RouterLayer = Box<dyn Fn(Router<()>) -> Router<()> + Send + Sync>;
 pub(crate) type DocumentHook = Box<dyn Fn(&mut OpenApi) + Send + Sync>;
 
-pub(crate) type ValidationDefaults = (
-    axum::http::StatusCode,
-    crate::extract::Validation,
-    Option<usize>,
-    Option<usize>,
-    Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
-);
+/// Request-scoped validation configuration installed once for the whole app.
+#[derive(Clone)]
+pub(crate) struct ValidationDefaults {
+    pub(crate) status: axum::http::StatusCode,
+    pub(crate) mode: crate::extract::Validation,
+    pub(crate) max_body: Option<usize>,
+    pub(crate) max_parts: Option<usize>,
+    pub(crate) engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
+}
 
 /// The application builder.
 ///
@@ -190,6 +192,9 @@ where
     ///
     /// This is the escape hatch for document metadata the declarations cannot derive, such as
     /// `tags` with descriptions. Hooks run in registration order after route assembly.
+    ///
+    /// Hooks are metadata-only: the schema engine is compiled from the route declarations, so a
+    /// hook must not change request or response validation schemas.
     pub fn document<F>(mut self, hook: F) -> Self
     where
         F: Fn(&mut OpenApi) + Send + Sync + 'static,

@@ -406,18 +406,16 @@ async fn skip_body_validation(
 }
 
 pub(super) async fn inject_validation_config(
-    axum::extract::State((status, mode, max_body, max_parts, engine)): axum::extract::State<
-        ValidationDefaults,
-    >,
+    axum::extract::State(defaults): axum::extract::State<ValidationDefaults>,
     mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     request
         .extensions_mut()
         .insert(crate::extract::ValidationState {
-            status,
-            mode,
-            max_body,
+            status: defaults.status,
+            mode: defaults.mode,
+            max_body: defaults.max_body,
             skip: false,
             skip_body: false,
             body_validated: false,
@@ -426,12 +424,16 @@ pub(super) async fn inject_validation_config(
     request
         .extensions_mut()
         .insert(crate::multipart::MultipartLimits {
-            max_body: Some(max_body.unwrap_or(crate::extract::DEFAULT_MAX_BODY)),
-            max_parts,
+            max_body: Some(
+                defaults
+                    .max_body
+                    .unwrap_or(crate::extract::DEFAULT_MAX_BODY),
+            ),
+            max_parts: defaults.max_parts,
         });
     #[cfg(not(feature = "multipart"))]
-    let _ = (max_body, max_parts);
-    if let Some(engine) = engine {
+    let _ = (defaults.max_body, defaults.max_parts);
+    if let Some(engine) = defaults.engine {
         request.extensions_mut().insert(engine);
     }
     next.run(request).await

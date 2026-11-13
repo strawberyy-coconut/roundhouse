@@ -12,7 +12,7 @@ use crate::prefix;
 use crate::problem::Problem;
 use crate::registry::{Method, Module, RouteRecord};
 
-use super::app::App;
+use super::app::{App, ValidationDefaults};
 #[cfg(feature = "swagger")]
 use super::assemble::add_swagger_routes;
 use super::assemble::{
@@ -291,13 +291,13 @@ where
         let max_parts = None;
 
         router = router.layer(axum::middleware::from_fn_with_state(
-            (
-                self.validation_status,
-                self.validation,
-                self.max_body,
+            ValidationDefaults {
+                status: self.validation_status,
+                mode: self.validation,
+                max_body: self.max_body,
                 max_parts,
-                schema_engine,
-            ),
+                engine: schema_engine,
+            },
             inject_validation_config,
         ));
 
