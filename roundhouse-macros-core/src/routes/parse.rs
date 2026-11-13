@@ -57,7 +57,6 @@ pub(super) struct Entry {
     /// An explicit acknowledgement of an intentional unverified body/response/extractor.
     pub(super) unverified: Option<LitStr>,
     pub(super) deprecated: bool,
-    pub(super) public: bool,
     /// Clear inherited security guards for this entry.
     pub(super) anonymous: bool,
 }
@@ -84,7 +83,6 @@ impl Entry {
             validate_body_span: None,
             unverified: None,
             deprecated: false,
-            public: false,
             anonymous: false,
         }
     }
@@ -331,7 +329,6 @@ fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> R
         "hidden" => entry.hidden = true,
         "anonymous" => entry.anonymous = true,
         "absolute" => entry.absolute = true,
-        "public" => entry.public = true,
         "deprecated" => entry.deprecated = true,
         "override" => {
             return Err(syn::Error::new(

@@ -151,7 +151,6 @@ pub struct RouteRecord {
     /// reason. Suppresses the build diagnostic and lets `strict()` pass.
     pub(crate) unverified: Option<&'static str>,
     pub(crate) deprecated: bool,
-    pub(crate) public: bool,
     pub(crate) anonymous: bool,
     pub(crate) state: fn() -> Option<std::any::TypeId>,
     pub(crate) state_name: fn() -> &'static str,
@@ -187,7 +186,6 @@ pub struct RouteSpec {
     pub validation: ValidationPolicy,
     pub unverified: Option<&'static str>,
     pub deprecated: bool,
-    pub public: bool,
     pub anonymous: bool,
     pub state: fn() -> Option<std::any::TypeId>,
     pub state_name: fn() -> &'static str,
@@ -219,7 +217,6 @@ impl RouteRecord {
             validation: spec.validation,
             unverified: spec.unverified,
             deprecated: spec.deprecated,
-            public: spec.public,
             anonymous: spec.anonymous,
             state: spec.state,
             state_name: spec.state_name,

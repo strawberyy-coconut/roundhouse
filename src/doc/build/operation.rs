@@ -101,9 +101,6 @@ impl DocumentBuild<'_> {
         if overridden {
             extensions = extensions.add("x-roundhouse-overridden-response", true);
         }
-        if route.record.public {
-            extensions = extensions.add("x-roundhouse-public", true);
-        }
         match route.record.validation {
             crate::registry::ValidationPolicy::Off => {
                 extensions = extensions.add("x-roundhouse-validation", false);

@@ -166,8 +166,6 @@ use proc_macro::TokenStream;
 /// - `absolute` — the path owns the full URL. Module prefixes, tags, security, layers and hidden
 ///   flags do not apply; a `security` declared on the entry itself still does.
 /// - `deprecated` — mark the operation deprecated in the document.
-/// - `public` — add the `x-roundhouse-public` extension to the operation. It does not change
-///   authentication.
 /// - `anonymous` — clear inherited `security` guards for this entry and document `security: []`.
 ///   A handler's own `Auth<A>` still applies.
 /// - `validate = false` — parse the request as usual but skip `#[schema(..)]` constraint

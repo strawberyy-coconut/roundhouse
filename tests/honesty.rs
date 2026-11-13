@@ -347,7 +347,7 @@ mod metadata {
     routes! {
         prefix = "/metadata",
 
-        "/x" => { get(x, operation_id = "metadata_x", deprecated, public) },
+        "/x" => { get(x, operation_id = "metadata_x", deprecated) },
     }
 
     #[handler]
@@ -612,7 +612,7 @@ fn cross_table_duplicate_operation_ids_fail_the_build() {
 }
 
 #[test]
-fn deprecated_and_public_are_no_longer_no_ops() {
+fn deprecated_is_documented() {
     let app = scoped(&metadata::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
         .try_build()
@@ -620,7 +620,6 @@ fn deprecated_and_public_are_no_longer_no_ops() {
     let document = document(app);
     let operation = &document["paths"]["/metadata/x"]["get"];
     assert_eq!(operation["deprecated"], true);
-    assert_eq!(operation["x-roundhouse-public"], true);
 }
 
 #[test]

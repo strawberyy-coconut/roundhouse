@@ -139,7 +139,6 @@ The full grammar and precedence rules are in
 | `hidden` | Serve the route without documenting it. |
 | `absolute` | Use the path as the full URL, ignoring inherited prefixes, tags, layers and guards. |
 | `deprecated` | Mark the operation deprecated. |
-| `public` | Add the `x-roundhouse-public` extension to the operation. It does not change authentication. |
 | `anonymous` | Clear inherited `security` guards for this entry and document `security: []`. A handler's own `Auth<A>` still applies. |
 | `validate = false` | Skip schema constraint validation for the whole route. The request still has to parse. |
 | `validate_body = false` | Keep path/query/form validation, but treat the request body as opaque. Malformed JSON still fails. |

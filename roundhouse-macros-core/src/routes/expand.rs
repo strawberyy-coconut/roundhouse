@@ -313,7 +313,6 @@ pub(super) fn expand_entry(
     };
     let unverified = option_lit(&entry.unverified);
     let deprecated = entry.deprecated;
-    let public = entry.public;
     let anonymous = entry.anonymous;
     let no_success_message = LitStr::new(
         &format!(
@@ -450,7 +449,6 @@ pub(super) fn expand_entry(
                 validation: #validation,
                 unverified: #unverified,
                 deprecated: #deprecated,
-                public: #public,
                 anonymous: #anonymous,
                 state: #state,
                 state_name: #state_name,
