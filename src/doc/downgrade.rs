@@ -73,6 +73,12 @@ fn downgrade_nullable(object: &mut Map<String, Value>) {
                 }
             }
         }
+        if had_null {
+            // OpenAPI 3.0 represents null through `nullable`, not an enum member.
+            if let Some(Value::Array(values)) = object.get_mut("enum") {
+                values.retain(|value| value != &Value::Null);
+            }
+        }
     }
 
     // `oneOf: [<schema>, {type: null}]` -> schema + nullable: true
@@ -86,19 +92,37 @@ fn downgrade_nullable(object: &mut Map<String, Value>) {
             let other = items[1 - null_index].clone();
             if let Value::Object(mut other) = other {
                 other.insert("nullable".to_string(), Value::Bool(true));
-                *object = other;
+                // The original object may carry metadata such as `description` or `example`
+                // beside the `oneOf`; keep it while replacing the schema branch.
+                let mut merged = object.clone();
+                merged.remove("oneOf");
+                for (key, value) in other {
+                    merged.insert(key, value);
+                }
+                *object = merged;
             }
         }
     }
 }
 
 fn downgrade_exclusive(object: &mut Map<String, Value>) {
-    for (exclusive, bound) in [
-        ("exclusiveMinimum", "minimum"),
-        ("exclusiveMaximum", "maximum"),
+    for (exclusive, bound, is_lower) in [
+        ("exclusiveMinimum", "minimum", true),
+        ("exclusiveMaximum", "maximum", false),
     ] {
         if let Some(Value::Number(number)) = object.get(exclusive).cloned() {
-            object.insert(bound.to_string(), Value::Number(number));
+            let exclusive_value = number.as_f64();
+            let bound_value = object.get(bound).and_then(Value::as_f64);
+            let replace = match (bound_value, exclusive_value) {
+                (Some(bound_value), Some(exclusive_value)) if is_lower => {
+                    exclusive_value >= bound_value
+                }
+                (Some(bound_value), Some(exclusive_value)) => exclusive_value <= bound_value,
+                _ => true,
+            };
+            if replace {
+                object.insert(bound.to_string(), Value::Number(number));
+            }
             object.insert(exclusive.to_string(), Value::Bool(true));
         }
     }
