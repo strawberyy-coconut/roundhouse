@@ -103,6 +103,7 @@ pub(super) fn emit_module(
     let tags = string_slice(&options.tags);
     let security = auth_slice(&options.security);
     let hidden = options.hidden;
+    let anonymous = options.anonymous;
 
     let layer_fn = format_ident!("__roundhouse_module_layer_{module_id}");
     let layer_value = if options.layer.is_some() {
@@ -157,6 +158,7 @@ pub(super) fn emit_module(
                 tags: #tags,
                 security: #security,
                 hidden: #hidden,
+                anonymous: #anonymous,
                 layer: #layer_value,
                 doc: #doc_value,
                 routes: &[#(#routes),*],
@@ -312,6 +314,7 @@ pub(super) fn expand_entry(
     let unverified = option_lit(&entry.unverified);
     let deprecated = entry.deprecated;
     let public = entry.public;
+    let anonymous = entry.anonymous;
     let no_success_message = LitStr::new(
         &format!(
             "roundhouse: `{} {}` has no success response; return a concrete response type or \
@@ -448,6 +451,7 @@ pub(super) fn expand_entry(
                 unverified: #unverified,
                 deprecated: #deprecated,
                 public: #public,
+                anonymous: #anonymous,
                 state: #state,
                 state_name: #state_name,
                 handler: #route_fn,

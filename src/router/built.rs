@@ -26,6 +26,9 @@ pub struct ResolvedRoute {
     /// Guards inherited from modules plus this entry's own `security`; installed on the
     /// method router unless the handler already requires the same scheme.
     pub auth: Vec<AuthGuard>,
+    /// `anonymous` cleared inherited guards for this operation. The document emits
+    /// `security: []` so the operation opts out of any document-level requirement.
+    pub auth_cleared: bool,
     pub hidden: bool,
     pub layer_docs: Vec<crate::doc::layer::LayerDoc>,
 }

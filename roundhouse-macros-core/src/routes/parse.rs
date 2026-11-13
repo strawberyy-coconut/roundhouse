@@ -29,6 +29,8 @@ pub(super) struct ModuleOptions {
     pub(super) layer: Option<Expr>,
     pub(super) layer_mode: LayerMode,
     pub(super) hidden: bool,
+    /// Clear inherited security guards for this module and its children.
+    pub(super) anonymous: bool,
     pub(super) doc: Option<Expr>,
 }
 
@@ -56,6 +58,8 @@ pub(super) struct Entry {
     pub(super) unverified: Option<LitStr>,
     pub(super) deprecated: bool,
     pub(super) public: bool,
+    /// Clear inherited security guards for this entry.
+    pub(super) anonymous: bool,
 }
 
 impl Entry {
@@ -81,6 +85,7 @@ impl Entry {
             unverified: None,
             deprecated: false,
             public: false,
+            anonymous: false,
         }
     }
 
@@ -214,7 +219,7 @@ fn parse_root_options(input: ParseStream<'_>) -> Result<ModuleOptions> {
         let fork = input.fork();
         let key: Ident = fork.call(Ident::parse_any)?;
         let name = key.to_string();
-        let is_flag = name == "hidden";
+        let is_flag = name == "hidden" || name == "anonymous";
         let is_key = matches!(
             name.as_str(),
             "prefix" | "state" | "tags" | "security" | "layer" | "layer_mode" | "doc"
@@ -233,6 +238,12 @@ fn parse_root_options(input: ParseStream<'_>) -> Result<ModuleOptions> {
         } else {
             break;
         }
+    }
+    if options.anonymous && !options.security.is_empty() {
+        return Err(syn::Error::new(
+            input.span(),
+            "`anonymous` and `security` cannot be combined in one module; remove one",
+        ));
     }
     Ok(options)
 }
@@ -256,6 +267,12 @@ fn parse_entry_options(content: ParseStream<'_>, entry: &mut Entry) -> Result<()
         );
         error.combine(syn::Error::new(off, "this disables the whole route"));
         return Err(error);
+    }
+    if entry.anonymous && !entry.security.is_empty() {
+        return Err(syn::Error::new(
+            entry.path.span(),
+            "`anonymous` and `security` cannot be combined on one entry; remove one",
+        ));
     }
     Ok(())
 }
@@ -312,6 +329,7 @@ fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> R
             entry.prose = Some(content.parse()?);
         }
         "hidden" => entry.hidden = true,
+        "anonymous" => entry.anonymous = true,
         "absolute" => entry.absolute = true,
         "public" => entry.public = true,
         "deprecated" => entry.deprecated = true,
@@ -377,6 +395,12 @@ fn parse_module_options_into(
             break;
         }
     }
+    if options.anonymous && !options.security.is_empty() {
+        return Err(syn::Error::new(
+            input.span(),
+            "`anonymous` and `security` cannot be combined in one module; remove one",
+        ));
+    }
     Ok(options)
 }
 
@@ -423,6 +447,7 @@ fn parse_module_key(input: ParseStream<'_>, options: &mut ModuleOptions, key: Id
             };
         }
         "hidden" => options.hidden = true,
+        "anonymous" => options.anonymous = true,
         "doc" => {
             input.parse::<Token![=]>()?;
             options.doc = Some(input.parse()?);

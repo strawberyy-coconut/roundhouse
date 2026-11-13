@@ -112,6 +112,7 @@ struct Inherited {
     tags: Vec<&'static str>,
     guards: Vec<AuthGuard>,
     hidden: bool,
+    auth_cleared: bool,
     has_layer: bool,
     layer_docs: Vec<crate::doc::layer::LayerDoc>,
 }
@@ -172,9 +173,16 @@ fn walk_module(
         tags: inherited.tags,
         guards: inherited.guards,
         hidden: inherited.hidden,
+        auth_cleared: inherited.auth_cleared,
         has_layer: inherited.has_layer,
         layer_docs: inherited.layer_docs,
     };
+    if module.anonymous {
+        if !context.guards.is_empty() {
+            context.auth_cleared = true;
+        }
+        context.guards.clear();
+    }
     context.tags.extend(module.tags.iter().copied());
     context.guards.extend(module.security.iter().copied());
     context.hidden |= module.hidden;
@@ -286,25 +294,36 @@ fn emit_route(
         }
     }
 
-    let (path, tags, auth, hidden, mut layer_docs) = if record.absolute {
+    let (path, tags, auth, auth_cleared, hidden, mut layer_docs) = if record.absolute {
         (
             prefix::join("", record.path),
             Vec::new(),
             dedup_guards(record.security.iter().copied()),
+            false,
             record.hidden,
             Vec::new(),
         )
     } else {
-        (
-            prefix::join(&context.prefix, record.path),
-            context.tags.clone(),
+        let mut auth_cleared = context.auth_cleared;
+        let auth = if record.anonymous {
+            if !context.guards.is_empty() {
+                auth_cleared = true;
+            }
+            Vec::new()
+        } else {
             dedup_guards(
                 context
                     .guards
                     .iter()
                     .copied()
                     .chain(record.security.iter().copied()),
-            ),
+            )
+        };
+        (
+            prefix::join(&context.prefix, record.path),
+            context.tags.clone(),
+            auth,
+            auth_cleared,
             context.hidden || record.hidden,
             context.layer_docs.clone(),
         )
@@ -375,6 +394,7 @@ fn emit_route(
         record,
         tags,
         auth,
+        auth_cleared,
         hidden,
         layer_docs,
     });

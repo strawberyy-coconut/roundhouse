@@ -1,0 +1,5 @@
+error: `anonymous` and `security` cannot be combined in one module; remove one
+  --> tests/ui/anonymous_security.rs:16:5
+   |
+16 |     "/x" => {
+   |     ^^^^

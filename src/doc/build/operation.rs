@@ -77,7 +77,11 @@ impl DocumentBuild<'_> {
         if !parameters.is_empty() {
             builder = builder.parameters(Some(parameters.into_iter().map(build_param)));
         }
-        if !security.is_empty() {
+        if route.auth_cleared && security.is_empty() {
+            // An explicit `anonymous` route overrides a document-level requirement. OpenAPI uses
+            // an empty security array for "no security".
+            builder = builder.securities(Some(Vec::new()));
+        } else if !security.is_empty() {
             builder = builder.securities(Some(security));
         }
         if route.record.deprecated {
