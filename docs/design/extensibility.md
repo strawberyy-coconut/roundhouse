@@ -115,7 +115,6 @@ A response type implements `IntoResponse` as usual, then `ApiResponse`:
 
 ```rust
 use roundhouse::doc::{ApiResponse, ResponseDoc, schema};
-use roundhouse::utoipa::openapi::schema::Components;
 
 pub struct Csv;
 
