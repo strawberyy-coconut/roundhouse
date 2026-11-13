@@ -17,8 +17,8 @@ fn hand_written(state: AppState) -> Router {
     use notes_example::routes::{health, notes};
     Router::new()
         .route("/healthz", get(health::healthz))
-        .route("/notes", get(notes::list::list).post(notes::create::create))
-        .route("/notes/{id}", get(notes::show::show))
+        .route("/notes", get(notes::list).post(notes::create))
+        .route("/notes/{id}", get(notes::show))
         .fallback(|| async { roundhouse::Problem::not_found("no route matched this request") })
         .method_not_allowed_fallback(|| async {
             roundhouse::Problem::new(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed")
@@ -65,7 +65,7 @@ async fn discovered_and_hand_written_routers_agree() {
     let discovered = discovered();
     // Constraint validation is installed by App::build(). The hand-written router below calls the
     // same handlers directly and therefore has no engine, so invalid-body behavior is covered by
-    // examples/validation instead of being compared here.
+    // the crate's validation tests instead of being compared here.
     let requests = [
         (http::Method::GET, "/healthz", None),
         (http::Method::GET, "/notes", None),

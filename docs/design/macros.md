@@ -146,7 +146,7 @@ The derives keep their own rules on top:
   (`validate = false` or `validate_body = false`), not a field property.
 
 `proc-macro-crate` resolves the dependency name, so `rh = { package = "roundhouse", .. }` works.
-`examples/renamed` is the regression test.
+`tests/fixtures/renamed` is the regression test.
 
 ## Constraints
 

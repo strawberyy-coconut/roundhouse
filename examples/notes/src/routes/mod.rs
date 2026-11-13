@@ -3,9 +3,21 @@ use roundhouse::prelude::*;
 pub mod health;
 pub mod notes;
 
-// The root module composes the subtree explicitly. It owns no URL segment, only shared policy.
+// The route table is the module tree. Handlers live in child modules; the table names the
+// composed paths, tags and policy once.
 routes! {
     tags = ["api"],
-    ...health,
-    ...notes,
+
+    "/healthz" => {
+        get(health::healthz, tags = ["ops"]),
+    },
+
+    "/notes" => {
+        get(notes::list, tags = ["notes"]),
+        post(notes::create, tags = ["notes"]),
+    },
+
+    "/notes/{id}" => {
+        get(notes::show, tags = ["notes"]),
+    },
 }

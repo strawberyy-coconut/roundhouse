@@ -4,19 +4,17 @@ use serde::Serialize;
 
 use crate::schemes::{ApiKeyAuth, BearerAuth, ReadPosts, WritePosts};
 
-routes! {
-    "/public" => { get(public) },
-    "/private" => { get(private) },
-    "/scoped" => { get(scoped) },
-    "/write" => { get(write) },
-    "/optional" => { get(optional) },
-    "/admin" => { get(admin) },
-    "/projects/{project_id}" => { get(project) },
-}
-
 #[derive(Serialize, ToSchema, ApiSchema)]
 pub struct Message {
     pub message: String,
+}
+
+/// @summary: Bearer required by the module
+#[handler]
+pub async fn whoami() -> Json<Message> {
+    Json(Message {
+        message: "guarded".to_string(),
+    })
 }
 
 /// @summary: No auth

@@ -26,7 +26,7 @@ test that never starts a server. The facade re-exports its public items, so appl
 normally imports them from `roundhouse`.
 
 Generated code refers to `::roundhouse` (or to the renamed dependency) through
-`proc-macro-crate`, so the macros keep working when the crate is renamed. `examples/renamed`
+`proc-macro-crate`, so the macros keep working when the crate is renamed. `tests/fixtures/renamed`
 exists to keep that path honest.
 
 ## Dependency direction

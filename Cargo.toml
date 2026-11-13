@@ -7,13 +7,10 @@ members = [
     "roundhouse-schema",
     "roundhouse-multipart",
     "examples/notes",
-    "examples/blog",
     "examples/layers",
-    "examples/validation",
     "examples/uploads",
-    "examples/showcase",
     "examples/auth",
-    "examples/renamed",
+    "tests/fixtures/renamed",
 ]
 resolver = "2"
 

@@ -1,10 +1,43 @@
 use roundhouse::prelude::*;
 
-pub mod guarded;
+use crate::schemes::BearerAuth;
+
 pub mod protected;
 
 routes! {
     tags = ["auth"],
-    ...guarded,
-    ...protected,
+
+    "/public" => {
+        get(protected::public),
+    },
+
+    "/private" => {
+        get(protected::private),
+    },
+
+    "/scoped" => {
+        get(protected::scoped),
+    },
+
+    "/write" => {
+        get(protected::write),
+    },
+
+    "/optional" => {
+        get(protected::optional),
+    },
+
+    "/admin" => {
+        get(protected::admin),
+    },
+
+    "/projects/{project_id}" => {
+        get(protected::project),
+    },
+
+    "/guarded" [security = [BearerAuth]] {
+        "/whoami" => {
+            get(protected::whoami),
+        },
+    },
 }

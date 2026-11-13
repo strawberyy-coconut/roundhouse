@@ -7,5 +7,5 @@ description = "The framework under a renamed dependency: every expansion must fo
 
 [dependencies]
 axum = "0.8"
-rh = { package = "roundhouse", path = "../.." }
+rh = { package = "roundhouse", path = "../../.." }
 serde = { version = "1", features = ["derive"] }

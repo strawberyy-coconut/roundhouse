@@ -526,16 +526,14 @@ Run any example from the repository root:
 
 | Command | Port | What it demonstrates |
 |---|---|---|
-| `cargo notes` | 3000 | Explicit module composition, schemas and errors |
-| `cargo blog` | 3001 | Nested modules, grouped paths, query parameters and auth |
+| `cargo notes` | 3000 | Multi-file module composition, schemas and errors |
 | `cargo layers` | 3002 | Global, module and entry layers; fallback; embedding |
-| `cargo validation` | 3003 | Constraints, JSON Pointers and `validate = false` |
 | `cargo uploads` | 3004 | Multipart, `TempFile`, attachments, SSE and the docs UI |
-| `cargo showcase` | 3005 | Enums, `validate_with`, utoipa interop and response validation |
 | `cargo auth` | 3006 | Scopes, optional auth, two-scheme AND and the auth guard |
 
-`examples/notes` is the smallest starting point. `examples/renamed` checks that the macros work
-when the dependency is renamed.
+Detailed feature coverage lives in the crate's integration tests. The route, schema, validation,
+auth and layering contracts are exercised there without a runnable example for every feature.
+`tests/fixtures/renamed` checks that the macros work when the dependency is renamed.
 
 ## Development
 
