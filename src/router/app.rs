@@ -83,7 +83,7 @@ where
             max_body: Some(crate::extract::DEFAULT_MAX_BODY),
             #[cfg(feature = "multipart")]
             max_parts: None,
-            strict: false,
+            strict: true,
             validation: crate::extract::Validation::default(),
         }
     }
@@ -147,13 +147,37 @@ where
     /// Merge a hand-written router. Escape hatch in the other direction.
     ///
     /// Merged routes are served but cannot be discovered for the document. The document is marked
-    /// `x-roundhouse-merged` and a warning is emitted; `App::strict()` turns it into an error.
+    /// `x-roundhouse-merged`, and the merge is a build error by default. Use
+    /// [`App::merge_undocumented`] to acknowledge the missing documentation explicitly.
     #[track_caller]
-    pub fn merge(mut self, router: Router<()>) -> Self {
+    pub fn merge(self, router: Router<()>) -> Self {
         let location = std::panic::Location::caller();
+        self.push_merge(router, location, None)
+    }
+
+    /// Merge a hand-written router and acknowledge that its routes are undocumented.
+    ///
+    /// Prefer [`App::merge`] when the router can be replaced by `routes!` declarations. This
+    /// method exists for routers that cannot be expressed as roundhouse routes; it records the
+    /// author's reason in [`Built::merges`] and keeps the document's `x-roundhouse-merged`
+    /// marker.
+    #[track_caller]
+    pub fn merge_undocumented(self, router: Router<()>, reason: &'static str) -> Self {
+        let location = std::panic::Location::caller();
+        self.push_merge(router, location, Some(reason))
+    }
+
+    #[track_caller]
+    fn push_merge(
+        mut self,
+        router: Router<()>,
+        location: &'static std::panic::Location<'static>,
+        reason: Option<&'static str>,
+    ) -> Self {
         self.merges.push(PendingMerge {
             router,
             source: crate::build_error::Source::new("App::merge", location.file(), location.line()),
+            reason,
         });
         self
     }
@@ -265,9 +289,24 @@ where
         self
     }
 
-    /// Promote build diagnostics into errors.
+    /// Keep strict builds. This is the default.
+    ///
+    /// Every route is expected to truthfully describe its body, responses and extractors. An
+    /// unverified surface fails [`App::try_build`] unless the route acknowledges it with
+    /// `unverified = "reason"` (or opts out explicitly with `validate_body = false` where that
+    /// applies).
     pub fn strict(mut self) -> Self {
         self.strict = true;
+        self
+    }
+
+    /// Downgrade build diagnostics to warnings.
+    ///
+    /// This is the explicit escape hatch for an application that cannot make every route honest
+    /// yet. The warnings are still collected in [`Built::diagnostics`] and printed by
+    /// [`App::build`]. Prefer fixing the declarations or acknowledging them per route.
+    pub fn permissive(mut self) -> Self {
+        self.strict = false;
         self
     }
 

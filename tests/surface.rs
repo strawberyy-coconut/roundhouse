@@ -551,6 +551,7 @@ fn app() -> roundhouse::Built {
     App::new(State)
         .fragment(__roundhouse_fragment())
         .openapi(|| Info::new("Surface", "0.1.0"))
+        .permissive()
         .build()
 }
 
@@ -722,6 +723,7 @@ async fn document_rejections_can_be_suppressed() {
         .fragment(__roundhouse_fragment())
         .document_rejections(false)
         .openapi(|| Info::new("Surface", "0.1.0"))
+        .permissive()
         .build();
     let document = serde_json::to_value(app.document()).unwrap();
     let responses = &document["paths"]["/shapes/created"]["post"]["responses"];
@@ -734,8 +736,9 @@ async fn app_merge_and_custom_fallback() {
     let merged = axum::Router::new().route("/merged", axum::routing::get(|| async { "merged" }));
     let app = App::new(State)
         .fragment(__roundhouse_fragment())
-        .merge(merged)
+        .merge_undocumented(merged, "surface test embeds a hand-written router")
         .fallback(|| async { (StatusCode::IM_A_TEAPOT, "custom") })
+        .permissive()
         .build();
     let response = get(&app, "/merged").await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -748,6 +751,7 @@ async fn scope_and_include_select_roots() {
     let app = App::new(State)
         .include(&grouped::MODULE)
         .include(&legacy::MODULE)
+        .permissive()
         .build();
     assert_eq!(get(&app, "/grouped").await.status(), StatusCode::OK);
     assert_eq!(get(&app, "/legacy").await.status(), StatusCode::OK);
@@ -877,6 +881,7 @@ async fn validation_status_is_configurable() {
         .fragment(__roundhouse_fragment())
         .validation_status(StatusCode::UNPROCESSABLE_ENTITY)
         .openapi(|| Info::new("Surface", "0.1.0"))
+        .permissive()
         .build();
     let response = app
         .oneshot_json(
@@ -991,6 +996,7 @@ async fn swagger_ui_is_served_when_requested() {
         .fragment(__roundhouse_fragment())
         .openapi(|| Info::new("Surface", "0.1.0"))
         .docs()
+        .permissive()
         .build();
     let response = app.oneshot_get("/docs").await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -1019,7 +1025,10 @@ async fn documents_can_be_downgraded_to_openapi_30() {
 
 #[tokio::test]
 async fn erased_style_handlers_use_unit_state_and_extensions() {
-    let app = App::new(State).fragment(__roundhouse_fragment()).build();
+    let app = App::new(State)
+        .fragment(__roundhouse_fragment())
+        .permissive()
+        .build();
     let router = app
         .router()
         .layer(axum::Extension(std::sync::Arc::new(7usize)));
@@ -1055,6 +1064,7 @@ async fn response_validation_catches_a_document_that_lies() {
         .fragment(__roundhouse_fragment())
         .openapi(|| Info::new("Surface", "0.1.0"))
         .validate_responses()
+        .permissive()
         .build();
 
     let response = app.oneshot_get("/shapes/color").await;
@@ -1081,6 +1091,7 @@ async fn max_body_is_a_global_limit() {
     let app = App::new(State)
         .fragment(__roundhouse_fragment())
         .max_body(8)
+        .permissive()
         .build();
     let response = app
         .oneshot_json(

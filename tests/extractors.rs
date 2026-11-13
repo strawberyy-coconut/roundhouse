@@ -15,6 +15,7 @@ fn app(module: &'static roundhouse::Module) -> roundhouse::Built {
     roundhouse::App::new(State)
         .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Extractors", "0.1.0"))
+        .permissive()
         .build()
 }
 

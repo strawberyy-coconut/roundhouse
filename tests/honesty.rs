@@ -432,8 +432,9 @@ fn foreign_extractors_are_marked_and_strict_turns_the_marker_into_an_error() {
     let module = &foreign::MODULE;
     let app = scoped(module)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .permissive()
         .try_build()
-        .expect("foreign extractors still build by default");
+        .expect("foreign extractors still build when diagnostics are acknowledged");
     let document = document(app);
     assert_eq!(
         document["paths"]["/foreign/request"]["post"]["x-roundhouse-unverified-extractor"],
@@ -509,8 +510,9 @@ fn an_error_type_without_documentation_is_loud() {
     let module = &blind_error::MODULE;
     let app = scoped(module)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .permissive()
         .try_build()
-        .expect("a blind error still builds by default");
+        .expect("a blind error still builds permissively");
     assert!(
         app.diagnostics()
             .iter()
@@ -544,6 +546,7 @@ async fn docs_implies_the_document_route() {
 fn a_missing_extension_documents_the_problem_it_produces() {
     let app = scoped(&extension::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .permissive()
         .try_build()
         .expect("extension route builds");
     let document = serde_json::to_value(app.document()).unwrap();

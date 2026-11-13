@@ -124,6 +124,7 @@ fn app() -> roundhouse::Built {
     roundhouse::App::new(State)
         .include(&shapes::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Shapes", "0.1.0"))
+        .permissive()
         .build()
 }
 

@@ -15,6 +15,7 @@ fn scoped(module: &'static roundhouse::Module) -> App<State> {
     App::new(State)
         .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Paths", "0.1.0"))
+        .permissive()
 }
 
 mod scalar {

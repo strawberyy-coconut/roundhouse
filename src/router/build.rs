@@ -75,13 +75,16 @@ where
         diagnostics: &mut Vec<crate::build_error::Diagnostic>,
     ) -> Result<(), BuildError> {
         for merge in &self.merges {
+            if merge.reason.is_some() {
+                continue;
+            }
             crate::build_error::report(
                 diagnostics,
                 self.strict,
                 crate::build_error::Diagnostic::new(
                     merge.source,
-                    "a router given to `App::merge` is served but not documented; the document \
-                     is marked `x-roundhouse-merged`",
+                    "a router given to `App::merge` is served but not documented; use \
+                     `App::merge_undocumented(router, reason)` to acknowledge it",
                 ),
             )?;
         }
@@ -165,6 +168,7 @@ where
             .iter()
             .map(|merge| MergeRecord {
                 source: merge.source,
+                reason: merge.reason,
             })
             .collect()
     }

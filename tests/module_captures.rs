@@ -20,6 +20,7 @@ fn scoped(module: &'static roundhouse::Module) -> App<State> {
     App::new(State)
         .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Module captures", "0.1.0"))
+        .permissive()
 }
 
 async fn full_uri(request: axum::extract::Request, next: Next) -> Response {

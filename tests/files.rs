@@ -93,6 +93,7 @@ fn app() -> Built {
     roundhouse::App::new(State)
         .include(&files::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Files", "0.1.0"))
+        .permissive()
         .build()
 }
 
@@ -390,6 +391,7 @@ async fn max_parts_bounds_the_part_count() {
     let app = roundhouse::App::new(State)
         .include(&files::MODULE)
         .max_parts(1)
+        .permissive()
         .build();
     let body = multipart(
         "test-boundary",

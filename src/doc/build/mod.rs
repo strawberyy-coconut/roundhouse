@@ -88,19 +88,24 @@ impl DocumentBuild<'_> {
                 continue;
             }
             let Some(http_method) = route.method.to_utoipa() else {
-                // `any` hides the method set; it is served but not documented.
-                crate::build_error::report(
-                    self.diagnostics,
-                    false,
-                    Diagnostic::new(
-                        route.record.source_ref(),
-                        format!(
-                            "`any` route `{}` is not documented; declare explicit methods to \
-                             include it",
-                            route.path
+                // `any` hides the method set; it is served but not documented. The author must
+                // either acknowledge it or hide the entry, exactly like any other unverified
+                // surface.
+                if route.record.unverified.is_none() {
+                    crate::build_error::report(
+                        self.diagnostics,
+                        self.strict,
+                        Diagnostic::new(
+                            route.record.source_ref(),
+                            format!(
+                                "`any` route `{}` is not documented; declare explicit methods, \
+                                 mark it `hidden`, or acknowledge it with \
+                                 `unverified = \"reason\"`",
+                                route.path
+                            ),
                         ),
-                    ),
-                )?;
+                    )?;
+                }
                 continue;
             };
 

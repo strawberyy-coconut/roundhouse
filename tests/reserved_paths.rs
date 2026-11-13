@@ -86,7 +86,7 @@ fn a_merged_router_collision_is_a_build_error() {
     let merged = axum::Router::new().route("/merged/x", axum::routing::get(|| async { "merged" }));
     let error = App::new(State)
         .include(&merged::MODULE)
-        .merge(merged)
+        .merge_undocumented(merged, "test fixture for a route conflict")
         .try_build()
         .err()
         .expect("a merged route conflict must be reported, not unwind");

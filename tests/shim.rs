@@ -77,6 +77,7 @@ fn scoped(module: &'static roundhouse::Module) -> Built {
     App::new(AuthState::default())
         .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
+        .permissive()
         .build()
 }
 
@@ -86,6 +87,7 @@ fn scoped_with_counter(module: &'static roundhouse::Module) -> (Built, Arc<Atomi
     let built = App::new(state)
         .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Shim", "0.1.0"))
+        .permissive()
         .build();
     (built, calls)
 }

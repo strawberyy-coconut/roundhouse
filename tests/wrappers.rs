@@ -40,6 +40,7 @@ fn wrappers_document_their_statuses() {
     let built = roundhouse::App::new(State)
         .include(&routes::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Wrappers", "0.1.0"))
+        .permissive()
         .build();
     let document = serde_json::to_value(built.document()).unwrap();
     assert_eq!(
@@ -55,7 +56,10 @@ fn wrappers_document_their_statuses() {
 
 #[tokio::test]
 async fn wrappers_answer_the_status() {
-    let built = roundhouse::App::new(State).include(&routes::MODULE).build();
+    let built = roundhouse::App::new(State)
+        .include(&routes::MODULE)
+        .permissive()
+        .build();
     let created = built
         .oneshot_json(roundhouse::http::Method::POST, "/things", r#"{}"#)
         .await;

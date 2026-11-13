@@ -229,6 +229,7 @@ fn app_merge_is_visible_and_strict_rejects_it() {
     let built = App::new(State)
         .include(&mounted::MODULE)
         .merge(merged)
+        .permissive()
         .openapi(|| roundhouse::openapi::Info::new("Contracts", "0.1.0"))
         .build();
     let document = document(&built);

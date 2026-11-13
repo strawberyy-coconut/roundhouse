@@ -42,6 +42,7 @@ impl Fragment {
 pub(crate) struct PendingMerge {
     pub(crate) router: Router<()>,
     pub(crate) source: crate::build_error::Source,
+    pub(crate) reason: Option<&'static str>,
 }
 
 /// One entry in a built app's merge ledger.
@@ -51,6 +52,7 @@ pub(crate) struct PendingMerge {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MergeRecord {
     pub(crate) source: crate::build_error::Source,
+    pub(crate) reason: Option<&'static str>,
 }
 
 impl MergeRecord {
@@ -60,6 +62,13 @@ impl MergeRecord {
 
     pub fn location(&self) -> String {
         format!("{}:{}", self.source.file, self.source.line)
+    }
+
+    /// The acknowledgement supplied to [`crate::App::merge_undocumented`].
+    ///
+    /// `None` means the merge was not acknowledged and a strict build rejects it.
+    pub fn reason(&self) -> Option<&'static str> {
+        self.reason
     }
 }
 

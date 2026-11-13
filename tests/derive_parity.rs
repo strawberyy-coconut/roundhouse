@@ -18,6 +18,7 @@ fn app(module: &'static roundhouse::Module) -> roundhouse::Built {
     App::new(State)
         .include(module)
         .openapi(|| roundhouse::openapi::Info::new("Parity", "0.1.0"))
+        .permissive()
         .build()
 }
 

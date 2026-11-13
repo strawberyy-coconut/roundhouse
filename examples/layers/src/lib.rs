@@ -15,7 +15,10 @@ pub fn app(state: AppState) -> roundhouse::App<AppState> {
     roundhouse::app!(state, routes)
         .layer(middleware::from_fn(headers::global))
         .fallback(|| async { (StatusCode::IM_A_TEAPOT, "custom fallback") })
-        .merge(merged_router())
+        .merge_undocumented(
+            merged_router(),
+            "the layers example deliberately embeds a hand-written router",
+        )
 }
 
 /// A hand-written router merged into the discovered app.

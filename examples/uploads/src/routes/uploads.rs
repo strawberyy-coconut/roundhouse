@@ -13,6 +13,7 @@ routes! {
 
 #[derive(Debug, roundhouse::Multipart)]
 pub struct UploadForm {
+    #[file(max_bytes = 2 * 1024 * 1024)]
     pub file: FilePart,
     #[file(max_bytes = 64 * 1024, accept = ["text/plain", "text/markdown"])]
     pub preview: Option<FilePart>,
