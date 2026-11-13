@@ -25,6 +25,109 @@ impl DocumentBuild<'_> {
         let unverified = docs.verification.body();
         let unverified_response = docs.verification.response();
         let unverified_extractor = docs.verification.extractor();
+        self.merge_operation_contract(route, &mut docs, unverified_extractor)?;
+        let parameters = self.resolve_operation_parameters(route, &mut docs)?;
+        let (responses, overridden) = self.resolve_operation_responses(route, &mut docs)?;
+        let security = self.resolve_operation_security(route, &mut docs, used_schemes)?;
+
+        let mut tags: Vec<String> = Vec::new();
+        for tag in route.tags.iter().chain(route.record.tags.iter()) {
+            if !tags.iter().any(|existing| existing == tag) {
+                tags.push((*tag).to_string());
+            }
+        }
+
+        let responses = responses
+            .into_values()
+            .fold(ResponsesBuilder::new(), |builder, response| {
+                let key = if response.status == 0 {
+                    "default".to_string()
+                } else {
+                    response.status.to_string()
+                };
+                builder.response(key, build_response(response))
+            })
+            .build();
+
+        let mut builder = OperationBuilder::new()
+            .operation_id(Some(route.operation_id.clone()))
+            .summary(docs.summary.clone())
+            .description(docs.description.clone())
+            .responses(responses);
+
+        if !tags.is_empty() {
+            builder = builder.tags(Some(tags));
+        }
+        for part in &docs.parts {
+            self.parts.push(((part.type_id)(), (part.schema)(context)));
+        }
+        if let Some(body) = docs.body {
+            if route.record.validation.validates_body()
+                && let Some(body_type) = docs.body_type
+            {
+                let type_id = body_type();
+                self.route_bodies.insert(
+                    route.operation_id.clone(),
+                    (type_id, body.content_type.clone()),
+                );
+                self.bodies.push((type_id, body.schema.clone()));
+            }
+            builder = builder.request_body(Some(build_body(body)));
+        }
+        if !parameters.is_empty() {
+            builder = builder.parameters(Some(parameters.into_iter().map(build_param)));
+        }
+        if !security.is_empty() {
+            builder = builder.securities(Some(security));
+        }
+        if route.record.deprecated {
+            builder = builder.deprecated(Some(Deprecated::True));
+        }
+
+        let mut extensions = ExtensionsBuilder::new();
+        if unverified {
+            extensions = extensions.add("x-roundhouse-unverified-body", true);
+        }
+        if unverified_response {
+            extensions = extensions.add("x-roundhouse-unverified-response", true);
+        }
+        if unverified_extractor {
+            extensions = extensions.add("x-roundhouse-unverified-extractor", true);
+        }
+        if overridden {
+            extensions = extensions.add("x-roundhouse-overridden-response", true);
+        }
+        if route.record.public {
+            extensions = extensions.add("x-roundhouse-public", true);
+        }
+        match route.record.validation {
+            crate::registry::ValidationPolicy::Off => {
+                extensions = extensions.add("x-roundhouse-validation", false);
+            }
+            crate::registry::ValidationPolicy::PartsOnly => {
+                extensions = extensions.add("x-roundhouse-body-validation", false);
+            }
+            crate::registry::ValidationPolicy::Schema => {}
+        }
+        if !self.include_rejections {
+            extensions = extensions.add("x-roundhouse-rejections", "none");
+        }
+        let extensions = extensions.build();
+        if !extensions.is_empty() {
+            builder = builder.extensions(Some(extensions));
+        }
+
+        Ok(builder.build())
+    }
+
+    /// Merge documentation supplied by layers and route guards, and report an extractor the
+    /// macro could not infer.
+    fn merge_operation_contract(
+        &mut self,
+        route: &ResolvedRoute,
+        docs: &mut OperationDoc,
+        unverified_extractor: bool,
+    ) -> Result<(), BuildError> {
         for layer in &route.layer_docs {
             docs.params.extend(layer.parameters.clone());
             if docs.body.is_none() {
@@ -79,10 +182,18 @@ impl DocumentBuild<'_> {
                 ),
             )?;
         }
+        Ok(())
+    }
 
+    /// Deduplicate parameters, apply `@path:` prose and fill every template capture.
+    fn resolve_operation_parameters(
+        &mut self,
+        route: &ResolvedRoute,
+        docs: &mut OperationDoc,
+    ) -> Result<Vec<Param>, BuildError> {
         let path_descriptions = std::mem::take(&mut docs.path_descriptions);
         let mut parameters: Vec<Param> = Vec::new();
-        for param in docs.params {
+        for param in std::mem::take(&mut docs.params) {
             if let Some(existing) = parameters
                 .iter()
                 .find(|existing| existing.name == param.name && existing.location == param.location)
@@ -177,14 +288,25 @@ impl DocumentBuild<'_> {
                 });
             }
         }
+        Ok(parameters)
+    }
 
+    /// Merge inferred, rejection and `@responses:` declarations into one response table.
+    fn resolve_operation_responses(
+        &mut self,
+        route: &ResolvedRoute,
+        docs: &mut OperationDoc,
+    ) -> Result<(BTreeMap<u16, ResponseDoc>, bool), BuildError> {
         let mut responses: BTreeMap<u16, ResponseDoc> = BTreeMap::new();
         let failures = if self.include_rejections {
-            docs.failures
+            std::mem::take(&mut docs.failures)
         } else {
             Vec::new()
         };
-        for response in docs.responses.into_iter().chain(failures) {
+        for response in std::mem::take(&mut docs.responses)
+            .into_iter()
+            .chain(failures)
+        {
             merge_response(
                 &mut responses,
                 response,
@@ -279,23 +401,24 @@ impl DocumentBuild<'_> {
                 source: route.record.source_ref(),
             });
         }
+        Ok((responses, overridden))
+    }
 
-        let mut tags: Vec<String> = Vec::new();
-        for tag in route.tags.iter().chain(route.record.tags.iter()) {
-            if !tags.iter().any(|existing| existing == tag) {
-                tags.push((*tag).to_string());
-            }
-        }
-
+    /// Build the operation's security alternatives and register every used scheme.
+    fn resolve_operation_security(
+        &mut self,
+        route: &ResolvedRoute,
+        docs: &mut OperationDoc,
+        used_schemes: &mut BTreeMap<String, (SchemeDoc, crate::build_error::Source)>,
+    ) -> Result<Vec<SecurityRequirement>, BuildError> {
         for scheme in &docs.schemes {
             merge_scheme(used_schemes, *scheme, route.record.source_ref())?;
         }
 
-        let required = docs.required_auth;
+        let required = std::mem::take(&mut docs.required_auth);
         // A module guard plus `Option<Auth<A>>` on the handler must not publish the same scheme as
         // both required and optional.
-        let optional: Vec<_> = docs
-            .optional_auth
+        let optional: Vec<_> = std::mem::take(&mut docs.optional_auth)
             .into_iter()
             .filter(|optional| !required.iter().any(|auth| auth.name == optional.name))
             .collect();
@@ -331,87 +454,6 @@ impl DocumentBuild<'_> {
                 }
             }
         }
-
-        let responses = responses
-            .into_values()
-            .fold(ResponsesBuilder::new(), |builder, response| {
-                let key = if response.status == 0 {
-                    "default".to_string()
-                } else {
-                    response.status.to_string()
-                };
-                builder.response(key, build_response(response))
-            })
-            .build();
-
-        let mut builder = OperationBuilder::new()
-            .operation_id(Some(route.operation_id.clone()))
-            .summary(docs.summary.clone())
-            .description(docs.description.clone())
-            .responses(responses);
-
-        if !tags.is_empty() {
-            builder = builder.tags(Some(tags));
-        }
-        for part in &docs.parts {
-            self.parts.push(((part.type_id)(), (part.schema)(context)));
-        }
-        if let Some(body) = docs.body {
-            if route.record.validation.validates_body()
-                && let Some(body_type) = docs.body_type
-            {
-                let type_id = body_type();
-                self.route_bodies.insert(
-                    route.operation_id.clone(),
-                    (type_id, body.content_type.clone()),
-                );
-                self.bodies.push((type_id, body.schema.clone()));
-            }
-            builder = builder.request_body(Some(build_body(body)));
-        }
-        if !parameters.is_empty() {
-            builder = builder.parameters(Some(parameters.into_iter().map(build_param)));
-        }
-        if !security.is_empty() {
-            builder = builder.securities(Some(security));
-        }
-        if route.record.deprecated {
-            builder = builder.deprecated(Some(Deprecated::True));
-        }
-
-        let mut extensions = ExtensionsBuilder::new();
-        if unverified {
-            extensions = extensions.add("x-roundhouse-unverified-body", true);
-        }
-        if unverified_response {
-            extensions = extensions.add("x-roundhouse-unverified-response", true);
-        }
-        if unverified_extractor {
-            extensions = extensions.add("x-roundhouse-unverified-extractor", true);
-        }
-        if overridden {
-            extensions = extensions.add("x-roundhouse-overridden-response", true);
-        }
-        if route.record.public {
-            extensions = extensions.add("x-roundhouse-public", true);
-        }
-        match route.record.validation {
-            crate::registry::ValidationPolicy::Off => {
-                extensions = extensions.add("x-roundhouse-validation", false);
-            }
-            crate::registry::ValidationPolicy::PartsOnly => {
-                extensions = extensions.add("x-roundhouse-body-validation", false);
-            }
-            crate::registry::ValidationPolicy::Schema => {}
-        }
-        if !self.include_rejections {
-            extensions = extensions.add("x-roundhouse-rejections", "none");
-        }
-        let extensions = extensions.build();
-        if !extensions.is_empty() {
-            builder = builder.extensions(Some(extensions));
-        }
-
-        Ok(builder.build())
+        Ok(security)
     }
 }
