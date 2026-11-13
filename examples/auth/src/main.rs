@@ -8,7 +8,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     auth_example::app(AppState::default())
-        .serve("0.0.0.0:3006")
+        .serve("0.0.0.0:3004")
         .await?;
     Ok(())
 }

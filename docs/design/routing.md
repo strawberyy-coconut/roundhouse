@@ -39,7 +39,7 @@ diagnostics into errors.
 `routes!` is invoked at module scope, not inside a function. One invocation emits:
 
 - `pub const MODULE: Module` — the root of that table's tree;
-- `__roundhouse_fragment()` — the explicit fragment `app!(state)` roots the app at;
+- `__roundhouse_fragment()` — the explicit fragment `app!(state, module)` roots the app at;
 - one `RouteRecord` per entry, plus generated route/layer/doc functions;
 - a marker-type alias per handler, and const assertions tied to the entry's spans.
 

@@ -1,4 +1,4 @@
-//! Explicit doc tags: operation prose, response declarations and parameter descriptions.
+//! Compatibility doc tags: prose and the structured tags that typed metadata replaced.
 
 use roundhouse::prelude::*;
 

@@ -535,8 +535,8 @@ Run any example from the repository root:
 | `cargo quickstart` | 3000 | The smallest app: one file, one table, schemas and a server |
 | `cargo notes` | 3001 | Multi-file module composition, schemas and errors |
 | `cargo layers` | 3002 | Global, module and entry layers; fallback; embedding |
-| `cargo uploads` | 3004 | Multipart, `TempFile`, attachments, SSE and the docs UI |
-| `cargo auth` | 3006 | Scopes, optional auth, two-scheme AND and the auth guard |
+| `cargo uploads` | 3003 | Multipart, `TempFile`, attachments, SSE and the docs UI |
+| `cargo auth` | 3004 | Scopes, optional auth, two-scheme AND and the auth guard |
 
 `examples/quickstart` is the smallest starting point; `examples/notes` shows the multi-file
 layout. Detailed feature coverage lives in the crate's integration tests. The route, schema,

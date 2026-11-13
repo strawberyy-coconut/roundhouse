@@ -7,6 +7,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr)
         .init();
 
-    uploads_example::app(AppState).serve("0.0.0.0:3004").await?;
+    uploads_example::app(AppState).serve("0.0.0.0:3003").await?;
     Ok(())
 }
