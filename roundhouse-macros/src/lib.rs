@@ -152,9 +152,10 @@ use proc_macro::TokenStream;
 ///   parent module prefix. Useful for keeping a library's public URL stable.
 /// - `layer = expression` — a tower layer applied to this route's `MethodRouter`.
 /// - `doc = expression` — a hook of type `fn(&mut roundhouse::doc::OperationDoc)` that runs after
-///   the handler's inferred documentation and before document checks. It can set summary or
-///   description and add hand-written parameters, bodies or responses; the additions still go
-///   through conflict and capture validation.
+///   the handler's inferred documentation and before document checks. It uses the operation's
+///   builder methods (`set_summary`, `push_param`, `set_body`, `push_response`, …) to override
+///   prose or add hand-written parameters, bodies or responses; the additions still go through
+///   conflict and capture validation.
 /// - `prose = expression` — a `&'static str` (often `include_str!("...")`) whose first line is
 ///   the operation summary and whose remaining text is the description. The expression is
 ///   evaluated at compile time; `doc` still runs afterwards and may override it.

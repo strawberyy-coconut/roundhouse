@@ -198,7 +198,7 @@ helper:
 routes! {
     "/import" => {
         post(import, doc = |docs| {
-            docs.body = Some(roundhouse::doc::json_body_to_schema::<Import>());
+            docs.set_body(roundhouse::doc::json_body_to_schema::<Import>());
         }),
     },
 }
@@ -273,7 +273,7 @@ before the document checks. It can set summary/description, add parameters, a bo
 routes! {
     "/legacy" => {
         get(legacy, doc = |docs| {
-            docs.params.push(
+            docs.push_param(
                 roundhouse::doc::Param::new(
                     "x-api-version",
                     roundhouse::doc::ParamIn::Header,

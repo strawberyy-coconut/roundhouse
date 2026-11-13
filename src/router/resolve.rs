@@ -21,7 +21,7 @@ pub(super) fn resolve_tree(
         expected_state,
         expected_state_name,
         global_layer_docs,
-        seen: HashMap::new(),
+        seen: SeenRoutes::default(),
         resolved: Vec::new(),
     };
 
@@ -92,8 +92,18 @@ struct ResolveState<'a> {
     expected_state: Option<TypeId>,
     expected_state_name: &'static str,
     global_layer_docs: &'a [fn() -> crate::doc::layer::LayerDoc],
-    seen: HashMap<(Method, String), &'static RouteRecord>,
+    seen: SeenRoutes,
     resolved: Vec<ResolvedRoute>,
+}
+
+/// Duplicate detection in two indexes, so adding a route is O(1) instead of a scan.
+///
+/// `by_method` catches the same method on the same shape; `by_path` keeps the first route for a
+/// shape so an `any` entry can conflict with every explicit method (and vice versa).
+#[derive(Default)]
+struct SeenRoutes {
+    by_method: HashMap<(Method, String), &'static RouteRecord>,
+    by_path: HashMap<String, &'static RouteRecord>,
 }
 
 #[derive(Default, Clone)]
@@ -328,7 +338,7 @@ fn emit_route(
         .map(str::to_string)
         .unwrap_or_else(|| default_operation_id(record));
     let key = (record.method, normalised.clone());
-    if let Some(previous) = state.seen.get(&key) {
+    if let Some(previous) = state.seen.by_method.get(&key) {
         return Err(BuildError::DuplicateRoute {
             method: record.method,
             path,
@@ -336,20 +346,23 @@ fn emit_route(
             second: record.source_ref(),
         });
     }
-    for ((existing_method, existing_path), previous) in &state.seen {
-        if *existing_path == normalised
-            && (*existing_method == Method::Any || record.method == Method::Any)
-            && *existing_method != record.method
-        {
-            return Err(BuildError::DuplicateRoute {
-                method: record.method,
-                path,
-                first: previous.source_ref(),
-                second: record.source_ref(),
-            });
-        }
+    if let Some(previous) = state.seen.by_path.get(&normalised)
+        && (previous.method == Method::Any || record.method == Method::Any)
+        && previous.method != record.method
+    {
+        return Err(BuildError::DuplicateRoute {
+            method: record.method,
+            path,
+            first: previous.source_ref(),
+            second: record.source_ref(),
+        });
     }
-    state.seen.insert(key, record);
+    state
+        .seen
+        .by_path
+        .entry(normalised.clone())
+        .or_insert(record);
+    state.seen.by_method.insert(key, record);
 
     // Keep the module in the resolved route for callers that inspect the tree; it is not used
     // for assembly, which walks `Module::routes` directly.

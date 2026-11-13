@@ -130,10 +130,8 @@ mod hooked {
         prefix = "/hooked",
         "/" => {
             get(show, doc = |docs| {
-                for response in &mut docs.responses {
-                    if response.status == 200 {
-                        response.description = "From the doc hook".to_string();
-                    }
+                if let Some(response) = docs.response_mut(200) {
+                    response.description = "From the doc hook".to_string();
                 }
             }),
         },

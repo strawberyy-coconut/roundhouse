@@ -291,8 +291,11 @@ pub(super) fn expand_entry(
     let required_auth = quote!(<#marker_type as #krate::doc::HandlerSpec>::REQUIRED_AUTH);
     let hidden = entry.hidden;
     let absolute = entry.absolute;
-    let validate = entry.validate;
-    let validate_body = entry.validate_body;
+    let validation = match (entry.validate, entry.validate_body) {
+        (false, _) => quote!(#krate::registry::ValidationPolicy::Off),
+        (true, false) => quote!(#krate::registry::ValidationPolicy::PartsOnly),
+        (true, true) => quote!(#krate::registry::ValidationPolicy::Schema),
+    };
     let unverified = option_lit(&entry.unverified);
     let deprecated = entry.deprecated;
     let public = entry.public;
@@ -347,12 +350,12 @@ pub(super) fn expand_entry(
         quote! {
             {
                 let (summary, description) = #krate::doc::split_prose(#expr);
-                if docs.summary.is_none() {
-                    docs.summary = summary.map(::std::string::ToString::to_string);
-                }
-                if docs.description.is_none() {
-                    docs.description = description.map(::std::string::ToString::to_string);
-                }
+                docs.set_summary_if_absent(
+                    summary.map(::std::string::ToString::to_string),
+                );
+                docs.set_description_if_absent(
+                    description.map(::std::string::ToString::to_string),
+                );
             }
         }
     });
@@ -428,8 +431,7 @@ pub(super) fn expand_entry(
                 shim_auth: #shim_auth,
                 hidden: #hidden,
                 absolute: #absolute,
-                validate: #validate,
-                validate_body: #validate_body,
+                validation: #validation,
                 unverified: #unverified,
                 deprecated: #deprecated,
                 public: #public,

@@ -9,7 +9,7 @@ use axum::routing::MethodRouter;
 
 use crate::build_error::BuildError;
 use crate::problem::Problem;
-use crate::registry::{Module, RouteRecord};
+use crate::registry::{Module, RouteRecord, ValidationPolicy};
 
 use super::app::ValidationDefaults;
 use super::built::ResolvedRoute;
@@ -273,13 +273,16 @@ where
         method_router.with_state::<()>(())
     };
 
-    if !record.validate {
-        method_router = method_router.layer(axum::middleware::from_fn(skip_validation));
-    } else if !record.validate_body {
-        method_router = method_router.layer(axum::middleware::from_fn(skip_body_validation));
+    match record.validation {
+        ValidationPolicy::Off => {
+            method_router = method_router.layer(axum::middleware::from_fn(skip_validation));
+        }
+        ValidationPolicy::PartsOnly => {
+            method_router = method_router.layer(axum::middleware::from_fn(skip_body_validation));
+        }
+        ValidationPolicy::Schema => {}
     }
-    if record.validate
-        && record.validate_body
+    if record.validation.validates_body()
         && let Some(engine) = engine
         && let Some(type_id) = route_bodies
             .get(&route.operation_id)

@@ -71,7 +71,7 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
     let krate = crate::util::krate();
     let ReturnType::Type(_, ty) = output else {
         return Ok(vec![quote! {
-            docs.responses.push(#krate::doc::ResponseDoc::new(204, "No Content"));
+            docs.push_response(#krate::doc::ResponseDoc::new(204, "No Content"));
         }]);
     };
 
@@ -80,10 +80,10 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
     if contains_impl_trait(ty) {
         return Ok(match outer_ident(ty).as_deref() {
             Some("Sse") => vec![quote! {
-                docs.responses.push(#krate::attachment::sse_response(200));
+                docs.push_response(#krate::attachment::sse_response(200));
             }],
             Some("File") => vec![quote! {
-                docs.responses.push(#krate::attachment::file_response(200));
+                docs.push_response(#krate::attachment::file_response(200));
             }],
             _ => Vec::new(),
         });
@@ -98,7 +98,7 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
         let err = &generic[1];
         let ok_statement = if is_vec_u8(ok) {
             quote! {
-                docs.responses.push(#krate::doc::bytes_response(200));
+                docs.push_response(#krate::doc::bytes_response(200));
             }
         } else {
             quote! {
@@ -107,7 +107,7 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
                     (&#krate::__private::ResponseProbe::<#ok>::new()).probe_responses(context)
                 } {
                     ::core::option::Option::Some(__rh_responses) => {
-                        docs.responses.extend(__rh_responses);
+                        docs.extend_responses(__rh_responses);
                     }
                     ::core::option::Option::None => {}
                 }
@@ -120,7 +120,7 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
                 (&#krate::__private::ResponseProbe::<#err>::new()).probe_responses(context)
             } {
                 ::core::option::Option::Some(__rh_responses) => {
-                    docs.responses.extend(__rh_responses);
+                    docs.extend_responses(__rh_responses);
                 }
                 ::core::option::Option::None => {
                     docs.verification.set_undocumented_error(::core::any::type_name::<#err>());
@@ -133,14 +133,14 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
     // generic `ApiResponse for Vec<T>` impl would otherwise document it as an integer array.
     if is_vec_u8(ty) {
         return Ok(vec![quote! {
-            docs.responses.push(#krate::doc::bytes_response(200));
+            docs.push_response(#krate::doc::bytes_response(200));
         }]);
     }
 
     let unknown = match outer_ident(ty).as_deref() {
         Some("Json" | "Vec") => quote! {
             docs.verification.mark_response();
-            docs.responses.push(#krate::doc::ResponseDoc::new(200, "OK"));
+            docs.push_response(#krate::doc::ResponseDoc::new(200, "OK"));
         },
         _ => quote!(),
     };
@@ -151,7 +151,7 @@ pub(super) fn response_statements(output: &ReturnType) -> syn::Result<Vec<TokenS
             (&#krate::__private::ResponseProbe::<#ty>::new()).probe_responses(context)
         } {
             ::core::option::Option::Some(__rh_responses) => {
-                docs.responses.extend(__rh_responses);
+                docs.extend_responses(__rh_responses);
             }
             ::core::option::Option::None => {
                 #unknown

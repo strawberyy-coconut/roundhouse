@@ -121,10 +121,7 @@ impl DocumentBuild<'_> {
 
             context.set_source(route.record.source_ref());
             let mut docs = (route.record.docs)(&mut context);
-            if route.record.validate
-                && route.record.validate_body
-                && docs.verification.body_verified()
-            {
+            if route.record.validation.validates_body() && docs.verification.body_verified() {
                 docs.verification.clear_body();
             }
             if let Some(custom) = route.record.doc {
@@ -149,7 +146,10 @@ impl DocumentBuild<'_> {
             // acknowledges the remaining markers on the whole operation. Neither should make a
             // strict build fail or print a warning: the document already records the opt-out.
             let acknowledged = route.record.unverified.is_some();
-            if docs.verification.body() && route.record.validate_body && !acknowledged {
+            if docs.verification.body()
+                && !route.record.validation.body_opt_out_is_explicit()
+                && !acknowledged
+            {
                 if self.strict {
                     return Err(BuildError::UnverifiedBody {
                         operation_id: route.operation_id.clone(),

@@ -47,7 +47,7 @@ into a public document.
 
 Operation prose:
 
-1. `doc = |docs| ..` hook on the entry (it can set `docs.summary` / `docs.description`),
+1. `doc = |docs| ..` hook on the entry (it can call `docs.set_summary()` / `docs.set_description()`),
 2. the handler's `@summary:` / `@description:`,
 3. the entry's `prose = ..` (it only fills fields the handler left empty),
 4. nothing.

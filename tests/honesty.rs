@@ -195,6 +195,30 @@ mod foreign {
     }
 }
 
+// The acknowledgement is orthogonal to the validation policy: an unverified extractor or
+// response can occur on a fully validated route, so `Schema` must still honour `unverified`.
+mod acknowledged_schema {
+    use super::*;
+
+    routes! {
+        prefix = "/acknowledged",
+
+        "/request" => {
+            post(
+                request,
+                operation_id = "acknowledged_request",
+                unverified = "the foreign body type publishes no schema",
+            )
+        },
+    }
+
+    #[handler]
+    pub async fn request(body: axum::Json<foreign::Plain>) -> StatusCode {
+        let _ = body;
+        StatusCode::NO_CONTENT
+    }
+}
+
 // Duplicates inside one table are rejected by `routes!` during expansion (see
 // tests/ui). These modules keep the aggregate check covered: two separate tables can still
 // resolve to the same route, and that is a `try_build` error.
@@ -240,6 +264,58 @@ mod cross_duplicate_route_b {
     routes! {
            prefix = "/cross-dup",
     "/x" => { get(b, operation_id = "cross_dup_b") } }
+
+    #[handler]
+    pub async fn b() -> &'static str {
+        "b"
+    }
+}
+
+mod any_route_first {
+    use super::*;
+
+    routes! {
+           prefix = "/any-first",
+    "/x" => { any(a, operation_id = "any_first_a") } }
+
+    #[handler]
+    pub async fn a() -> &'static str {
+        "a"
+    }
+}
+
+mod any_route_second {
+    use super::*;
+
+    routes! {
+           prefix = "/any-first",
+    "/x" => { get(b, operation_id = "any_first_b") } }
+
+    #[handler]
+    pub async fn b() -> &'static str {
+        "b"
+    }
+}
+
+mod explicit_route_first {
+    use super::*;
+
+    routes! {
+           prefix = "/explicit-first",
+    "/x" => { get(a, operation_id = "explicit_first_a") } }
+
+    #[handler]
+    pub async fn a() -> &'static str {
+        "a"
+    }
+}
+
+mod explicit_route_second {
+    use super::*;
+
+    routes! {
+           prefix = "/explicit-first",
+    "/x" => { any(b, operation_id = "explicit_first_b") } }
 
     #[handler]
     pub async fn b() -> &'static str {
@@ -385,6 +461,26 @@ fn foreign_extractors_are_marked_and_strict_turns_the_marker_into_an_error() {
 }
 
 #[test]
+fn an_acknowledgement_can_cover_an_extractor_on_a_validated_route() {
+    let app = scoped(&acknowledged_schema::MODULE)
+        .strict()
+        .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
+        .try_build()
+        .expect("the acknowledgement must satisfy strict without disabling validation");
+    let document = document(app);
+    assert_eq!(
+        document["paths"]["/acknowledged/request"]["post"]["x-roundhouse-unverified-extractor"],
+        true
+    );
+    assert!(
+        document["paths"]["/acknowledged/request"]["post"]
+            .get("x-roundhouse-validation")
+            .is_none(),
+        "the route still validates; acknowledgement only silences the diagnostic"
+    );
+}
+
+#[test]
 fn problem_error_type_documents_a_default_problem_response() {
     let app = scoped(&problem_error::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Honesty", "0.1.0"))
@@ -487,6 +583,25 @@ fn cross_table_duplicate_routes_fail_the_build() {
         .expect("two tables resolving to GET /cross-dup/x must fail");
     assert!(matches!(error, BuildError::DuplicateRoute { .. }));
     assert!(error.to_string().contains("/cross-dup/x"));
+}
+
+#[test]
+fn an_any_route_conflicts_with_an_explicit_method_in_both_orders() {
+    for (first, second) in [
+        (&any_route_first::MODULE, &any_route_second::MODULE),
+        (
+            &explicit_route_first::MODULE,
+            &explicit_route_second::MODULE,
+        ),
+    ] {
+        let error = App::new(State)
+            .include(first)
+            .include(second)
+            .try_build()
+            .err()
+            .expect("an `any` route and an explicit method on one shape must conflict");
+        assert!(matches!(error, BuildError::DuplicateRoute { .. }));
+    }
 }
 
 #[test]

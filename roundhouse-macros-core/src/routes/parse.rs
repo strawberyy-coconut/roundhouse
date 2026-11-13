@@ -40,6 +40,9 @@ pub(super) struct Entry {
     pub(super) absolute: bool,
     pub(super) validate: bool,
     pub(super) validate_body: bool,
+    /// Spans of explicit `validate` / `validate_body` values, for the contradictory-pair error.
+    pub(super) validate_span: Option<proc_macro2::Span>,
+    pub(super) validate_body_span: Option<proc_macro2::Span>,
     /// An explicit acknowledgement of an intentional unverified body/response/extractor.
     pub(super) unverified: Option<LitStr>,
     pub(super) deprecated: bool,
@@ -64,6 +67,8 @@ impl Entry {
             absolute: false,
             validate: true,
             validate_body: true,
+            validate_span: None,
+            validate_body_span: None,
             unverified: None,
             deprecated: false,
             public: false,
@@ -232,6 +237,17 @@ fn parse_entry_options(content: ParseStream<'_>, entry: &mut Entry) -> Result<()
         let key: Ident = content.call(Ident::parse_any)?;
         parse_entry_key(content, entry, key)?;
     }
+    if !entry.validate
+        && entry.validate_body
+        && let (Some(off), Some(on)) = (entry.validate_span, entry.validate_body_span)
+    {
+        let mut error = syn::Error::new(
+            on,
+            "`validate_body = true` has no effect when `validate = false`; remove it",
+        );
+        error.combine(syn::Error::new(off, "this disables the whole route"));
+        return Err(error);
+    }
     Ok(())
 }
 
@@ -300,11 +316,13 @@ fn parse_entry_key(content: ParseStream<'_>, entry: &mut Entry, key: Ident) -> R
             content.parse::<Token![=]>()?;
             let value: syn::LitBool = content.parse()?;
             entry.validate = value.value;
+            entry.validate_span = Some(value.span());
         }
         "validate_body" => {
             content.parse::<Token![=]>()?;
             let value: syn::LitBool = content.parse()?;
             entry.validate_body = value.value;
+            entry.validate_body_span = Some(value.span());
         }
         "unverified" => {
             content.parse::<Token![=]>()?;

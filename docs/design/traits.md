@@ -272,23 +272,17 @@ pub struct Verification {
 }
 
 pub enum ValidationPolicy { Schema, PartsOnly, Off }
-
-pub enum BodyPolicy {
-    Validate,
-    Opaque,
-    Unverified(&'static str),
-}
 ```
 
 `Verification` *(implemented)* groups the old `unverified`, `unverified_response`,
 `unverified_extractor`, `undocumented_error` and `unbounded_file_fields` fields behind private
-state and explicit transitions, so the builder owns the invariants. `BodyPolicy` — replacing the
-`validate` / `validate_body` / `unverified` triple on `RouteRecord` — remains the target.
+state and explicit transitions, so the builder owns the invariants. `ValidationPolicy` *(implemented)*
+replaces the `validate` / `validate_body` pair on `RouteRecord`; the acknowledgement stays a
+separate field because it can also cover an unverified response or extractor on a validated route.
 
-The field list of `OperationDoc` is not the important change. The name, the builder methods and the
-merge rules are. The `doc = |docs| …` hook still receives `OperationDoc` with public fields;
-the follow-up is to expose methods such as `push_param`, `set_body`, `add_response` and
-`mark_unverified` instead.
+`OperationDoc` *(implemented)* now has crate-private fields, public builder methods
+(`push_param`, `set_body`, `push_response`, …) and read accessors, so the `doc = |docs| …` hook
+mutates through named transitions instead of assigning fields.
 
 ## Probe and shim consolidation
 
@@ -365,10 +359,10 @@ until a phase explicitly changes behaviour.
 6. **Make `ExtractArg` return `ArgDoc`.** *(done)* Add the `Option`/`Result` wrapper impls, delete
    `document_optional`/`document_result`, and update the shim to merge contributions. Update
    `docs/design/extensibility.md` and the custom-extractor example.
-7. **Replace `HandlerDocs` with `OperationDoc`.** *(done, except hook ergonomics)* Split
-   `HandlerMeta` into `HandlerSpec` and `DocSource`, remove `docs_with(validate)`, and move route
-   policy into the builder. `HandlerDocs` remains as a compatibility alias; the `doc = |docs|`
-   hook still uses public fields, and builder methods are a follow-up.
+7. **Replace `HandlerDocs` with `OperationDoc`.** *(done)* Split `HandlerMeta` into `HandlerSpec`
+   and `DocSource`, remove `docs_with(validate)`, and move route policy into the builder.
+   `HandlerDocs` remains as a compatibility alias; the `doc = |docs|` hook uses the builder
+   methods and read accessors.
 8. **Fold auth scopes.** *(done)* Replace `AuthScopes` + `Authorize<A>` with `Scopes<A>`, and update
    `Auth<A, Scopes>` and the auth example.
 9. **Split the macro implementation (separate decision).** *(done)* Move parsing, table validation and
@@ -401,8 +395,9 @@ until a phase explicitly changes behaviour.
   `HandlerSpec`/`DocSource`, and the auth triple are the extension surface. Narrow traits such as
   `AttachmentType`, `MultipartForm` and `Rejection` stay because they have one clear subject.
 - **Traits return data; the builder owns merge rules.** No trait receives `&mut OperationDoc`.
-- **Policy is a value, not booleans.** `BodyPolicy` and `ValidationPolicy` replace independent
-  flags on `RouteRecord`.
+- **Policy is a value, not booleans.** `ValidationPolicy` replaces independent flags on
+  `RouteRecord`; the acknowledgement stays separate because it covers body, response and extractor
+  markers.
 - **Renaming is separate from reshaping.** `ApiSchema`, `ApiResponse` and `ExtractArg` can keep
   their names through this refactor. The role names in this note are working names, not a
   commitment to rename.
@@ -420,9 +415,9 @@ until a phase explicitly changes behaviour.
 3. **Where does `Params` live?** It needs `DocContext`, which is axum-shaped. Put the trait in
    `roundhouse` and re-export it, or define a minimal `ParamsContext` in `roundhouse-schema` so
    the schema crate can own the trait without depending on axum.
-4. **Should the `doc = |docs|` hook move to builder methods?** `OperationDoc` fields are still
-   public for compatibility. A method-only surface would protect the merge invariants, but it is
-   a breaking change for existing hooks.
+4. **Should the `doc = |docs|` hook move to builder methods?** *(done)* `OperationDoc` fields are
+   crate-private, and hooks mutate through `set_*`/`push_*`/`extend_*` methods. This protects the
+   merge invariants; the read accessors keep `ResolvedRoute::docs()` inspectable.
 5. **Should `ApiError` remain a marker?** It lets the derive enforce a 4xx/5xx-only contract. If
    that contract moves into `ApiResponse::SUCCESS` validation, the marker can go.
 

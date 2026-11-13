@@ -249,7 +249,7 @@ mod dangling_reference {
         prefix = "/dangling",
         "/" => {
             get(list, doc = |docs| {
-                docs.params.push(Param::new(
+                docs.push_param(Param::new(
                     "missing",
                     ParamIn::Query,
                     roundhouse::doc::schema::r#ref("Missing"),

@@ -357,8 +357,7 @@ impl DocumentBuild<'_> {
             self.parts.push(((part.type_id)(), (part.schema)(context)));
         }
         if let Some(body) = docs.body {
-            if route.record.validate
-                && route.record.validate_body
+            if route.record.validation.validates_body()
                 && let Some(body_type) = docs.body_type
             {
                 let type_id = body_type();
@@ -396,10 +395,14 @@ impl DocumentBuild<'_> {
         if route.record.public {
             extensions = extensions.add("x-roundhouse-public", true);
         }
-        if !route.record.validate {
-            extensions = extensions.add("x-roundhouse-validation", false);
-        } else if !route.record.validate_body {
-            extensions = extensions.add("x-roundhouse-body-validation", false);
+        match route.record.validation {
+            crate::registry::ValidationPolicy::Off => {
+                extensions = extensions.add("x-roundhouse-validation", false);
+            }
+            crate::registry::ValidationPolicy::PartsOnly => {
+                extensions = extensions.add("x-roundhouse-body-validation", false);
+            }
+            crate::registry::ValidationPolicy::Schema => {}
         }
         if !self.include_rejections {
             extensions = extensions.add("x-roundhouse-rejections", "none");

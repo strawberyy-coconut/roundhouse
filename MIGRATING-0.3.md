@@ -47,10 +47,25 @@ Untagged doc comments are ignored for OpenAPI. For a per-mount override, use a `
 ```rust
 "/admin/notes" => {
     post(create, doc = |docs| {
-        docs.summary = Some("Create a note as an administrator".to_string());
+        docs.set_summary("Create a note as an administrator");
     }),
 },
 ```
+
+## `doc` hooks use builder methods
+
+`OperationDoc`'s fields are private in 0.3. A `doc` hook mutates through named methods, and
+`ResolvedRoute::docs()` reads through accessors:
+
+```rust
+post(create, doc = |docs| {
+    docs.push_param(Param::new("x-tenant", ParamIn::Header, schema::string()));
+})
+```
+
+The method families are `set_*`/`push_*`/`extend_*` for mutation and plain getters
+(`summary()`, `params()`, `body()`, `responses()`, …) for inspection. `response_mut(status)`
+adjusts one inferred response in place.
 
 ## Responses
 
@@ -187,7 +202,7 @@ ledger is part of the context, not a thread-local, so registration is explicit a
 `HandlerMeta` is split into `HandlerSpec` (state, captures, required auth and success statuses)
 and `DocSource` (the operation document). The old `HandlerMeta` remains as a combined marker.
 `HandlerDocs` is now `OperationDoc`; the old name remains as a compatibility alias, and the
-`doc = |docs|` hook still receives it.
+`doc = |docs|` hook still receives it through its builder methods.
 
 ## Routers
 

@@ -145,13 +145,13 @@ pub fn expand(item: ItemFn) -> TokenStream {
     if let Some(summary) = &tags.summary {
         let summary = syn::LitStr::new(summary, item.sig.ident.span());
         statements.push(quote! {
-            docs.summary = ::core::option::Option::Some(#summary.to_string());
+            docs.set_summary(#summary.to_string());
         });
     }
     if let Some(description) = &tags.description {
         let description = syn::LitStr::new(description, item.sig.ident.span());
         statements.push(quote! {
-            docs.description = ::core::option::Option::Some(#description.to_string());
+            docs.set_description(#description.to_string());
         });
     }
     statements.extend(declared_responses);
@@ -364,10 +364,10 @@ fn path_statements(tags: &DocTags) -> syn::Result<Vec<TokenStream>> {
         let name_lit = LitStr::new(name, line.span);
         let description_lit = LitStr::new(description, line.span);
         statements.push(quote! {
-            docs.path_descriptions.push((
+            docs.push_path_description(
                 #name_lit.to_string(),
                 #description_lit.to_string(),
-            ));
+            );
         });
     }
     Ok(statements)
@@ -393,7 +393,7 @@ fn declared_response_statements(
     let mut statements = Vec::new();
     if section.override_existing {
         statements.push(quote! {
-            docs.declared_response_override = true;
+            docs.set_declared_response_override();
         });
     }
 
@@ -412,19 +412,19 @@ fn declared_response_statements(
 
         statements.push(match body {
             ResponseBody::Empty => quote! {
-                docs.declared_responses.push(#krate::doc::ResponseDoc::new(
+                docs.push_declared_response(#krate::doc::ResponseDoc::new(
                     #status,
                     #krate::doc::canonical_reason(#status),
                 ));
             },
             ResponseBody::Problem => quote! {
-                docs.declared_responses.push(#krate::doc::ResponseDoc::problem(
+                docs.push_declared_response(#krate::doc::ResponseDoc::problem(
                     #status,
                     #krate::doc::canonical_reason(#status),
                 ));
             },
             ResponseBody::Json(ty) => quote! {
-                docs.declared_responses.push({
+                docs.push_declared_response({
                     use #krate::__private::ProbeJsonResponseDoc as _;
                     (&#krate::__private::JsonResponseDocProbe::<#ty>::new())
                         .probe_json_response_doc(context, #status)
@@ -483,7 +483,7 @@ fn response_description_statements(tags: &DocTags) -> syn::Result<Vec<TokenStrea
         let description = syn::LitStr::new(description, line.span);
         let status = proc_macro2::Literal::u16_suffixed(status);
         statements.push(quote! {
-            docs.response_descriptions.push((#status, #description.to_string()));
+            docs.push_response_description(#status, #description.to_string());
         });
     }
     Ok(statements)

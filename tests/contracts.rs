@@ -21,7 +21,7 @@ mod manual {
             operation_id = "manual_show",
             doc = |docs| {
                 docs.verification.clear_extractor();
-                docs.params.push(
+                docs.push_param(
                     roundhouse::Param::new(
                         "trace",
                         roundhouse::ParamIn::Query,
@@ -110,12 +110,12 @@ mod manual_conflict {
         "/items/{id}" => { get(show,
             operation_id = "manual_conflict_show",
             doc = |docs| {
-                docs.params.push(roundhouse::Param::new(
+                docs.push_param(roundhouse::Param::new(
                     "id",
                     roundhouse::ParamIn::Path,
                     roundhouse::doc::schema::string(),
                 ));
-                docs.params.push(roundhouse::Param::new(
+                docs.push_param(roundhouse::Param::new(
                     "id",
                     roundhouse::ParamIn::Path,
                     roundhouse::doc::schema::integer(
@@ -151,7 +151,7 @@ mod manual_unknown {
         "/items" => { get(show,
             operation_id = "manual_unknown_show",
             doc = |docs| {
-                docs.params.push(roundhouse::Param::new(
+                docs.push_param(roundhouse::Param::new(
                     "ghost",
                     roundhouse::ParamIn::Path,
                     roundhouse::doc::schema::string(),

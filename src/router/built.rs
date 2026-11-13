@@ -93,6 +93,9 @@ impl Built {
     }
 
     /// Send one request through the router.
+    ///
+    /// Test helper: prefer [`Self::router`] in production code.
+    #[doc(hidden)]
     pub async fn oneshot(&self, request: Request<Body>) -> Response {
         self.router
             .clone()
@@ -101,6 +104,8 @@ impl Built {
             .expect("axum Router is infallible")
     }
 
+    /// `GET` one URI, for tests.
+    #[doc(hidden)]
     pub async fn oneshot_get(&self, uri: &str) -> Response {
         let request = Request::builder()
             .method(http::Method::GET)
@@ -110,6 +115,8 @@ impl Built {
         self.oneshot(request).await
     }
 
+    /// Send a JSON request, for tests.
+    #[doc(hidden)]
     pub async fn oneshot_json(&self, method: http::Method, uri: &str, body: &str) -> Response {
         let request = Request::builder()
             .method(method)
