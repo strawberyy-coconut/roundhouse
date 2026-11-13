@@ -88,6 +88,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         }
 
         let fields = collect_fields(&variant.fields)?;
+        validate_field_usage(&variant.ident, &fields)?;
         collect_bounds(&fields, &type_params, &mut runtime_bounds, &mut doc_bounds);
         let body = fields.iter().find(|field| field.body);
         let headers: Vec<&FieldInfo> = fields
@@ -409,6 +410,61 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
         }
 
     })
+}
+
+/// Reject a field that would be silently discarded by `IntoResponse`.
+fn validate_field_usage(variant: &syn::Ident, fields: &[FieldInfo]) -> Result<()> {
+    let mut body: Option<&FieldInfo> = None;
+    let mut location: Option<&FieldInfo> = None;
+    for field in fields {
+        let annotated = field.body
+            || field.header.is_some()
+            || field.location
+            || field.from
+            || field.source
+            || field.ignore;
+        if !annotated {
+            return Err(syn::Error::new_spanned(
+                &field.access,
+                format!(
+                    "response field in `{variant}` is not used; annotate it with `#[body]`, \
+                     `#[header(\"name\")]`, `#[location]`, `#[from]`, `#[source]`, or \
+                     `#[response(ignore)]`"
+                ),
+            ));
+        }
+        if field.ignore
+            && (field.body
+                || field.header.is_some()
+                || field.location
+                || field.from
+                || field.source)
+        {
+            return Err(syn::Error::new_spanned(
+                &field.access,
+                "`#[response(ignore)]` cannot be combined with another response field marker",
+            ));
+        }
+        if field.body {
+            if body.is_some() {
+                return Err(syn::Error::new_spanned(
+                    &field.access,
+                    "a response variant can have at most one `#[body]` field",
+                ));
+            }
+            body = Some(field);
+        }
+        if field.location {
+            if location.is_some() {
+                return Err(syn::Error::new_spanned(
+                    &field.access,
+                    "a response variant can have at most one `#[location]` field",
+                ));
+            }
+            location = Some(field);
+        }
+    }
+    Ok(())
 }
 
 fn collect_bounds(

@@ -1,0 +1,5 @@
+error: a response variant can have at most one `#[body]` field
+  --> tests/ui/response_field_two_bodies.rs:10:9
+   |
+10 |         second: String,
+   |         ^^^^^^

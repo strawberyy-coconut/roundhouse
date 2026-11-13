@@ -1,0 +1,5 @@
+error: response field in `NotFound` is not used; annotate it with `#[body]`, `#[header("name")]`, `#[location]`, `#[from]`, `#[source]`, or `#[response(ignore)]`
+ --> tests/ui/response_field_unused.rs:6:16
+  |
+6 |     NotFound { id: i64 },
+  |                ^^

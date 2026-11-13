@@ -43,7 +43,7 @@ impl Parse for VariantAttrs {
                     let value: LitStr = input.parse()?;
                     description = Some(value.value());
                 }
-                "problem" => {
+                "problem" | "problem_type" => {
                     let value: LitStr = input.parse()?;
                     problem = Some(value.value());
                 }
@@ -90,6 +90,8 @@ pub(super) struct FieldInfo {
     pub(super) header: Option<(String, bool)>,
     pub(super) location: bool,
     pub(super) from: bool,
+    pub(super) source: bool,
+    pub(super) ignore: bool,
 }
 
 pub(super) fn collect_fields(fields: &Fields) -> Result<Vec<FieldInfo>> {
@@ -131,6 +133,7 @@ pub(super) fn field_info(
     let mut location = false;
     let mut from = false;
     let mut source = false;
+    let mut ignore = false;
 
     for attr in attrs {
         if attr.path().is_ident("body") {
@@ -141,6 +144,12 @@ pub(super) fn field_info(
             from = true;
         } else if attr.path().is_ident("source") {
             source = true;
+        } else if attr.path().is_ident("response")
+            && attr
+                .parse_args::<Ident>()
+                .is_ok_and(|flag| flag == "ignore")
+        {
+            ignore = true;
         } else if attr.path().is_ident("header") {
             let (value, append) = attr.parse_args_with(|input: ParseStream<'_>| {
                 let name: LitStr = input.parse()?;
@@ -162,7 +171,7 @@ pub(super) fn field_info(
         }
     }
 
-    if lone_unnamed && header.is_none() && !location && !from && !source {
+    if lone_unnamed && header.is_none() && !location && !from && !source && !ignore {
         body = true;
     }
 
@@ -174,6 +183,8 @@ pub(super) fn field_info(
         header,
         location,
         from,
+        source,
+        ignore,
     })
 }
 
