@@ -23,7 +23,8 @@
 //!
 //! roundhouse::app_state!(());
 //!
-//! #[derive(serde::Serialize, ToSchema)]
+//! #[roundhouse::schema]
+//! #[derive(serde::Serialize)]
 //! pub struct Hello {
 //!     pub message: String,
 //! }
@@ -87,10 +88,11 @@
 //! | [`schema`](mod@schema) | schema derivation and validation without axum |
 //! | `multipart` | `Multipart<F>`, `FilePart`, `TempFile` (feature-gated) |
 //!
-//! The derive macros, `#[roundhouse::schema]` (which derives both `ToSchema` and `ApiSchema`) and
-//! `routes!` are re-exported at the crate root; [`prelude`] is the usual
-//! import for application code. The repository's `docs/design/` notes explain the crate and
-//! feature policy, the routing and document pipelines, validation and the macro diagnostics.
+//! The derive macros, `#[roundhouse::schema]` (the one-annotation schema form) and `routes!` are
+//! re-exported at the crate root; [`prelude`] is the usual import for application code. utoipa is
+//! an implementation detail: use [`interop`] only when sharing types with another utoipa project.
+//! The repository's `docs/design/` notes explain the crate and feature policy, the routing and
+//! document pipelines, validation and the macro diagnostics.
 //!
 //! ## Feature flags
 //!
@@ -104,11 +106,10 @@
 //! | `swagger` | Vendored Swagger UI assets for `App::docs()` and `App::swagger()` (default) |
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
-//! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | `ToSchema`/`ApiSchema` support for those types |
+//! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | schema support for those types |
 //!
-//! `ToSchema` is re-exported by [`prelude`], so `use roundhouse::prelude::*;` makes the derive
-//! available. The prelude also re-exports the `utoipa` module used by the derives; importing
-//! individual items instead uses `use roundhouse::utoipa;`.
+//! `use roundhouse::prelude::*;` is the normal import. utoipa names are hidden plumbing; the
+//! supported integration surface is [`interop`].
 //!
 //! ## Examples
 //!
@@ -246,7 +247,8 @@ macro_rules! impl_from_utoipa {
 
 /// Declare the application state used by every `routes!` table in this crate.
 ///
-/// Call it once at the crate root, before the modules that declare routes:
+/// Call it once at the crate root, before the modules that declare routes. A call inside a nested
+/// module is a compile error, because the route tables would not see the alias:
 ///
 /// ```ignore
 /// roundhouse::app_state!(crate::AppState);
@@ -302,6 +304,8 @@ macro_rules! app {
 ///
 /// It re-exports axum's `State`, `StatusCode`, `HeaderMap`, `IntoResponse`, `Response`, the
 /// extractor traits and SSE types, so a handler module rarely needs a second `use axum::…` line.
+/// The utoipa re-exports here are hidden plumbing for the injected derive; use [`interop`] for
+/// supported integration.
 pub mod prelude {
     #[cfg(feature = "multipart-tempfile")]
     pub use crate::TempFile;

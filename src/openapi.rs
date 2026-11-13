@@ -13,7 +13,8 @@
 //!     .openapi(|| Info::new("Notes API", "0.1.0").description("A small example"));
 //! ```
 //!
-//! [`Components`] is the component table passed to low-level `ApiSchema`/`ApiResponse`
+//! [`Components`](crate::interop::Components) is the component table passed to low-level
+//! `ApiSchema`/`ApiResponse`
 //! implementations. It is re-exported from utoipa so hand-written schema code uses the same
 //! model.
 

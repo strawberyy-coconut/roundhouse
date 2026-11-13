@@ -100,7 +100,7 @@ impl<T>           ProbeArg<T> for &&ArgProbe<T> { /* mark unverified */ }
 ```
 
 The compiler prefers the more specific receiver when the bound holds. When it does not, the
-argument's `ArgDoc` has `unverified_extractor` set. The build emits a diagnostic, and `strict()`
+argument's `ArgDoc` has `unverified_extractor` set. The build emits a diagnostic, and the strict build
 rejects it. This is the same fallback that keeps a handler using any unregistered extractor
 compiling.
 
@@ -151,7 +151,7 @@ Everything else goes through `ResponseProbe<T>`, which uses the same autoref tri
 implementing `ApiResponse` contributes its responses; a type that only implements
 `IntoResponse` contributes none. A known shape whose probe finds no `ApiResponse` (an `Html` or
 `Created` body without `ApiSchema`, for example) is published with its bare status and
-`x-roundhouse-unverified-response`; `strict()` rejects it. An unknown shape reaches the
+`x-roundhouse-unverified-response`; the strict build rejects it. An unknown shape reaches the
 undeclared-success check.
 
 `Result<_, Problem>` documents a `default` problem response. `ApiError`/`ApiResponse` derives
@@ -201,38 +201,39 @@ location needs `T: TryInto<HeaderValue>` and the schema bound. The built-in `Cre
 
 ## `ApiSchema` vs `ToSchema`
 
-`utoipa::ToSchema` supplies the shape. `ApiSchema` is the roundhouse adapter:
+The schema engine (currently utoipa) supplies the shape internally. `ApiSchema` is the roundhouse
+adapter:
 
 - it registers the type as a named component (`$ref`);
 - it applies the roundhouse-only patches (`unique_items`, the `url` → `uri` format mapping);
 - it carries `validate_with` hooks (`validate_at`);
-- it exposes the type's `#[schema(description = "…")]` or `@description:` through `description()`,
+- it exposes the type's `#[roundhouse(description = "…")]` or `@description:` through `description()`,
   used for response prose;
 - it is the bound automatic body and JSON response documentation requires.
 
-`#[roundhouse::schema]` is the one-annotation form: it re-emits a struct or enum with
-`#[derive(ToSchema, ApiSchema)]`. The two-derive form remains valid and explicit. A derive cannot
-invoke another derive, so an attribute macro is the only way to make one annotation provide both;
-the attribute must be the outermost attribute and cannot be combined with a separate `ToSchema` or
-`ApiSchema` derive.
+`#[roundhouse::schema]` is the one-annotation form: it re-emits a struct or enum with the internal
+schema derive and `ApiSchema`. A derive cannot invoke another derive, so an attribute macro is the
+only way to make one annotation provide both; the attribute must be the outermost attribute and
+cannot be combined with a separate schema or `ApiSchema` derive.
 
-A type that only derives `ToSchema` can still be documented explicitly:
+A type that only implements utoipa's `ToSchema` can still be documented explicitly through the
+interop surface:
 
 - `#[handler(response(200, Type))]` on the handler accepts either trait;
 - a `doc = |docs| ..` hook can set a body or response by hand;
 - `roundhouse::doc::json_body_to_schema::<T>` builds a `BodyDoc` in that hook;
-- for generated types, `roundhouse::impl_api_schema!(Type);` implements the adapter. It inserts
+- for generated types, `roundhouse::interop::impl_from_utoipa!(Type);` implements the adapter. It inserts
   the type's own component and registers everything reachable through `ToSchema::schemas()`.
 
 What it cannot do is be inferred from `Json<T>` automatically. `Json<T>: ApiResponse` requires
-`T: ApiSchema`, so a plain `ToSchema` return type lands on the unverified fallback and `strict()`
-rejects it. That is intentional: the document would otherwise promise the unpatched shape. A
+`T: ApiSchema`, so a plain `ToSchema` return type lands on the unverified fallback and the strict
+build rejects it. That is intentional: the document would otherwise promise the unpatched shape. A
 blanket `impl<T: ToSchema> ApiSchema for T` is impossible because it overlaps the derive and the
 primitive implementations.
 
-Component names follow utoipa. Two different Rust types that register the same name are a
-`BuildError::ComponentCollision`; `#[schema(as = module::Name)]` disambiguates them (utoipa formats
-the component name with dots: `module.Name`).
+Component names are the Rust type name by default. Two different Rust types that register the same
+name are a `BuildError::ComponentCollision`; `#[roundhouse(name = "module.Name")]` disambiguates
+them. The document uses the dotted form (`module.Name`).
 
 ## Building the operation
 
@@ -303,7 +304,6 @@ roundhouse adds a small set of `x-roundhouse-*` keys rather than inventing respo
 |---|---|
 | `x-roundhouse-hidden` | The document omits at least one route |
 | `x-roundhouse-merged` | A hand-written router was merged and is not documented |
-| `x-roundhouse-public` | The entry is marked `public` |
 | `x-roundhouse-validation: false` | The route opted out of constraint validation |
 | `x-roundhouse-body-validation: false` | The route kept parts validation and opted the body out |
 | `x-roundhouse-rejections: none` | Extractor rejection responses are not published |

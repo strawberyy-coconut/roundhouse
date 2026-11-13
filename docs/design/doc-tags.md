@@ -72,17 +72,16 @@ Response descriptions:
 
 Parameter descriptions:
 
-1. `#[schema(description = "…")]`,
+1. `#[roundhouse(description = "…")]`,
 2. a typed `path(name, "…")` declaration,
 3. the field's `@description:`,
 4. no description.
 
-## Deprecated compatibility tags
+## Removed compatibility tags
 
 `@responses:`, `@responses(override):`, `@response-descriptions:` and `@path:` were the 0.2 route
-to the same metadata. They still parse so a migration can be incremental, but **new code should
-use the typed attribute**. Declaring the same status or path in both forms is a compile error, so
-the two cannot silently disagree.
+to the same metadata. They were removed in 0.3; use the typed attribute. `MIGRATING-0.3.md` maps
+the old spellings to their replacements.
 
 ## `prose = include_str!(..)`
 

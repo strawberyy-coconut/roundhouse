@@ -69,8 +69,9 @@ routing metadata cannot be inferred from what the function does.
   descriptions and path descriptions.
 
 The prose parser lives in `doc_tags.rs`; the typed metadata parser lives in `handler/args.rs`.
-Untagged prose is ignored for OpenAPI. `@responses:`, `@response-descriptions:` and `@path:`
-remain compatibility syntax for the 0.3 migration. See [Doc tags](doc-tags.md).
+Untagged prose is ignored for OpenAPI. The 0.2 `@responses:`, `@response-descriptions:` and
+`@path:` tags were removed in 0.3; structured metadata lives on `#[handler(..)]`. See
+[Doc tags](doc-tags.md).
 
 ## `#[handler]`
 

@@ -1,7 +1,102 @@
 # Migrating to roundhouse 0.3
 
-0.3 moves operation prose and response declarations onto handler doc tags and removes the
-equivalent `routes!` options. It also adds the ready `App::into_router()`.
+0.3 makes the authoring surface honest by default and removes the 0.2 compatibility spellings.
+Read this section first; the rest of the guide documents the route-table changes that shipped
+with the same release.
+
+## Breaking changes at a glance
+
+### Strict builds are the default
+
+`App::try_build()` now returns `BuildError` for every build diagnostic, not only when
+`App::strict()` is called. A route with an unverified body, response or extractor, an
+undocumented `any` route, an empty module or an unacknowledged `App::merge` fails the build.
+
+- Acknowledge one route with `unverified = "reason"`.
+- Use `validate_body = false` for a body that should be parsed but not schema-checked.
+- Use `App::permissive()` to downgrade the whole app to warnings while migrating.
+- Replace `App::merge(router)` with `App::merge_undocumented(router, "reason")`.
+- `any` routes must be `hidden` or carry an `unverified` acknowledgement.
+
+### `public` is gone
+
+`public` only added an `x-roundhouse-public` extension and never changed authentication, which
+made it easy to confuse with `anonymous`. Use `anonymous` when the route clears inherited
+security. If the extension mattered, add it with a `doc` hook.
+
+### Legacy doc tags are gone
+
+`@responses:`, `@responses(override):`, `@response-descriptions:` and `@path:` no longer parse.
+Use the typed handler attribute:
+
+```rust
+// before
+/// @responses:
+///   201: Note
+/// @path: id: The note id.
+#[handler]
+async fn create(...) { ... }
+
+// after
+#[handler(
+    response(201, Note),
+    path(id, "The note id."),
+)]
+async fn create(...) { ... }
+```
+
+### utoipa moved behind `roundhouse::interop`
+
+The normal authoring path no longer mentions utoipa:
+
+```rust
+use roundhouse::prelude::*;
+
+#[roundhouse::schema]
+#[derive(serde::Serialize)]
+pub struct Note {
+    #[roundhouse(min_length = 1, max_length = 200)]
+    pub title: String,
+}
+```
+
+- `#[roundhouse::schema]` derives the schema and the roundhouse adapter; do not also derive
+  `ToSchema` or `ApiSchema`.
+- Constraints use `#[roundhouse(..)]`. `#[schema(..)]` remains accepted for utoipa interop.
+- Component names use `#[roundhouse(name = "module.Name")]`, not `#[schema(as = ..)]`.
+- `ToSchema`, `PartialSchema`, `Components` and the `utoipa` crate live in
+  `roundhouse::interop`; import them only when sharing types with another utoipa project.
+- `impl_api_schema!` is now `roundhouse::interop::impl_from_utoipa!`.
+- `Info` and `OpenApi` no longer `Deref` to their utoipa values. Use `as_utoipa()` or
+  `into_utoipa()` explicitly.
+
+### Prefix groups are explicit
+
+`"/path" [options] { .. }` is no longer a prefix group. Use:
+
+```rust
+routes! {
+    prefix = "/api",
+
+    "/notes" => { get(list), post(create) },       // path group
+    prefix "/admin" [tags = ["admin"]] {           // nested prefix group
+        "/audit" => { get(audit) },
+    },
+}
+```
+
+### Removed APIs
+
+- `App::router()` — use `App::into_router()` or `Built::router()`.
+- `HandlerDocs` — use `OperationDoc`.
+- `App::merge()` for an undocumented router — use `App::merge_undocumented()`.
+- `app_state!` outside the crate root is now a compile error at the call site.
+
+### `cfg` duplicates
+
+Table-local duplicate checks skip `#[cfg(..)]`-gated entries. A collision that survives `cfg`
+is still a build error in the resolved route table.
+
 
 ## Route table shape
 
@@ -89,8 +184,7 @@ async fn x(...) -> ... { ... }
 ```
 
 `Json<T>` is accepted in a declaration and unwrapped to `T` for the schema comparison. The older
-`@responses:` and `@responses(override):` doc tags still parse, but declaring the same status in
-both forms is a compile error.
+`@responses:` and `@responses(override):` doc tags were removed.
 
 ## Response descriptions
 
@@ -156,7 +250,7 @@ pub struct Filter {
 }
 ```
 
-`#[schema(description = "...")]` takes priority.
+`#[roundhouse(description = "...")]` takes priority.
 
 ## Doc-tag sections
 
@@ -174,19 +268,19 @@ Doc comments are for prose. Structured response and path metadata lives on the h
 async fn create(...) -> ... { ... }
 ```
 
-The older `@responses:`, `@response-descriptions:` and `@path:` tags still parse as compatibility
-syntax, but new code should use the typed form.
+The older `@responses:`, `@response-descriptions:` and `@path:` tags were removed in this release;
+use the typed form.
 
 ## Components
 
 Two different Rust types that register the same component name are now a
-`BuildError::ComponentCollision`. Disambiguate with `#[schema(as = module::Name)]`; utoipa formats
-the component name with dots (`module.Name`).
+`BuildError::ComponentCollision`. Disambiguate with
+`#[roundhouse(name = "module.Name")]`; the document uses the dotted form (`module.Name`).
 
-Generated `ToSchema`-only types can opt into the schema adapter without a hand-written impl:
+Generated `ToSchema`-only types can opt into the schema adapter through the interop surface:
 
 ```rust
-roundhouse::impl_api_schema!(generated::Row);
+roundhouse::interop::impl_from_utoipa!(generated::Row);
 ```
 
 ## Traits and extractors
@@ -245,12 +339,12 @@ ledger is part of the context, not a thread-local, so registration is explicit a
 
 `HandlerMeta` is split into `HandlerSpec` (state, captures, required auth and success statuses)
 and `DocSource` (the operation document). The old `HandlerMeta` remains as a combined marker.
-`HandlerDocs` is now `OperationDoc`; the old name remains as a compatibility alias, and the
-`doc = |docs|` hook still receives it through its builder methods.
+`HandlerDocs` is now `OperationDoc`; the old name was removed. The `doc = |docs|` hook still
+receives `OperationDoc` through its builder methods.
 
 ## Routers
 
-`App::router()` is deprecated. Use:
+`App::router()` was removed. Use:
 
 ```rust
 let router = app.into_router(); // axum::Router<()>
@@ -287,7 +381,7 @@ A handler with no return type documents `200 OK`, matching the response axum act
 A known return shape whose body type publishes no schema is now documented with its bare status
 and `x-roundhouse-unverified-response` instead of leaving the response out and failing the build.
 This applies to `Json`/`Vec` (as before) and now also to `Html`, `Created` and the other known
-shapes. `strict()` still rejects the marker unless the entry acknowledges it with
+shapes. The strict default rejects the marker unless the entry acknowledges it with
 `unverified = "reason"`.
 
 Tuples other than `(StatusCode, T)` are no longer classified from their last element. They are

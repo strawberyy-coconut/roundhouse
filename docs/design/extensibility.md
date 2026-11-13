@@ -10,7 +10,7 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 |---|---|
 | A custom axum extractor with parameters, a body or auth | `ExtractArg` |
 | A custom response type with a status, body or headers | `ApiResponse` |
-| A documented JSON body or response type | `ApiSchema` (with `ToSchema`) |
+| A documented JSON body or response type | `ApiSchema` (or `#[roundhouse::schema]`) |
 | A query or path struct | `#[derive(QueryParams)]`, `#[derive(PathParams)]` |
 | A tower layer that terminates requests | `App::layer_documented` or a `doc = ..` hook |
 | Metadata the declarations cannot derive | `App::document(..)` |
@@ -105,7 +105,7 @@ resolves through autoref specialization:
 - if `T: ExtractArg`, the specific impl runs;
 - otherwise the fallback returns an `ArgDoc` with `unverified_extractor` set.
 
-The build emits a diagnostic, and `strict()` rejects the operation. This is why forgetting an
+The build emits a diagnostic, and the strict build rejects the operation. This is why forgetting an
 impl is not a compile error but is a contract gap CI can catch. The same mechanism keeps any
 unregistered extractor compiling.
 
@@ -155,7 +155,7 @@ For an enum of responses, `#[derive(ApiResponse)]` / `#[derive(ApiError)]` gener
 `#[location]` and `#[from]` attributes. That is usually less code than a hand-written impl.
 
 A type that only implements `IntoResponse` still compiles, but contributes no responses. The
-build reports it as undocumented, and `strict()` rejects it. Use `#[handler(response(..))]` if
+build reports it as undocumented, and the strict build rejects it. Use `#[handler(response(..))]` if
 you cannot change the type.
 
 Generic enums are supported. The derive copies the enum's generics and `where` clause, then adds
@@ -169,21 +169,23 @@ wrappers cover the common cases without a derive.
 For a documented body or JSON response, derive both:
 
 ```rust
-#[derive(serde::Serialize, serde::Deserialize, roundhouse::ToSchema, roundhouse::ApiSchema)]
+#[roundhouse::schema]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Signup {
-    #[schema(min_length = 3, max_length = 32)]
+    #[roundhouse(min_length = 3, max_length = 32)]
     pub user_name: String,
     #[roundhouse(unique_items)]
     pub roles: Vec<String>,
 }
 ```
 
-`ToSchema` supplies the shape; `ApiSchema` registers it as a named component, applies the
-roundhouse-only patches and carries `validate_with` hooks. Automatic `Json<T>` / `Form<T>`
+The schema engine supplies the shape; `ApiSchema` registers it as a named component, applies the
+roundhouse patches and carries `validate_with` hooks. Automatic `Json<T>` / `Form<T>`
 documentation requires it.
 
-A `ToSchema`-only type is still usable explicitly:
+A type that only implements utoipa's `ToSchema` is still usable explicitly through the interop
+surface:
 
 ```rust
 #[handler(response(200, Report))]
@@ -210,13 +212,13 @@ implements `ApiSchema`. Explicit documentation and automatic enforcement are the
 
 `#[derive(QueryParams)]` and `#[derive(PathParams)]` generate the parameter table, the parts
 schema and the value conversion used by the engine. A field's `@description:` supplies the
-parameter description; `#[schema(description = "...")]` takes priority:
+parameter description; `#[roundhouse(description = "...")]` takes priority:
 
 ```rust
 #[derive(serde::Deserialize, roundhouse::QueryParams)]
 pub struct Filter {
     /// @description: Free-text search.
-    #[schema(min_length = 1)]
+    #[roundhouse(min_length = 1)]
     pub search: Option<String>,
     pub tags: Vec<String>,
 }
@@ -315,7 +317,7 @@ changes.
   the generated code. The document build owns a `DocContext` and its component ledger; there is
   no process-wide map to register into.
 - **Forgetting a trait is not a compile error.** It is an unverified marker plus a diagnostic,
-  promoted by `strict()`. This keeps foreign types usable without forcing impls.
+  promoted by the strict build. This keeps foreign types usable without forcing impls.
 - **The document checks still apply to extensions.** A custom parameter, body or response is
   merged like any other, including capture and conflict validation.
 

@@ -159,7 +159,7 @@ where
     ///
     /// Prefer [`App::merge`] when the router can be replaced by `routes!` declarations. This
     /// method exists for routers that cannot be expressed as roundhouse routes; it records the
-    /// author's reason in [`Built::merges`] and keeps the document's `x-roundhouse-merged`
+    /// author's reason in [`crate::Built::merges`] and keeps the document's `x-roundhouse-merged`
     /// marker.
     #[track_caller]
     pub fn merge_undocumented(self, router: Router<()>, reason: &'static str) -> Self {
@@ -303,7 +303,7 @@ where
     /// Downgrade build diagnostics to warnings.
     ///
     /// This is the explicit escape hatch for an application that cannot make every route honest
-    /// yet. The warnings are still collected in [`Built::diagnostics`] and printed by
+    /// yet. The warnings are still collected in [`crate::Built::diagnostics`] and printed by
     /// [`App::build`]. Prefer fixing the declarations or acknowledging them per route.
     pub fn permissive(mut self) -> Self {
         self.strict = false;

@@ -170,14 +170,14 @@ use proc_macro::TokenStream;
 /// - `validate = false` — parse the request as usual but skip `#[roundhouse(..)]` constraint
 ///   validation for this route. Malformed bodies are still rejected. The document records
 ///   `x-roundhouse-validation: false`. This is a whole-route opt-out; `unverified = "reason"`
-///   acknowledges it so `strict()` passes.
+///   acknowledges it so the strict build passes.
 /// - `validate_body = false` — keep path, query and form validation, but treat the request body
 ///   as opaque: do not install the raw JSON layer, run body schemas or body hooks. Malformed
 ///   JSON is still rejected during extraction. The document records
 ///   `x-roundhouse-body-validation: false`; unlike `validate = false`, this is quiet under
-///   `strict()` because it is a precise body policy.
+///   the strict build because it is a precise body policy.
 /// - `unverified = "reason"` — acknowledge an intentional unverified body, response or extractor
-///   on this operation. It suppresses the build diagnostic and lets `strict()` pass, while the
+///   on this operation. It suppresses the build diagnostic and lets the strict build pass, while the
 ///   `x-roundhouse-unverified-*` extension still tells document consumers the truth.
 ///
 ///   Validation is on by default. The route's generated shim checks every argument whose type
@@ -315,7 +315,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
 ///   responses; otherwise the build reports an undocumented error.
 ///
 /// A known shape whose body type publishes no schema (for example `Created<T>` where `T` is only
-/// `Serialize`) is documented with its status and `x-roundhouse-unverified-response`; `strict()`
+/// `Serialize`) is documented with its status and `x-roundhouse-unverified-response`; the strict build
 /// rejects it unless the entry acknowledges it with `unverified = "reason"`.
 ///
 /// A custom response type implements `ApiResponse` and its `SUCCESS` statuses. For any other

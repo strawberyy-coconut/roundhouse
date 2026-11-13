@@ -31,8 +31,8 @@ routes! { .. }
 ```
 
 `App::build()` panics on failure and prints diagnostics. `App::try_build()` returns a
-`BuildError` instead and is the check hook for CI. `App::strict()` promotes non-fatal
-diagnostics into errors.
+`BuildError` instead and is the check hook for CI. Builds are strict by default: non-fatal
+diagnostics are errors. `App::permissive()` downgrades them to warnings.
 
 ## Declare
 
@@ -123,7 +123,7 @@ These need the composed tree, so they are `BuildError`s from `try_build`:
   used, operation ids are unique, every security requirement names a declared scheme, and
   every operation has a response.
 
-A module that declares no routes and has no routes below it is a diagnostic; `strict()` turns
+A module that declares no routes and has no routes below it is a diagnostic; the strict build turns
 it into an error. The same applies to absolute routes that ignore enclosing policy, merged
 routers, unbounded multipart file fields and the honesty markers described in
 [Documentation](documentation.md).
@@ -179,10 +179,10 @@ App global layers
 ```
 
 `App::into_router()` returns the ready `axum::Router<()>`; state has already been applied, so it
-needs no second `with_state` call. `App::router()` remains for one release as a deprecated
-`Router<S>` wrapper around a fallback service. `App::merge()` is the other escape hatch: the merged
-routes are served but cannot be discovered for the document, so the document is marked
-`x-roundhouse-merged` and the merge is recorded in `Built::merges()`.
+needs no second `with_state` call. `App::merge()` is the other escape hatch: the merged routes are
+served but cannot be discovered for the document, so the document is marked
+`x-roundhouse-merged` and the merge is recorded in `Built::merges()`. An unacknowledged merge is a
+strict build error; use `App::merge_undocumented(router, reason)` to accept it.
 
 ### State and `FromRef` substates
 

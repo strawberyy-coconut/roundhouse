@@ -111,10 +111,10 @@ handler and validates before any extractor can consume the body. The body limit 
 the default is 2 MiB and `App::max_body` raises or lowers it.
 
 `validate = false` is not a silent performance switch: it marks the body unverified in the
-document, and `App::strict()` rejects that marker unless the entry acknowledges it with
+document, and the default strict build rejects that marker unless the entry acknowledges it with
 `unverified = "reason"`. `validate_body = false` is the precise alternative: it records
 `x-roundhouse-body-validation: false`, does not compile a body validator, and is quiet under
-`strict()` because the author made a body-only decision. `Strict<Json<T>>` honors both policies,
+the strict build because the author made a body-only decision. `Strict<Json<T>>` honors both policies,
 so it is not an escape hatch for large bodies.
 
 ### Measured cost
@@ -250,14 +250,14 @@ promise stays true.
 }
 ```
 
-`strict()` rejects a route whose body is unverified unless the entry acknowledges it with
+the strict build rejects a route whose body is unverified unless the entry acknowledges it with
 `unverified = "reason"`. This keeps the default loud for accidental gaps while making an explicit
 decision quiet. The acknowledgement suppresses the diagnostic; it does not change the extensions,
 so document consumers can still see that the body was not verified.
 
 `validate_body = false` is different: it is a precise body policy and records
 `x-roundhouse-body-validation: false`. It does not need an acknowledgement and is quiet under
-`strict()`. The `x-roundhouse-unverified-body` marker remains because the body genuinely was not
+the strict build. The `x-roundhouse-unverified-body` marker remains because the body genuinely was not
 checked.
 
 ## Response validation

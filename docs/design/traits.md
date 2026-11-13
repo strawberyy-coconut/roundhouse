@@ -409,10 +409,10 @@ until a phase explicitly changes behaviour.
 ## Open questions
 
 1. **Keep the `ToSchema`-only fallback?** It is the reason `ProbeSchema` exists. Requiring
-   `ApiSchema` (with `impl_api_schema!` for generated types) would remove the probe and simplify
+   `ApiSchema` (with `interop::impl_from_utoipa!` for generated types) would remove the probe and simplify
    `ApiSchema`-based responses. It would also be a stricter product.
 2. **Keep permissive unknown extractors?** `ProbeArg` exists so a custom extractor compiles and
-   is marked unverified. Requiring `ExtractArg` would remove the probe and make `strict()` the
+   is marked unverified. Requiring `ExtractArg` would remove the probe and make the strict build the
    default for extractors.
 3. **Where does `Params` live?** It needs `DocContext`, which is axum-shaped. Put the trait in
    `roundhouse` and re-export it, or define a minimal `ParamsContext` in `roundhouse-schema` so

@@ -9,7 +9,8 @@ use roundhouse::prelude::*;
 
 roundhouse::app_state!(());
 
-#[derive(serde::Serialize, ToSchema)]
+#[roundhouse::schema]
+#[derive(serde::Serialize)]
 pub struct Hello {
     pub message: String,
 }
@@ -90,9 +91,9 @@ routes! {
 }
 ```
 
-The path-group form is the only entry form. The supported methods are `get`, `post`, `put`,
-`patch`, `delete`, `head`, `options`, `trace` and `any`. Paths use `{capture}` and `{*rest}`
-syntax.
+Every route entry lives inside a path group, `"/path" => { .. }`; a `prefix "/path" [..] { .. }`
+group nests another table. The supported methods are `get`, `post`, `put`, `patch`, `delete`,
+`head`, `options`, `trace` and `any`. Paths use `{capture}` and `{*rest}` syntax.
 
 Operation prose comes from doc tags. Structured response and path metadata lives on the handler's
 attribute:
@@ -118,9 +119,8 @@ pub async fn create(...) -> ... { ... }
   `PathParams` field description still wins.
 - `Json<T>` is unwrapped to `T` for the body schema, so `response(200, Note)` and
   `response(200, Json<Note>)` are equivalent.
-- `@responses:`, `@responses(override):`, `@response-descriptions:` and `@path:` remain supported
-  as compatibility syntax. New code should use the typed form; declaring the same status in both
-  forms is a compile error.
+- `@responses:`, `@responses(override):`, `@response-descriptions:` and `@path:` were removed in
+  0.3. Use the typed attribute only; `MIGRATING-0.3.md` maps the old spellings.
 
 The full grammar and precedence rules are in
 [`docs/design/doc-tags.md`](docs/design/doc-tags.md).
@@ -142,13 +142,13 @@ The full grammar and precedence rules are in
 | `anonymous` | Clear inherited `security` guards for this entry and document `security: []`. A handler's own `Auth<A>` still applies. |
 | `validate = false` | Skip schema constraint validation for the whole route. The request still has to parse. |
 | `validate_body = false` | Keep path/query/form validation, but treat the request body as opaque. Malformed JSON still fails. |
-| `unverified = "reason"` | Acknowledge an intentional unverified body/response/extractor so `strict()` passes. |
+| `unverified = "reason"` | Acknowledge an intentional unverified body/response/extractor so the strict build passes. |
 
 ### Module options
 
 `prefix` is declared before a table's first entry. A path group, `"/path" => { .. }`, declares routes directly; a `prefix "/path" [..] { .. }` group nests another table. Every route entry lives inside a path group.
 `state`, `tags`, `security`, `layer`, `layer_mode`, `hidden`, `anonymous` and `doc` can be declared
-before a table's first entry or in the brackets of a path group. `layer_mode = full` applies a
+before a table's first entry or in the brackets of a `prefix` group. `layer_mode = full` applies a
 module layer to the whole subtree; `layer_mode = route` uses `route_layer`.
 
 Prefer `roundhouse::app!(state, routes)` so the root table is explicit. `app!(state)` is shorthand
@@ -195,7 +195,8 @@ alias, so neither needs to repeat it. `state = OtherState` overrides one table;
 `#[roundhouse::schema]` is the one-annotation form: it derives the schema and the roundhouse
 adapter, and constraints use the `#[roundhouse(..)]` namespace. The explicit
 `#[derive(ToSchema, ApiSchema)]` form remains available through `roundhouse::interop` for
-projects that already share utoipa types. `#[derive(ApiSchema)]` adds:
+projects that already share utoipa types (import `ToSchema` and `PartialSchema` from
+`roundhouse::interop`). `#[derive(ApiSchema)]` adds:
 
 - a named component (`$ref`) for the type;
 - `#[roundhouse(unique_items)]`;
@@ -219,18 +220,18 @@ pub struct Profile {
 ```
 
 `axum::Json<T>`, `Form<T>` and a JSON response require `T: ApiSchema` when the framework documents
-them automatically. A type that only derives `ToSchema` can still be published with an explicit
-`#[handler(response(..))]` declaration, or with a `doc = |docs| …` hook.
+them automatically. A type that only implements utoipa's `ToSchema` can still be published with an
+explicit `#[handler(response(..))]` declaration, or with a `doc = |docs| …` hook.
 
-For generated types that cannot carry the derive, use the opt-in adapter:
+For generated types that cannot carry the derive, use the interop adapter:
 
 ```rust
-roundhouse::impl_api_schema!(generated::Row, generated::OtherRow);
+roundhouse::interop::impl_from_utoipa!(generated::Row, generated::OtherRow);
 ```
 
-It requires `ToSchema` on the type and publishes the component plus everything reachable through
-`ToSchema::schemas()`. A blanket `impl<T: ToSchema> ApiSchema for T` is not possible; it would
-overlap the derive and the primitive implementations.
+It requires `utoipa::ToSchema` on the type and publishes the component plus everything reachable
+through `ToSchema::schemas()`. A blanket `impl<T: ToSchema> ApiSchema for T` is not possible; it
+would overlap the derive and the primitive implementations.
 
 `QueryParams` and `PathParams` derive the parameter documentation for query and path structs.
 A field's `@description:` tag supplies the parameter description; `#[roundhouse(description = "…")]`
@@ -261,12 +262,12 @@ A custom response type implements `roundhouse::doc::ApiResponse`; `SUCCESS` supp
 compile-time success statuses and `responses` supplies the documented bodies.
 
 An extractor without an `ExtractArg` impl (or a body type without `ApiSchema`) is still accepted,
-but the operation is marked `x-roundhouse-unverified-extractor`/`-body` and `App::strict()` turns
-that marker into a build error.
+but the operation is marked `x-roundhouse-unverified-extractor`/`-body` and the strict build
+turns that marker into an error.
 
-Component names come from utoipa. Two different Rust types that claim one component name are a
-`BuildError::ComponentCollision`; use `#[roundhouse(name = "module.Name")]` on one of them. Utoipa formats
-the name with dots (`module.Name`) in the document.
+Component names are the Rust type name by default. Two different Rust types that claim one name
+are a `BuildError::ComponentCollision`; use `#[roundhouse(name = "module.Name")]` on one of them.
+The document uses the dotted form (`module.Name`).
 
 ## Validation
 
@@ -283,7 +284,7 @@ enforcer:
   opaque. This is the route policy for a large payload that should be parsed but not buffered and
   checked twice.
 - `unverified = "reason"` acknowledges an intentional whole-route opt-out or an unverifiable
-  body/response/extractor so `strict()` passes.
+  body/response/extractor so the strict build passes.
 - `App::validation_status(StatusCode::UNPROCESSABLE_ENTITY)` changes the status used for
   validation failures (`400` by default).
 - `App::validation(Validation::Off)` disables schema execution for the app.
@@ -507,10 +508,11 @@ fn routes_build() {
 }
 ```
 
-`App::strict()` promotes diagnostics into `BuildError`s. This includes undocumented response
-types, unverified bodies, empty modules and routers added with `App::merge`. Merged routers are
-served but cannot be discovered for the document, so the document is marked
-`x-roundhouse-merged` and the merge is recorded in `Built::merges()`.
+Strict builds are the default: diagnostics are `BuildError`s. This includes undocumented response
+types, unverified bodies, empty modules and routers added with `App::merge`. `App::permissive()`
+downgrades them to warnings for a migration. Merged routers are served but cannot be discovered
+for the document, so the document is marked `x-roundhouse-merged` and the merge is recorded in
+`Built::merges()`. Use `App::merge_undocumented(router, reason)` to acknowledge one.
 
 Every build also validates the finished document: path captures match parameters, operation ids
 are unique, every security requirement names a declared scheme, and every operation has a
@@ -518,8 +520,8 @@ response.
 
 ## Install
 
-Upgrading from 0.2? See [`MIGRATING-0.3.md`](MIGRATING-0.3.md) for the route-table and doc-tag
-changes.
+Upgrading from 0.2? See [`MIGRATING-0.3.md`](MIGRATING-0.3.md) for the authoring-surface,
+strictness and route-table changes.
 
 ```sh
 cargo add roundhouse
@@ -539,9 +541,9 @@ the macros are always part of the framework.
 | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 | `uuid`, `chrono`, `time`, `jiff`, `decimal` | Schema support for those types |
 
-`roundhouse::prelude` re-exports `ToSchema` and the `utoipa` module used by the derives.
-`#[derive(ApiSchema)]` needs `ToSchema` on the same type; `#[roundhouse::schema]` derives both at
-once.
+`#[roundhouse::schema]` is the normal way to document a type; it hides the schema engine's
+utoipa types. Projects that already use utoipa can import `roundhouse::interop::{ToSchema,
+PartialSchema, Components, utoipa}` explicitly.
 
 ## Examples
 
