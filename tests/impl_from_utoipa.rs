@@ -1,4 +1,4 @@
-//! The opt-in adapter for generated `ToSchema` types.
+//! The interop adapter for generated `ToSchema` types.
 
 use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;

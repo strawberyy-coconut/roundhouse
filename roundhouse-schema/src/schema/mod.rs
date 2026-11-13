@@ -5,8 +5,9 @@
 
 use std::any::TypeId;
 
-use utoipa::openapi::RefOr;
-use utoipa::openapi::schema::{Components, Schema};
+pub use utoipa::openapi::RefOr;
+pub use utoipa::openapi::path::ParameterStyle;
+pub use utoipa::openapi::schema::{Components, Schema};
 
 use crate::validate::ValidationErrors;
 
