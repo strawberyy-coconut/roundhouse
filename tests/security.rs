@@ -205,18 +205,55 @@ async fn a_handler_that_already_enforces_the_scheme_is_not_authenticated_twice()
 
 #[tokio::test]
 async fn an_optional_handler_still_requires_the_module_scheme() {
-    let (app, _) = built();
+    let (app, state) = built();
 
     assert_eq!(
         request(&app, "/guarded/optional", None).await.status(),
         StatusCode::UNAUTHORIZED
     );
+    assert_eq!(state.calls(), 1, "the failed guard checked credentials once");
     assert_eq!(
         request(&app, "/guarded/optional", Some("Bearer ok"))
             .await
             .status(),
         StatusCode::OK
     );
+    assert_eq!(
+        state.calls(),
+        2,
+        "the module guard's identity must be reused by Option<Auth<Bearer>>"
+    );
+}
+
+mod optional_only {
+    use super::*;
+
+    routes! {
+        prefix = "/optional-only",
+        "/" => { get(optional) },
+    }
+
+    #[handler]
+    pub async fn optional(_auth: Option<Auth<Bearer>>) -> &'static str {
+        "optional"
+    }
+}
+
+#[tokio::test]
+async fn an_optional_extractor_without_a_guard_does_not_authenticate_absent_credentials() {
+    let state = State::default();
+    let app = scoped(&optional_only::MODULE, state.clone()).build();
+
+    assert_eq!(request(&app, "/optional-only", None).await.status(), StatusCode::OK);
+    assert_eq!(state.calls(), 0);
+
+    assert_eq!(
+        request(&app, "/optional-only", Some("Bearer ok"))
+            .await
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(state.calls(), 1);
 }
 
 #[tokio::test]

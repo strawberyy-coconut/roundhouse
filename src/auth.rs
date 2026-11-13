@@ -151,11 +151,9 @@ async fn enforce<A: Authenticate>(
 ) -> Response {
     let (mut parts, body) = request.into_parts();
     match A::authenticate(&mut parts, &state).await {
-        Ok(_) => {
-            // A generated shim that runs later sees this and does not authenticate again.
-            parts
-                .extensions
-                .insert(Authenticated::<A>(std::marker::PhantomData));
+        Ok(identity) => {
+            // A generated shim or handler extractor that runs later reuses this identity.
+            parts.extensions.insert(Authenticated::<A>(identity));
             next.run(Request::from_parts(parts, body)).await
         }
         Err(problem) => AuthRejection {
@@ -166,20 +164,18 @@ async fn enforce<A: Authenticate>(
     }
 }
 
-/// A request-scoped marker: this scheme has already authenticated.
+/// A request-scoped marker: this scheme has already authenticated, plus the identity it produced.
 ///
 /// It is inserted by `Auth<A>`, `Option<Auth<A>>` after a successful extraction and by a
-/// module-level guard. A generated shim's [`AuthEnforce`] checks it, so a route that both declares
-/// `security = [A]` and takes `Auth<A>` authenticates once.
-pub struct Authenticated<A: AuthScheme>(std::marker::PhantomData<A>);
+/// module-level guard. A later extractor for the same scheme reuses the identity instead of
+/// authenticating a second time, and a generated shim's [`AuthEnforce`] checks the marker.
+pub struct Authenticated<A: AuthScheme>(A::Identity);
 
 impl<A: AuthScheme> Clone for Authenticated<A> {
     fn clone(&self) -> Self {
-        *self
+        Self(self.0.clone())
     }
 }
-
-impl<A: AuthScheme> Copy for Authenticated<A> {}
 
 /// Enforce a scheme for a route entry without taking its identity.
 ///
@@ -200,15 +196,13 @@ impl<A: Authenticate> FromRequestParts<A::State> for AuthEnforce<A> {
             if parts.extensions.get::<Authenticated<A>>().is_some() {
                 return Ok(AuthEnforce(std::marker::PhantomData));
             }
-            A::authenticate(parts, state)
+            let identity = A::authenticate(parts, state)
                 .await
                 .map_err(|problem| AuthRejection {
                     problem,
                     scheme: A::KIND,
                 })?;
-            parts
-                .extensions
-                .insert(Authenticated::<A>(std::marker::PhantomData));
+            parts.extensions.insert(Authenticated::<A>(identity));
             Ok(AuthEnforce(std::marker::PhantomData))
         }
     }
@@ -227,7 +221,10 @@ pub trait AuthScheme: Sized + Send + Sync + 'static {
     type State: Clone + Send + Sync + 'static;
 
     /// The authenticated principal returned by `Auth<A>`.
-    type Identity: Send + Sync + 'static;
+    ///
+    /// `Clone` is required so route guards can cache a successful identity for a later
+    /// extractor on the same request.
+    type Identity: Clone + Send + Sync + 'static;
 
     const NAME: &'static str;
     const KIND: SecuritySchemeKind;
@@ -272,13 +269,18 @@ pub trait Scopes<A: AuthScheme>: Send + Sync + 'static {
     const NAMES: &'static [&'static str] = &[];
 
     /// Return `Ok(())` when `identity` may exercise this route, or the rejection to send.
+    ///
+    /// This method has no default on purpose: publishing a scope must be accompanied by an
+    /// explicit authorization decision. Use [`NoScopes`] when authentication is the only check.
     #[allow(clippy::result_large_err)]
+    fn authorize(identity: &A::Identity) -> Result<(), Problem>;
+}
+
+impl<A: AuthScheme> Scopes<A> for NoScopes {
     fn authorize(_identity: &A::Identity) -> Result<(), Problem> {
         Ok(())
     }
 }
-
-impl<A: AuthScheme> Scopes<A> for NoScopes {}
 
 /// The authenticated principal, tagged with the scheme that produced it.
 pub struct Auth<A: AuthScheme, S = NoScopes> {
@@ -312,25 +314,28 @@ where
         state: &A::State,
     ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
         async move {
-            match A::authenticate(parts, state).await {
-                Ok(principal) => {
-                    S::authorize(&principal).map_err(|problem| AuthRejection {
+            // A module guard may have authenticated already. Reuse its identity, but still run
+            // this extractor's scope decision.
+            let principal = match parts.extensions.get::<Authenticated<A>>() {
+                Some(cached) => cached.0.clone(),
+                None => A::authenticate(parts, state)
+                    .await
+                    .map_err(|problem| AuthRejection {
                         problem,
                         scheme: A::KIND,
-                    })?;
-                    parts
-                        .extensions
-                        .insert(Authenticated::<A>(std::marker::PhantomData));
-                    Ok(Auth {
-                        principal,
-                        scopes: std::marker::PhantomData,
-                    })
-                }
-                Err(problem) => Err(AuthRejection {
-                    problem,
-                    scheme: A::KIND,
-                }),
-            }
+                    })?,
+            };
+            S::authorize(&principal).map_err(|problem| AuthRejection {
+                problem,
+                scheme: A::KIND,
+            })?;
+            parts
+                .extensions
+                .insert(Authenticated::<A>(principal.clone()));
+            Ok(Auth {
+                principal,
+                scopes: std::marker::PhantomData,
+            })
         }
     }
 }
@@ -348,6 +353,20 @@ where
         state: &A::State,
     ) -> impl std::future::Future<Output = Result<Option<Self>, Self::Rejection>> + Send {
         async move {
+            // A guard may have authenticated through a mechanism `presents_credentials` cannot
+            // inspect (mTLS, a proxy header, ...). Once a guard has cached an identity, the
+            // optional extractor observes it rather than reporting the request as anonymous.
+            if let Some(cached) = parts.extensions.get::<Authenticated<A>>() {
+                let principal = cached.0.clone();
+                S::authorize(&principal).map_err(|problem| AuthRejection {
+                    problem,
+                    scheme: A::KIND,
+                })?;
+                return Ok(Some(Auth {
+                    principal,
+                    scopes: std::marker::PhantomData,
+                }));
+            }
             if !A::presents_credentials(parts) {
                 return Ok(None);
             }
