@@ -28,22 +28,26 @@
 //!     pub message: String,
 //! }
 //!
-//! routes! {
-//!     prefix = "/v1",
-//!     tags = ["hello"],
-//!     "/hello/{name}" => {
-//!         get(hello),
-//!     },
-//! }
+//! mod routes {
+//!     use super::*;
 //!
-//! #[handler]
-//! pub async fn hello(Path(name): Path<String>) -> Json<Hello> {
-//!     Json(Hello { message: format!("hello {name}") })
+//!     routes! {
+//!         prefix = "/v1",
+//!         tags = ["hello"],
+//!         "/hello/{name}" => {
+//!             get(hello),
+//!         },
+//!     }
+//!
+//!     #[handler]
+//!     pub async fn hello(Path(name): Path<String>) -> Json<Hello> {
+//!         Json(Hello { message: format!("hello {name}") })
+//!     }
 //! }
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     roundhouse::app!(())
+//!     roundhouse::app!((), routes)
 //!         .openapi(|| roundhouse::openapi::Info::new("Hello", "0.1.0"))
 //!         .serve("0.0.0.0:3000")
 //!         .await?;
@@ -52,7 +56,7 @@
 //! ```
 //!
 //! `GET /v1/hello/world` answers JSON, and `GET /openapi.json` describes the same operation,
-//! including the `name` path parameter that `Path<String>` cannot name by itself.
+//! including the `name` path parameter inferred from the template.
 //!
 //! ## How it fits together
 //!
@@ -236,22 +240,24 @@ macro_rules! app_state {
     };
 }
 
-/// Start an app from the fragment declared in the calling module.
+/// Start an app from a `routes!` fragment.
+///
+/// The canonical form names the root module explicitly:
+///
+/// ```ignore
+/// let app = roundhouse::app!(state, crate::routes);
+/// ```
+///
+/// `app!(state)` is shorthand for the fragment declared in the calling module:
 ///
 /// ```ignore
 /// routes! { ...routes }
 /// let app = roundhouse::app!(state);
 /// ```
 ///
-/// `app!(state, module)` roots the app at another module's fragment, which is how a library's
-/// route tree is composed:
-///
-/// ```ignore
-/// let app = roundhouse::app!(state, other_crate::routes);
-/// ```
-///
 /// Both forms are equivalent to `App::new(state).fragment(..)`; the builder form is available
-/// when the root is chosen at runtime.
+/// when the root is chosen at runtime. Declare the application state once at the crate root with
+/// [`app_state!`](crate::app_state!).
 #[macro_export]
 macro_rules! app {
     ($state:expr) => {

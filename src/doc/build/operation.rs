@@ -189,7 +189,7 @@ impl DocumentBuild<'_> {
         Ok(())
     }
 
-    /// Deduplicate parameters, apply `@path:` prose and fill every template capture.
+    /// Deduplicate parameters, apply typed path prose and fill every template capture.
     fn resolve_operation_parameters(
         &mut self,
         route: &ResolvedRoute,
@@ -214,7 +214,7 @@ impl DocumentBuild<'_> {
             parameters.push(param);
         }
 
-        // A handler `@path:` description fills a scalar `Path<T>` parameter that has no field-level
+        // A handler `path(..)` description fills a scalar `Path<T>` parameter that has no field-level
         // description. A `PathParams` field description stays authoritative.
         for (name, description) in &path_descriptions {
             if let Some(param) = parameters
@@ -272,7 +272,7 @@ impl DocumentBuild<'_> {
             }
             parameters.push(param);
         }
-        // A handler `@path:` name that is not a template capture is a declaration error.
+        // A handler `path(..)` name that is not a template capture is a declaration error.
         for (name, _) in &path_descriptions {
             if !captures.contains(name) {
                 return Err(BuildError::UnknownPathParameter {
@@ -295,7 +295,7 @@ impl DocumentBuild<'_> {
         Ok(parameters)
     }
 
-    /// Merge inferred, rejection and `@responses:` declarations into one response table.
+    /// Merge inferred, rejection and typed response declarations into one response table.
     fn resolve_operation_responses(
         &mut self,
         route: &ResolvedRoute,
@@ -319,14 +319,14 @@ impl DocumentBuild<'_> {
                 self.diagnostics,
             )?;
         }
-        // The handler's `@responses:` declarations may add statuses or, with
-        // `@responses(override):`, replace an inferred body. Replacing it silently would let the
+        // The handler's typed declarations may add statuses or, with
+        // `override_response(..)`, replace an inferred body. Replacing it silently would let the
         // documentation contradict the handler.
         let declared_responses = std::mem::take(&mut docs.declared_responses);
         let declared_override = docs.declared_response_override;
         let mut overridden = false;
         for response in declared_responses {
-            // A bare status (`@responses: 200`) declares the status as a success response. When the
+            // A bare status (`response(200)`) declares the status as a success response. When the
             // handler already inferred a response for that status, keep the inferred shape: the
             // declaration is an assertion, not a replacement. This is what lets a `Result` alias
             // keep the compile-time success guarantee without repeating the body type.

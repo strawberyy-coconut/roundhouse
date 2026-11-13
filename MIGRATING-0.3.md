@@ -69,7 +69,7 @@ adjusts one inferred response in place.
 
 ## Responses
 
-Replace `responses(...)` and `override` on the entry with `@responses:` on the handler:
+Replace `responses(...)` and `override` on the entry with typed metadata on the handler:
 
 ```rust
 // 0.2
@@ -78,23 +78,19 @@ delete("/notes/{id}", destroy, responses(204)),
 get("/x", x, responses(200 = Payload), override),
 
 // 0.3
-/// @responses:
-///   201: Note
-#[handler]
+#[handler(response(201, Note))]
 async fn create(...) -> ... { ... }
 
-/// @responses:
-///   204
-#[handler]
+#[handler(response(204))]
 async fn destroy(...) -> ... { ... }
 
-/// @responses(override):
-///   200: Payload
-#[handler]
+#[handler(override_response(200, Payload))]
 async fn x(...) -> ... { ... }
 ```
 
-`Json<T>` is accepted in a declaration and unwrapped to `T` for the schema comparison.
+`Json<T>` is accepted in a declaration and unwrapped to `T` for the schema comparison. The older
+`@responses:` and `@responses(override):` doc tags still parse, but declaring the same status in
+both forms is a compile error.
 
 ## Response descriptions
 
@@ -112,6 +108,42 @@ pub enum NoteResponse {
 `#[status(description = "...")]` remains the explicit override. A body type's `@description:`
 supplies the description when the type is a single JSON response body.
 
+## Application state
+
+Declare the application state once at the crate root instead of repeating `state = ...` on every
+table:
+
+```rust
+roundhouse::app_state!(AppState);
+```
+
+Every `routes!` table without `state = ...` uses that type, including spread modules. A table that
+intentionally uses a different state still writes `state = OtherState`; `state = infer` restores
+the old per-handler inference.
+
+## Unauthenticated routes
+
+A route inside a guarded module can opt out of the inherited schemes:
+
+```rust
+"/health" => { get(health, anonymous) },
+```
+
+`anonymous` clears inherited guards and documents `security: []`. A handler's own `Auth<A>` still
+applies. A group can use the same flag to make a whole subtree anonymous.
+
+## Response fields
+
+Every field in an `ApiResponse`/`ApiError` variant must say where it goes: `#[body]`,
+`#[header("name")]`, `#[location]`, `#[from]`, `#[source]`, or `#[response(ignore)]`. An
+unannotated field is now a compile error instead of being silently dropped. Use a `Problem` body
+for a variant that returns a problem document:
+
+```rust
+#[status(404, description = "The note does not exist.")]
+NotFound(Problem),
+```
+
 ## Parameter descriptions
 
 Query and path struct fields can use `@description:`:
@@ -128,10 +160,22 @@ pub struct Filter {
 
 ## Doc-tag sections
 
-`@summary:` and `@responses:` now end at a blank line. Previously any following untagged rustdoc
-prose became part of the summary. `@description:` still keeps blank lines as paragraphs. A handler
-can describe path parameters with `@path: name: description`; this is the way to describe a scalar
-`Path<T>`, which has no field for a description.
+`@summary:` ends at a blank line. Previously any following untagged rustdoc prose became part of
+the summary. `@description:` still keeps blank lines as paragraphs.
+
+Doc comments are for prose. Structured response and path metadata lives on the handler attribute:
+
+```rust
+#[handler(
+    response(201, Note),
+    response_description(201, "The stored note."),
+    path(id, "The note identifier."),
+)]
+async fn create(...) -> ... { ... }
+```
+
+The older `@responses:`, `@response-descriptions:` and `@path:` tags still parse as compatibility
+syntax, but new code should use the typed form.
 
 ## Components
 
@@ -247,14 +291,14 @@ shapes. `strict()` still rejects the marker unless the entry acknowledges it wit
 `unverified = "reason"`.
 
 Tuples other than `(StatusCode, T)` are no longer classified from their last element. They are
-treated as unknown, so they need an explicit `@responses:` declaration.
+treated as unknown, so they need an explicit `#[handler(response(..))]` declaration.
 
 ## Generic responses
 
 `ApiResponse`/`ApiError` now support generic enums. `Created<T>` and `NoContent` are available for
 the common created/no-content cases. `Result` aliases are documented through the existing blanket
 `ApiResponse for Result<T, E>` impl when both sides implement `ApiResponse`. A bare
-`@responses: 200` now asserts the success while keeping an inferred body shape, so an alias does
+`response(200)` now asserts the success while keeping an inferred body shape, so an alias does
 not need to repeat its type.
 
 ## Documentation UI
@@ -296,5 +340,5 @@ These are additions, not required migrations:
 - `validate_body = false` keeps path/query validation and treats the request body as opaque.
 - `unverified = "reason"` acknowledges an intentional unverified body/response/extractor.
 - `prose = include_str!(..)` supplies operation summary and description from one string.
-- `@response-descriptions:` overrides the prose of an individual response.
+- `response_description(..)` overrides the prose of an individual response.
 - `#[roundhouse::schema]` derives both `ToSchema` and `ApiSchema` with one annotation.

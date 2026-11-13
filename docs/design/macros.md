@@ -58,17 +58,18 @@ conditional entries as present because the macro cannot evaluate `cfg`.
 The macro never parses a function body. `#[handler]` reads the signature and doc attributes only;
 routing metadata cannot be inferred from what the function does.
 
-## Doc tags
+## Prose and typed metadata
 
-`#[handler]` also reads explicit doc tags:
+`#[handler]` reads prose from the doc block and structure from its attribute:
 
 - `@summary:` and `@description:` fill `OperationDoc.summary` / `.description`;
-- `@responses:` fills `OperationDoc.declared_responses` and `DECLARED_SUCCESS`;
-- `@responses(override):` sets the declared-response override.
+- `response(..)`, `override_response(..)`, `default_response(..)`, `response_description(..)` and
+  `path(..)` fill `OperationDoc.declared_responses`, the declared-response override, response
+  descriptions and path descriptions.
 
-The tag parser lives in `doc_tags.rs` and is shared with the `ApiResponse` derive and the
-parameter derives. Untagged prose is ignored for OpenAPI. See [Doc tags](doc-tags.md) for the
-grammar and precedence.
+The prose parser lives in `doc_tags.rs`; the typed metadata parser lives in `handler/args.rs`.
+Untagged prose is ignored for OpenAPI. `@responses:`, `@response-descriptions:` and `@path:`
+remain compatibility syntax for the 0.3 migration. See [Doc tags](doc-tags.md).
 
 ## `#[handler]`
 

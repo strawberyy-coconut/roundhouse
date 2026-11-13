@@ -1,4 +1,5 @@
 [alias]
+quickstart = "run -p quickstart-example"
 notes = "run -p notes-example"
 layers = "run -p layers-example"
 uploads = "run -p uploads-example"

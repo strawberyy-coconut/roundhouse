@@ -9,7 +9,7 @@ use crate::util::parse_security_types;
 /// A type path is the normal form. `state = infer` restores the pre-0.3 behaviour: each entry
 /// derives its state from its handler or its single auth scheme.
 pub(super) enum StateOption {
-    Type(Type),
+    Type(Box<Type>),
     Infer,
 }
 
@@ -417,7 +417,7 @@ fn parse_module_key(input: ParseStream<'_>, options: &mut ModuleOptions, key: Id
                 Type::Path(path) if path.qself.is_none() && path.path.is_ident("infer") => {
                     StateOption::Infer
                 }
-                _ => StateOption::Type(ty),
+                _ => StateOption::Type(Box::new(ty)),
             });
         }
         "tags" => {

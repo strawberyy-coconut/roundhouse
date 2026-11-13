@@ -79,7 +79,7 @@ They fail `cargo check`, not the app build.
 | Duplicate route | Two entries with the same method and normalised template; `{id}` and `{post_id}` are the same shape |
 | `any` conflict | An `any` entry next to a concrete method on the same template |
 | Duplicate operation id | Two explicit ids, or two entries that would derive the same id from method and handler name |
-| Undeclared success | A return shape the macro can classify as producing no 2xx/3xx response, unless the handler declares a success in `@responses:` |
+| Undeclared success | A return shape the macro can classify as producing no 2xx/3xx response, unless the handler declares a success with `#[handler(response(..))]` |
 | Path capture subset | A `Path<T: Params>` whose `NAMES` omits a capture in the leaf template |
 | Missing `#[handler]` | The marker type does not exist, reported once through a type alias |
 | Attribute syntax | Unknown options, non-type security schemes, removed attributes (see `tests/ui/`) |
@@ -97,6 +97,7 @@ resolved path is checked again at build time.
 | Prefix | Joined with `prefix::join`; trailing/leading slashes trimmed and repeated slashes collapsed |
 | Tags | Appended in declaration order, deduplicated per operation |
 | Security | Appended, deduplicated by scheme name, one guard per scheme |
+| Anonymous | Clears inherited guards at that module or entry; the operation documents `security: []` |
 | Hidden | Logical OR down the tree |
 | Layers | A module layer wraps its whole router; `layer_mode = route` uses `route_layer` |
 | Layer docs | A module `doc = ..` is merged into every operation below it |
@@ -185,12 +186,18 @@ routes are served but cannot be discovered for the document, so the document is 
 ### State and `FromRef` substates
 
 The app state is exact at the boundary: `App::new` must be built with the same state the route
-table declares. Inside the table, handlers may take substates through axum's ordinary `FromRef`
-contract:
+tables use. Declare it once at the crate root:
+
+```rust
+roundhouse::app_state!(AppState);
+```
+
+That expands to a hidden `pub type __RoundhouseAppState = AppState;`. Every `routes!` table
+without `state = ...` uses that type, including spread modules, so a large tree names the state
+once. Inside a table, handlers may take substates through axum's ordinary `FromRef` contract:
 
 ```rust
 routes! {
-    state = AppState,
     prefix = "/notes",
     "/" => { get(list) },
 }
@@ -202,9 +209,10 @@ async fn list(State(db): State<Db>) -> Json<Vec<Note>> {
 }
 ```
 
-An inline group inherits the table's `state` and may override it. A spread module is a separate
-`routes!` expansion and declares its own state when it uses substates. Without `state = ...`, the
-default remains the handler's first `State<T>`, the auth scheme's state, or `()`.
+An inline group inherits the table's state and may override it. `state = OtherState` overrides one
+table; `state = infer` restores the pre-0.3 per-handler inference (the first `State<T>`, the auth
+scheme's state, or `()`). The alias is a type path, so separate macro expansions resolve the same
+type without a runtime registry.
 
 The shim is generic over the chosen state: `routes!` instantiates it with `State<S>` and a
 `ShimPolicyFor<S>` bound, and each `State<T>` argument contributes `T: SubstateOf<S>` (a hidden
@@ -214,22 +222,8 @@ needs to know the app state.
 The declaration is required because `#[handler]` expands before `App::new` and a `RouteRecord` is a
 `const`; the shim's router state must be monomorphized when the table is expanded. A `state = ...`
 on the app root cannot reach a separately expanded module, and `App::new`'s inferred type is not
-visible to a proc macro. The table is the smallest scope that knows the router state.
-
-A spread therefore cannot inherit its parent's state. The child table's `MODULE` already contains
-`MethodRouter<S>` values for the state it declared; re-typing them at the spread site would
-require an owned, generic module builder and give up the `'static` tree. The supported way to
-centralize the name is a crate-local wrapper that expands every table with the same state:
-
-```rust
-macro_rules! routes {
-    ($($tokens:tt)*) => {
-        roundhouse::routes! { state = crate::AppState, $($tokens)* }
-    };
-}
-```
-
-This keeps the declaration in one place without pretending the macro can see another expansion.
+visible to a proc macro. The crate-level alias is the smallest scope that every expansion can
+name.
 
 `Auth<A>` remains exact: `AuthScheme::State` must equal the table state. A state mismatch is a
 `BuildError::StateMismatch` from `App::try_build()`.

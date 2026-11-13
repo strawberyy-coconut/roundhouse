@@ -1,8 +1,9 @@
 //! The application builder, route resolution and router assembly.
 //!
 //! [`App`] starts from application state and an explicit module tree. In application code, prefer
-//! the [`app!`](crate::app!) macro: `app!(state)` roots the app at the fragment declared in the
-//! calling module, while `app!(state, module)` names another module's fragment. Builder methods
+//! the [`app!`](crate::app!) macro: `app!(state, module)` names the root module explicitly, while
+//! `app!(state)` is shorthand for the fragment declared in the calling module. Declare the state
+//! once with [`app_state!`](crate::app_state!). Builder methods
 //! configure layers, the document, validation and request limits. [`App::build`] walks the tree
 //! into a [`Built`]:
 //!

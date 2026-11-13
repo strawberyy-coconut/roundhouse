@@ -19,7 +19,7 @@
 //!
 //! `axum::Json<T>`, `Form<T>` and JSON responses require `T: ApiSchema` for automatic
 //! documentation. A plain `ToSchema` type remains available through an explicit
-//! `@responses: status: Type` declaration. Component names follow utoipa: unique names stay
+//! typed `response(status, Type)` declaration. Component names follow utoipa: unique names stay
 //! simple, and a collision is disambiguated with `#[schema(as = module::Type)]`.
 
 pub mod build;
@@ -167,18 +167,18 @@ pub struct OperationDoc {
     /// Operation description from the handler's `@description:` tag.
     pub(crate) description: Option<String>,
     pub(crate) params: Vec<Param>,
-    /// `@path:` descriptions, applied when the build fills a path capture.
+    /// path descriptions, applied when the build fills a path capture.
     pub(crate) path_descriptions: Vec<(String, String)>,
     /// Path and query types the engine should compile for this operation.
     pub(crate) parts: Vec<PartsDoc>,
     pub(crate) body: Option<BodyDoc>,
     pub(crate) failures: Vec<ResponseDoc>,
     pub(crate) responses: Vec<ResponseDoc>,
-    /// Responses declared explicitly by the handler's `@responses:` tag.
+    /// Responses declared explicitly by the handler's typed `response(..)` metadata.
     pub(crate) declared_responses: Vec<ResponseDoc>,
-    /// Whether `@responses(override):` allows a declared response to replace an inferred one.
+    /// Whether `override_response(..)` allows a declared response to replace an inferred one.
     pub(crate) declared_response_override: bool,
-    /// Descriptions from the handler's `@response-descriptions:` tag, applied by status after
+    /// Descriptions from `response_description(..)`, applied by status after
     /// inferred and declared responses are merged. Status `0` means OpenAPI's `default`.
     pub(crate) response_descriptions: Vec<(u16, String)>,
     pub(crate) required_auth: Vec<crate::auth::AuthDoc>,
@@ -286,17 +286,17 @@ impl OperationDoc {
             .find(|response| response.status == status)
     }
 
-    /// Add one response declared by `@responses:`.
+    /// Add one typed response declaration.
     pub fn push_declared_response(&mut self, response: ResponseDoc) {
         self.declared_responses.push(response);
     }
 
-    /// Add several responses declared by `@responses:`.
+    /// Add several typed response declarations.
     pub fn extend_declared_responses(&mut self, responses: impl IntoIterator<Item = ResponseDoc>) {
         self.declared_responses.extend(responses);
     }
 
-    /// Allow `@responses:` to replace an inferred response.
+    /// Allow typed declarations to replace an inferred response.
     pub fn set_declared_response_override(&mut self) {
         self.declared_response_override = true;
     }
@@ -352,7 +352,7 @@ impl OperationDoc {
         &self.params
     }
 
-    /// `@path:` descriptions, in declaration order.
+    /// Path descriptions, in declaration order.
     pub fn path_descriptions(&self) -> &[(String, String)] {
         &self.path_descriptions
     }
@@ -377,7 +377,7 @@ impl OperationDoc {
         &self.responses
     }
 
-    /// The responses declared by `@responses:`.
+    /// The responses declared by typed metadata.
     pub fn declared_responses(&self) -> &[ResponseDoc] {
         &self.declared_responses
     }
@@ -387,7 +387,7 @@ impl OperationDoc {
         self.declared_response_override
     }
 
-    /// `@response-descriptions:` overrides, in declaration order.
+    /// Response description overrides, in declaration order.
     pub fn response_descriptions(&self) -> &[(u16, String)] {
         &self.response_descriptions
     }
@@ -461,7 +461,7 @@ pub trait HandlerSpec: Send + Sync + 'static {
     /// response, so a route entry must declare one.
     const INFERRED_SUCCESS: Option<&'static [u16]> = None;
 
-    /// Success statuses declared by the handler's `@responses:` block.
+    /// Success statuses declared by the handler's typed response metadata.
     ///
     /// The route-table compile-time check uses this when the return type cannot prove success.
     const DECLARED_SUCCESS: Option<&'static [u16]> = None;

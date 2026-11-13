@@ -3,7 +3,7 @@
 The document and the router come from the same declarations. There is no side-car annotation
 file and no second description to keep in sync: a `routes!` entry supplies the path, method and
 policy; `#[handler]` derives the request, response and security contribution from the signature;
-explicit `@summary:`, `@description:`, `@responses:` and `@response-descriptions:` doc tags supply
+explicit prose tags and the handler's typed `response(..)` metadata supply
 the prose and response declarations the signature cannot express; the document builder turns those
 contributions into an operation.
 
@@ -20,7 +20,7 @@ contributions into an operation.
     doc::build::build_with_observations
         ├─ merge layer docs and guards
         ├─ merge parameters, fill template captures
-        ├─ merge inferred responses, then `@responses:` declarations
+        ├─ merge inferred responses, then typed response declarations
         ├─ build security requirements and schemes
         └─ validate_document
             │
@@ -42,7 +42,7 @@ marker implements `roundhouse::doc::HandlerSpec` and `roundhouse::doc::DocSource
 | `PATH_NAMES` | `Path<T>` where `T: Params` |
 | `REQUIRED_AUTH` | `Auth<A>` (not `Option<Auth<A>>`) |
 | `INFERRED_SUCCESS` | A small return-type classification, or `None` when unknown |
-| `DECLARED_SUCCESS` | Success statuses declared by `@responses:` |
+| `DECLARED_SUCCESS` | Success statuses declared by `#[handler(response(..))]` |
 | `operation(context)` | Doc tags, one statement per argument plus the response statements |
 | `verification.body_verified()` | Whether every body argument enforces its own schema during extraction |
 
@@ -182,9 +182,15 @@ syntactic and is skipped for aliases, so the build-time check is authoritative.
 Response descriptions are resolved in this order: `#[status(description = "…")]`, the variant's
 `@description:` tag, the body type's `ApiSchema::description()`, then the canonical HTTP reason
 phrase. The body type description also feeds a direct `Json<T>` or `Vec<T>` response, and a
-handler can override an individual status with `@response-descriptions:`. `ApiError` uses the
-resolved text as the `Problem` title as well; `problem = "…"` only sets the RFC 9457 `type` URI
-(`https://roundhouse.rs/problems/…`).
+handler can override an individual status with `response_description(..)`. `ApiError` uses the
+resolved text as the `Problem` title as well; `problem_type = "…"` only sets the RFC 9457 `type`
+URI (`https://roundhouse.rs/problems/…`).
+
+Every field in a response variant must declare its destination: `#[body]`, `#[header("name")]`,
+`#[location]`, `#[from]`, `#[source]`, or `#[response(ignore)]`. The derive rejects an unannotated
+field instead of silently dropping it. A variant that returns a problem can use a `Problem` body:
+`NotFound(Problem)`. `#[response(ignore)]` is the explicit way to keep data on the variant without
+publishing it.
 
 Generic `ApiResponse`/`ApiError` enums copy their generics and `where` clause into each impl and add
 only the bounds a field shape needs: `Json<T>` needs `T: ApiSchema` for docs and `Json<T>:
@@ -211,7 +217,7 @@ the attribute must be the outermost attribute and cannot be combined with a sepa
 
 A type that only derives `ToSchema` can still be documented explicitly:
 
-- `@responses:` with `200: Type` on the handler accepts either trait;
+- `#[handler(response(200, Type))]` on the handler accepts either trait;
 - a `doc = |docs| ..` hook can set a body or response by hand;
 - `roundhouse::doc::json_body_to_schema::<T>` builds a `BodyDoc` in that hook;
 - for generated types, `roundhouse::impl_api_schema!(Type);` implements the adapter. It inserts
@@ -235,7 +241,7 @@ the component name with dots: `module.Name`).
    `x-roundhouse-hidden`.
 2. **Omit `any`.** An `any` method set cannot be one operation; a diagnostic is recorded.
 3. **Compute `OperationDoc`.** `(record.docs)(context)` runs the marker's statements
-   (including `@summary`, `@description` and `@responses`), applies the route's validation
+   (including prose tags and typed response declarations), applies the route's validation
    policy to the body marker, then runs the entry's `doc` hook.
 4. **Merge layer docs.** Parameters, body, responses, auth and schemes from module/global
    `LayerDoc`s are added. A layer body only fills an absent body.
@@ -253,13 +259,13 @@ the component name with dots: `module.Name`).
    responses are merged by status. Identical shapes merge their headers. Two different
    4xx/5xx shapes collapse to a `Problem`, because that is what every failure path produces.
    Two different success bodies keep the first and emit a diagnostic.
-9. **Apply `@responses:` declarations.** Declarations add statuses or refine inferred ones.
+9. **Apply typed response declarations.** Declarations add statuses or refine inferred ones.
    A bare `status` declares the status as a success and keeps an already-inferred response for
    that status; when no response was inferred it adds an empty one. This is the alias-friendly
    success declaration. A typed declaration that replaces a different shape without
-   `@responses(override):` is `BuildError::ConflictingResponse`; with the override, the operation
+   `override_response(..)` is `BuildError::ConflictingResponse`; with the override, the operation
    is marked `x-roundhouse-overridden-response`. A non-canonical description is preserved when
-   the status and shape match. `@response-descriptions:` then replaces the description of an
+   the status and shape match. `response_description(..)` then replaces the description of an
    existing status; a description for a status the operation does not document is a diagnostic.
 10. **Require a success.** An operation with no `default` and no 2xx/3xx response is
     `BuildError::UndeclaredSuccess`.
@@ -303,7 +309,7 @@ roundhouse adds a small set of `x-roundhouse-*` keys rather than inventing respo
 | `x-roundhouse-unverified-body` | The body comes from an extractor whose schema could not be verified |
 | `x-roundhouse-unverified-response` | A `Json`/`Vec` response shape could not be verified (for example a `ToSchema`-only type) |
 | `x-roundhouse-unverified-extractor` | An argument's documentation could not be inferred |
-| `x-roundhouse-overridden-response` | An `@responses(override):` declaration replaced an inferred shape |
+| `x-roundhouse-overridden-response` | An `override_response(..)` declaration replaced an inferred shape |
 
 ## The document artifact
 

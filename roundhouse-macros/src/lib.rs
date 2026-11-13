@@ -118,25 +118,28 @@ use proc_macro::TokenStream;
 /// check: a parent module prefix may add captures that the entry cannot see. The full resolved
 /// path is validated again when the app is built.
 ///
-/// # Handler doc tags
+/// # Handler prose and typed metadata
 ///
-/// Operation prose and response declarations live on the handler's doc block:
+/// Operation prose stays in the handler's doc block; structured response and path metadata lives
+/// on the handler attribute:
 ///
 /// ```ignore
 /// /// @summary: Create a note.
 /// /// @description: Persists the note and returns it.
-/// /// @responses:
-/// ///   201: Note
-/// #[handler]
+/// #[handler(
+///     response(201, Note),
+///     response(409, Problem),
+/// )]
 /// async fn create(...) -> ... { ... }
 /// ```
 ///
-/// `@summary:` and `@description:` set the operation text; `@responses:` declares `status: Type`,
-/// bare `status`, or `default: Type` lines. A bare status asserts a success response and keeps an
-/// inferred response for the same status, which is the cheap way to satisfy the compile-time
-/// success check for a `Result` alias. `@response-descriptions:` overrides the prose of an
-/// individual documented response. `@responses(override):` permits replacing an inferred response.
-/// Untagged doc prose is ignored for OpenAPI. See the crate documentation for the full grammar.
+/// `@summary:` and `@description:` set the operation text. `response(status, Type)` declares a
+/// JSON body, `response(status)` an empty response, `default_response(Type)` OpenAPI's `default`,
+/// and `override_response(status, Type)` replaces an inferred shape.
+/// `response_description(status, "...")` overrides one description, and
+/// `path(name, "...")` describes a path parameter with no field description. `Json<T>` is
+/// unwrapped to `T`. The older `@responses:`, `@response-descriptions:` and `@path:` tags remain
+/// compatibility syntax; declaring the same status in both forms is a compile error.
 ///
 /// # Entry options
 ///
@@ -163,7 +166,10 @@ use proc_macro::TokenStream;
 /// - `absolute` — the path owns the full URL. Module prefixes, tags, security, layers and hidden
 ///   flags do not apply; a `security` declared on the entry itself still does.
 /// - `deprecated` — mark the operation deprecated in the document.
-/// - `public` — add the `x-roundhouse-public` extension to the operation.
+/// - `public` — add the `x-roundhouse-public` extension to the operation. It does not change
+///   authentication.
+/// - `anonymous` — clear inherited `security` guards for this entry and document `security: []`.
+///   A handler's own `Auth<A>` still applies.
 /// - `validate = false` — parse the request as usual but skip `#[schema(..)]` constraint
 ///   validation for this route. Malformed bodies are still rejected. The document records
 ///   `x-roundhouse-validation: false`. This is a whole-route opt-out; `unverified = "reason"`
@@ -188,10 +194,11 @@ use proc_macro::TokenStream;
 /// same options in its brackets:
 ///
 /// - `prefix = "/path"` — the module's URL segment (root table only; a group uses its path).
-/// - `state = AppState` — the router state for every entry in this table. A handler's `State<T>`
-///   arguments then need `T: FromRef<AppState>`; `State<AppState>` itself still works. Inline
-///   groups inherit the state unless they declare their own. A spread module is a separate
-///   `routes!` expansion and declares its own state when it uses substates.
+/// - `state = AppState` — override the router state for every entry in this table. Without it,
+///   the table uses the crate-level `app_state!(Type)` alias. A handler's `State<T>` arguments
+///   then need `T: FromRef<AppState>`; `State<AppState>` itself still works. Inline groups inherit
+///   the state unless they declare their own, and `state = infer` restores per-handler inference.
+///   A spread module resolves the same crate-level alias without repeating it.
 /// - `tags = ["tag", ...]` — tags added to every non-`absolute` route below the module.
 /// - `security = [Scheme, ...]` — scheme types installed as an `Auth<Scheme>` guard on every
 ///   non-`absolute` route below the module, and published in the document. Several schemes form
@@ -200,6 +207,7 @@ use proc_macro::TokenStream;
 /// - `layer_mode = full` (default) — apply the layer to the whole subtree, like
 ///   `axum::Router::layer`; `route` uses `route_layer`.
 /// - `hidden` — keep the module's routes in the router but omit them from the document.
+/// - `anonymous` — clear security guards inherited from enclosing modules for this subtree.
 /// - `doc = expression` — an expression returning `roundhouse::doc::layer::LayerDoc`, merged into
 ///   every operation below the module.
 ///
@@ -216,7 +224,7 @@ use proc_macro::TokenStream;
 /// - two entries with the same `operation_id`, or two entries that would derive the same id from
 ///   their method and handler name;
 /// - an entry whose return type the macro can classify as producing no success response, unless
-///   the handler declares one with `@responses:`.
+///   the handler declares one with `#[handler(response(..))]`.
 ///
 /// Checks that need the composed tree — collisions across separate modules, resolved prefix
 /// joins, a handler state that disagrees with the app — remain `BuildError`s from
@@ -249,8 +257,10 @@ pub fn routes(input: TokenStream) -> TokenStream {
 
 /// Derive the routing metadata that [`routes!`](macro@routes) needs from a handler's signature.
 ///
-/// Apply `#[handler]` to a function item. The attribute takes no arguments; routing metadata
-/// belongs in the `routes!` table. It leaves the function untouched and appends a hidden marker
+/// Apply `#[handler]` to a function item. The attribute accepts typed response and path metadata
+/// (`response(..)`, `override_response(..)`, `default_response(..)`,
+/// `response_description(..)`, `path(..)`); routing policy belongs in the `routes!` table. It
+/// leaves the function untouched and appends a hidden marker
 /// type implementing `roundhouse::doc::HandlerSpec`, which supplies the state type, path capture
 /// names, request documentation and inferred responses.
 ///
@@ -302,7 +312,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// - `Attachment<T>`, `File` and `Sse` — the corresponding attachment/file/event-stream response;
 /// - `StatusCode` — the OpenAPI `default` response, because the status is chosen at runtime;
 /// - `(StatusCode, Body)` — the `default` response. Other tuples are not classified; declare
-///   them with `@responses:`;
+///   them with `#[handler(response(..))]`;
 /// - `Result<T, E>` — `T`'s success response plus every response registered by the error type
 ///   `E`. Derive `ApiError` / `ApiResponse` on `E`, or use `Problem`, so that `E` has documented
 ///   responses; otherwise the build reports an undocumented error.
@@ -312,19 +322,20 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// rejects it unless the entry acknowledges it with `unverified = "reason"`.
 ///
 /// A custom response type implements `ApiResponse` and its `SUCCESS` statuses. For any other
-/// `IntoResponse` type, declare the response on the handler with `@responses:`. An operation with
-/// no declared success response is a build error.
+/// `IntoResponse` type, declare the response on the handler with `#[handler(response(..))]`. An
+/// operation with no declared success response is a build error.
 ///
 /// # Limitations
 ///
 /// Handlers cannot be generic, and the attribute cannot be applied to a method inside an `impl`
 /// block. Use `#[handler]` on a free function.
 ///
-/// The handler's doc block may carry `@summary:`, `@description:`, `@responses:`,
-/// `@response-descriptions:` and `@path:` tags. Compact tags end at a blank line;
-/// `@description:` keeps paragraphs. `@path: name: description` describes a path parameter that
-/// has no field description. Untagged prose stays rustdoc-only; use `prose = include_str!(..)` on
-/// the route entry when one public document should supply both summary and description.
+/// The handler's doc block carries prose: `@summary:` (ends at a blank line) and `@description:`
+/// (keeps paragraphs). Untagged prose stays rustdoc-only; use `prose = include_str!(..)` on the
+/// route entry when one public document should supply both summary and description. Structured
+/// response and path metadata belongs in the attribute, not the doc block. The older
+/// `@responses:`, `@response-descriptions:` and `@path:` tags are still parsed as compatibility
+/// syntax.
 ///
 /// # Example
 ///
@@ -356,8 +367,8 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// `ApiSchema` registers the type as a named component (`$ref`) and applies the roundhouse-only
 /// patches. It is the trait automatic body and response documentation requires; a type that
-/// derives only `ToSchema` can still be published with an explicit `@responses:` declaration on
-/// the handler or a `doc` hook. Derive `ApiSchema` when the type is a documented JSON body or
+/// derives only `ToSchema` can still be published with an explicit `#[handler(response(..))]`
+/// declaration or a `doc` hook. Derive `ApiSchema` when the type is a documented JSON body or
 /// response, should be a named component, uses `unique_items` or the `url` to `uri` format
 /// mapping, or has a `validate_with` hook.
 ///

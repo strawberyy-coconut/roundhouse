@@ -992,6 +992,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "quickstart-example"
+version = "0.1.0"
+dependencies = [
+ "roundhouse",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -7,28 +7,34 @@ document from the same declarations. The module tree is the complete route set.
 ```rust
 use roundhouse::prelude::*;
 
+roundhouse::app_state!(());
+
 #[derive(serde::Serialize, ToSchema)]
 pub struct Hello {
     pub message: String,
 }
 
-routes! {
-    prefix = "/v1",
-    tags = ["hello"],
-    "/hello/{name}" => {
-        get(hello),
-    },
-}
+mod routes {
+    use super::*;
 
-/// @summary: Say hello.
-#[handler]
-pub async fn hello(Path(name): Path<String>) -> Json<Hello> {
-    Json(Hello { message: format!("hello {name}") })
+    routes! {
+        prefix = "/v1",
+        tags = ["hello"],
+        "/hello/{name}" => {
+            get(hello),
+        },
+    }
+
+    /// @summary: Say hello.
+    #[handler]
+    pub async fn hello(Path(name): Path<String>) -> Json<Hello> {
+        Json(Hello { message: format!("hello {name}") })
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    roundhouse::app!(())
+    roundhouse::app!((), routes)
         .openapi(|| roundhouse::openapi::Info::new("Hello", "0.1.0"))
         .serve("0.0.0.0:3000")
         .await?;
@@ -88,34 +94,35 @@ The path-group form is the only entry form. The supported methods are `get`, `po
 `patch`, `delete`, `head`, `options`, `trace` and `any`. Paths use `{capture}` and `{*rest}`
 syntax.
 
-Operation prose and response declarations come from doc tags on the handler:
+Operation prose comes from doc tags. Structured response and path metadata lives on the handler's
+attribute:
 
 ```rust
 /// @summary: Create a note.
 /// @description: Persists the note and returns the stored representation.
-/// @responses:
-///   201: Note
-///   409: Problem
-#[handler]
+#[handler(
+    response(201, Note),
+    response(409, Problem),
+    response_description(201, "The stored note."),
+)]
 pub async fn create(...) -> ... { ... }
 ```
 
-- Untagged doc prose is ignored for OpenAPI; it remains rustdoc-only.
-- `@summary:` is valid on handlers. It ends at a blank line.
-- `@description:` is valid on handlers, response variants, response body types and query/path
-  fields. It keeps blank lines as paragraphs.
-- `@responses:` declares `status: Type`, bare `status`, or `default: Type` lines. It ends at a
-  blank line. A bare status asserts a success response; if the handler already inferred a
-  response for that status, the inferred shape is kept. That is the cheap way to satisfy the
-  compile-time success check for a `Result` alias.
-- `@response-descriptions:` overrides the description of an individual documented response, for
-  example `200: A stored thing.`
-- `@responses(override):` replaces an inferred response.
-- `@path: name: description` describes a path parameter from the handler; it is useful for a
-  scalar `Path<T>` that cannot carry a field description. A `PathParams` field description wins.
-- `Json<T>` in `@responses:` is unwrapped to `T` for the body schema.
+- `@summary:` and `@description:` are prose. `@summary:` ends at a blank line;
+  `@description:` keeps blank lines as paragraphs. Untagged doc prose is ignored for OpenAPI.
+- `response(status, Type)` declares a JSON response body. `response(status)` declares an empty
+  response, `default_response(Type)` uses OpenAPI's `default`, and
+  `override_response(status, Type)` replaces an inferred shape.
+- `response_description(status, "...")` overrides one response description.
+- `path(name, "...")` describes a path parameter with no field to carry the description. A
+  `PathParams` field description still wins.
+- `Json<T>` is unwrapped to `T` for the body schema, so `response(200, Note)` and
+  `response(200, Json<Note>)` are equivalent.
+- `@responses:`, `@responses(override):`, `@response-descriptions:` and `@path:` remain supported
+  as compatibility syntax. New code should use the typed form; declaring the same status in both
+  forms is a compile error.
 
-The full tag grammar and precedence rules are in
+The full grammar and precedence rules are in
 [`docs/design/doc-tags.md`](docs/design/doc-tags.md).
 
 ### Entry options
@@ -132,7 +139,8 @@ The full tag grammar and precedence rules are in
 | `hidden` | Serve the route without documenting it. |
 | `absolute` | Use the path as the full URL, ignoring inherited prefixes, tags, layers and guards. |
 | `deprecated` | Mark the operation deprecated. |
-| `public` | Add the `x-roundhouse-public` extension to the operation. |
+| `public` | Add the `x-roundhouse-public` extension to the operation. It does not change authentication. |
+| `anonymous` | Clear inherited `security` guards for this entry and document `security: []`. A handler's own `Auth<A>` still applies. |
 | `validate = false` | Skip schema constraint validation for the whole route. The request still has to parse. |
 | `validate_body = false` | Keep path/query/form validation, but treat the request body as opaque. Malformed JSON still fails. |
 | `unverified = "reason"` | Acknowledge an intentional unverified body/response/extractor so `strict()` passes. |
@@ -140,20 +148,23 @@ The full tag grammar and precedence rules are in
 ### Module options
 
 `prefix` is declared before a table's first entry; a path group uses its path as the prefix. Every route entry lives inside a path group.
-`state`, `tags`, `security`, `layer`, `layer_mode`, `hidden` and `doc` can be declared before a
-table's first entry or in the brackets of a path group. `layer_mode = full` applies a module layer
-to the whole subtree; `layer_mode = route` uses `route_layer`.
+`state`, `tags`, `security`, `layer`, `layer_mode`, `hidden`, `anonymous` and `doc` can be declared
+before a table's first entry or in the brackets of a path group. `layer_mode = full` applies a
+module layer to the whole subtree; `layer_mode = route` uses `route_layer`.
 
-Root an app with `roundhouse::app!(state)` from the module that declares the table, or
-`roundhouse::app!(state, routes)` to start at another module's table. `App::include` and
-`App::fragment` compose roots directly.
+Prefer `roundhouse::app!(state, routes)` so the root table is explicit. `app!(state)` is shorthand
+when the table is declared in the caller's own module. `App::include` and `App::fragment` compose
+roots directly.
 
 ### State and `FromRef` substates
 
-The app state is exact at the `App::new` boundary. A table names it once, and handlers may take
-substates through axum's `FromRef`:
+The app state is exact at the `App::new` boundary. Declare it once at the crate root with
+`app_state!`; every table without `state = ...` uses that type. Handlers may take substates through
+axum's `FromRef`:
 
 ```rust
+roundhouse::app_state!(AppState);
+
 #[derive(Clone)]
 pub struct AppState { db: Db }
 
@@ -167,7 +178,6 @@ impl FromRef<AppState> for Db {
 }
 
 routes! {
-    state = AppState,
     prefix = "/notes",
     "/" => { get(list) },
 }
@@ -176,25 +186,10 @@ routes! {
 pub async fn list(State(db): State<Db>) -> Json<Vec<Note>> { ... }
 ```
 
-Inline path groups inherit the table's `state`; a group can override it. A spread module is a
-separate `routes!` expansion, so it declares its own `state` when it uses substates. A table
-without `state = ...` keeps the old default: a single `State<T>` argument, the auth scheme's state,
-or `()`. `Auth<A>` remains exact: `AuthScheme::State` must equal the table state.
-
-If every table in an application uses the same state, a crate-local wrapper removes the repeated
-type name while keeping the declaration explicit:
-
-```rust
-macro_rules! routes {
-    ($($tokens:tt)*) => {
-        roundhouse::routes! { state = crate::AppState, $($tokens)* }
-    };
-}
-```
-
-A spread cannot inherit state because it is a separate macro expansion: the child table's route
-records already contain their `MethodRouter<S>`. The wrapper is the supported way to centralize
-the name.
+Inline path groups inherit the table's state, and a spread module resolves the same crate-level
+alias, so neither needs to repeat it. `state = OtherState` overrides one table;
+`state = infer` restores per-handler inference (the first `State<T>`, the auth scheme's state, or
+`()`). `Auth<A>` remains exact: `AuthScheme::State` must equal the table state.
 
 ## Schemas
 
@@ -225,7 +220,7 @@ pub struct Profile {
 
 `axum::Json<T>`, `Form<T>` and a JSON response require `T: ApiSchema` when the framework documents
 them automatically. A type that only derives `ToSchema` can still be published with an explicit
-`@responses:` declaration on the handler, or with a `doc = |docs| …` hook.
+`#[handler(response(..))]` declaration, or with a `doc = |docs| …` hook.
 
 For generated types that cannot carry the derive, use the opt-in adapter:
 
@@ -395,8 +390,8 @@ pub enum ShowNote {
     #[status(200, description = "The stored note.")]
     Found(Json<Note>),
 
-    #[status(404, problem = "NoteNotFound")]
-    NotFound { id: i64 },
+    #[status(404, description = "The requested note does not exist.")]
+    NotFound(Problem),
 }
 
 // The crate-wide infrastructure error.
@@ -416,13 +411,24 @@ pub async fn show(
         .get(id)
         .map(Json)
         .map(ShowNote::Found)
-        .unwrap_or(ShowNote::NotFound { id }))
+        .unwrap_or_else(|| {
+            ShowNote::NotFound(
+                Problem::new(StatusCode::NOT_FOUND, "Note not found")
+                    .type_uri("https://roundhouse.rs/problems/NoteNotFound")
+                    .detail(format!("note {id} was not found")),
+            )
+        }))
 }
 ```
 
 Variant `@description:` tags become the documented response description; `#[status(description =
 "…")]` remains the explicit override. Response and error enums may be generic. `Created<T>` and
 `NoContent` are built-in wrappers for the common created/no-content responses.
+
+Every field in a response variant must be marked `#[body]`, `#[header("name")]`, `#[location]`,
+`#[from]`, `#[source]`, or `#[response(ignore)]`. A field that would otherwise be silently dropped
+is a compile error. `#[status(problem_type = "NoteNotFound")]` sets the RFC 9457 `type` URI for a
+variant that does not carry its own `Problem` body; `problem` is still accepted as an alias.
 
 `App::document_rejections(false)` disables automatic extractor rejection responses, leaving only
 the responses supplied by handlers and declarations.
@@ -526,14 +532,16 @@ Run any example from the repository root:
 
 | Command | Port | What it demonstrates |
 |---|---|---|
-| `cargo notes` | 3000 | Multi-file module composition, schemas and errors |
+| `cargo quickstart` | 3000 | The smallest app: one file, one table, schemas and a server |
+| `cargo notes` | 3001 | Multi-file module composition, schemas and errors |
 | `cargo layers` | 3002 | Global, module and entry layers; fallback; embedding |
 | `cargo uploads` | 3004 | Multipart, `TempFile`, attachments, SSE and the docs UI |
 | `cargo auth` | 3006 | Scopes, optional auth, two-scheme AND and the auth guard |
 
-Detailed feature coverage lives in the crate's integration tests. The route, schema, validation,
-auth and layering contracts are exercised there without a runnable example for every feature.
-`tests/fixtures/renamed` checks that the macros work when the dependency is renamed.
+`examples/quickstart` is the smallest starting point; `examples/notes` shows the multi-file
+layout. Detailed feature coverage lives in the crate's integration tests. The route, schema,
+validation, auth and layering contracts are exercised there without a runnable example for every
+feature. `tests/fixtures/renamed` checks that the macros work when the dependency is renamed.
 
 ## Development
 

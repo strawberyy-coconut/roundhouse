@@ -26,6 +26,7 @@ mod typed {
         "/override" => { get(over, operation_id = "typed_override") },
     }
 
+    #[allow(clippy::result_large_err)]
     #[handler(
         response(200, Json<Payload>),
         response(409, Problem),

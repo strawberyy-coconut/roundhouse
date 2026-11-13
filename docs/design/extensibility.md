@@ -15,7 +15,8 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 | A tower layer that terminates requests | `App::layer_documented` or a `doc = ..` hook |
 | Metadata the declarations cannot derive | `App::document(..)` |
 | A one-off operation addition | `doc = |docs| ..` on the `routes!` entry |
-| Operation prose or response declarations | `@summary:`, `@description:`, `@responses:` in the handler doc block |
+| Operation prose | `@summary:` and `@description:` in the handler doc block |
+| Response declarations | `#[handler(response(..))]` on the handler |
 
 ## Custom extractors: `ExtractArg`
 
@@ -154,7 +155,7 @@ For an enum of responses, `#[derive(ApiResponse)]` / `#[derive(ApiError)]` gener
 `#[location]` and `#[from]` attributes. That is usually less code than a hand-written impl.
 
 A type that only implements `IntoResponse` still compiles, but contributes no responses. The
-build reports it as undocumented, and `strict()` rejects it. Use `@responses:` on the handler if
+build reports it as undocumented, and `strict()` rejects it. Use `#[handler(response(..))]` if
 you cannot change the type.
 
 Generic enums are supported. The derive copies the enum's generics and `where` clause, then adds
@@ -185,9 +186,7 @@ documentation requires it.
 A `ToSchema`-only type is still usable explicitly:
 
 ```rust
-/// @responses:
-///   200: Report
-#[handler]
+#[handler(response(200, Report))]
 async fn report(...) -> ... { ... }
 ```
 

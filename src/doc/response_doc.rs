@@ -61,7 +61,7 @@ pub fn extension_failures() -> Vec<ResponseDoc> {
     vec![ResponseDoc::problem(500, "Internal Server Error")]
 }
 
-/// One JSON response, for an `@responses: 200: Post` declaration.
+/// One JSON response, for a `response(200, Post)` declaration.
 pub fn json_response_doc<T: ApiSchema>(
     components: &mut dyn SchemaContext,
     status: u16,
@@ -74,7 +74,7 @@ pub fn json_response_doc<T: ApiSchema>(
     response
 }
 
-/// An `@responses: status: Type` declaration for a plain `ToSchema` type.
+/// A `response(status, Type)` declaration for a plain `ToSchema` type.
 pub fn json_response_doc_to_schema<T: utoipa::ToSchema>(
     components: &mut dyn SchemaContext,
     status: u16,
@@ -190,7 +190,7 @@ impl ApiResponse for () {
 }
 
 /// An `Option<T>` does not itself promise a response shape, so the macro cannot claim a success
-/// status. Return a concrete response type or declare the statuses with `@responses:`.
+/// status. Return a concrete response type or declare the statuses with `response(..)`.
 impl<T: ApiResponse> ApiResponse for Option<T> {
     const SUCCESS: &'static [u16] = &[];
 

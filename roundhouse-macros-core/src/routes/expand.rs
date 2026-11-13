@@ -25,7 +25,7 @@ pub fn expand(input: RoutesInput) -> TokenStream {
     let mut definitions = TokenStream::new();
     // Every table defaults to the crate-level state declared with `app_state!(..)`. A table can
     // still set `state = ...` or opt back into per-handler inference with `state = infer`.
-    let default_state = StateOption::Type(syn::parse_quote!(crate::__RoundhouseAppState));
+    let default_state = StateOption::Type(Box::new(syn::parse_quote!(crate::__RoundhouseAppState)));
     emit_module(
         &format_ident!("MODULE"),
         true,
@@ -247,7 +247,7 @@ pub(super) fn expand_entry(
     };
     let default_state = quote!(<#marker_type as #krate::doc::HandlerSpec>::State);
     let table_type = match table_state {
-        Some(StateOption::Type(ty)) => Some(ty),
+        Some(StateOption::Type(ty)) => Some(ty.as_ref()),
         Some(StateOption::Infer) | None => None,
     };
     let shim_state = match table_type {

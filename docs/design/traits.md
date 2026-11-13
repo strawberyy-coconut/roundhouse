@@ -72,7 +72,7 @@ disposition proposed by this note.
 | `ProbeValidateFor<T>` | Recursive `validate_with` hooks | framework | derives | build | probe | collapse into `ProbeSchema` |
 | `ProbeJsonResponse` | Inferred `ApiSchema` JSON response | framework | handler macro | build | probe | collapse into `ProbeSchemaResponse` |
 | `ProbeToSchemaJsonResponse` | Inferred `ToSchema` JSON response | framework | handler macro | build | probe | collapse into `ProbeSchemaResponse` |
-| `ProbeJsonResponseDoc` | Explicit `@responses:` declaration | framework | handler macro | build | probe | collapse into `ProbeSchemaResponse` |
+| `ProbeJsonResponseDoc` | Explicit typed response declaration | framework | handler macro | build | probe | collapse into `ProbeSchemaResponse` |
 | `ProbeTextResponse` | Non-JSON response | framework | handler macro | build | probe | collapse into `ProbeSchemaResponse` |
 | `ProbeResponses` | Whether a type implements `ApiResponse` | framework | handler macro | build | probe | collapse into `ProbeApiResponse` |
 | `ProbeArg<T>` | Whether an argument implements `ExtractArg` | framework | handler macro | build, request | probe | keep as `ProbeArg`, but private |

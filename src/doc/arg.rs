@@ -8,7 +8,7 @@
 //! Automatic body documentation requires [`ApiSchema`]: it is the trait that publishes the
 //! patched component (`unique_items`, `url` → `uri`, `validate_with`) the document promises. A
 //! type that only implements `ToSchema` can still be used in an explicit
-//! `@responses: status: Type` declaration.
+//! typed `response(status, Type)` declaration.
 
 use std::any::TypeId;
 

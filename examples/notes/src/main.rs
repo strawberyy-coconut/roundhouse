@@ -8,7 +8,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     notes_example::app(AppState::default())
-        .serve("0.0.0.0:3000")
+        .serve("0.0.0.0:3001")
         .await?;
     Ok(())
 }

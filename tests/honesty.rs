@@ -25,9 +25,7 @@ mod declared {
         "/x" => { get(x, operation_id = "declared_x") },
     }
 
-    /// @responses:
-    ///   200
-    #[handler]
+    #[handler(response(200))]
     pub async fn x() -> impl IntoResponse {
         "x"
     }
@@ -47,9 +45,7 @@ mod typed {
         "/x" => { get(x, operation_id = "typed_x") },
     }
 
-    /// @responses:
-    ///   200: Payload
-    #[handler]
+    #[handler(response(200, Payload))]
     pub async fn x() -> impl IntoResponse {
         Json(Payload { value: 1 })
     }
@@ -69,9 +65,7 @@ mod override_response {
         "/x" => { get(x, operation_id = "override_x") },
     }
 
-    /// @responses(override):
-    ///   200: Payload
-    #[handler]
+    #[handler(override_response(200, Payload))]
     pub async fn x() -> Json<OtherPayload> {
         Json(OtherPayload { other: 1 })
     }
@@ -86,9 +80,7 @@ mod conflict_response {
         "/x" => { get(x, operation_id = "conflict_x") },
     }
 
-    /// @responses:
-    ///   200: Payload
-    #[handler]
+    #[handler(response(200, Payload))]
     pub async fn x() -> Json<OtherPayload> {
         Json(OtherPayload { other: 1 })
     }
@@ -432,7 +424,7 @@ fn a_declared_response_that_contradicts_the_handler_needs_override() {
         error,
         BuildError::ConflictingResponse { status: 200, .. }
     ));
-    assert!(error.to_string().contains("@responses(override):"));
+    assert!(error.to_string().contains("override_response"));
 }
 
 #[test]

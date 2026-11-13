@@ -1,0 +1,11 @@
+[package]
+name = "quickstart-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The smallest roundhouse application: one file, one route table, one schema."
+
+[dependencies]
+roundhouse = { path = "../.." }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

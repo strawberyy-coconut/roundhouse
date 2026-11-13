@@ -26,8 +26,8 @@ User-facing documentation lives elsewhere:
   probes and shim plumbing, the probe consolidation, and the migration order.
 - [Macros](macros.md) — why `routes!` is the product, how the expansion is organised, and
   the diagnostic philosophy.
-- [Doc tags](doc-tags.md) — the explicit `@summary:`, `@description:` and `@responses:` metadata
-  layer, its precedence rules and its limits.
+- [Doc tags](doc-tags.md) — the prose `@summary:`/`@description:` layer, the typed
+  `#[handler(..)]` metadata that replaces structured doc tags, and the precedence rules.
 
 ## Conventions
 
