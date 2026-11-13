@@ -1,0 +1,7 @@
+error: `min_length` must not be negative
+ --> tests/ui/negative_length_constraint.rs:3:10
+  |
+3 | #[derive(QueryParams)]
+  |          ^^^^^^^^^^^
+  |
+  = note: this error originates in the derive macro `QueryParams` (in Nightly builds, run with -Z macro-backtrace for more info)

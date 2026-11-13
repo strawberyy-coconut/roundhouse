@@ -76,6 +76,33 @@ async fn an_absent_optional_toschema_enum_is_valid() {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
+mod large_integer_bound {
+    use super::*;
+
+    routes! {
+        prefix = "/large-bound",
+        "/" => { get(list) },
+    }
+
+    #[derive(Debug, Deserialize, QueryParams)]
+    pub struct Filter {
+        #[schema(minimum = 9007199254740993u64)]
+        pub id: u64,
+    }
+
+    #[handler]
+    pub async fn list(Query(filter): Query<Filter>) -> String {
+        filter.id.to_string()
+    }
+}
+
+#[test]
+fn integer_constraints_values_are_not_rounded_through_f64() {
+    let document = document(&large_integer_bound::MODULE);
+    let id = parameter(&document, "/large-bound", "id");
+    assert_eq!(id["schema"]["minimum"], 9007199254740993u64);
+}
+
 mod optional_apischema_enum {
     use super::*;
 

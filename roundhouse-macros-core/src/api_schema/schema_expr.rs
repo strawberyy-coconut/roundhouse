@@ -28,43 +28,83 @@ pub(crate) fn field_schema_expr(ty: &Type, constraints: &Constraints) -> TokenSt
     let krate = crate::util::krate();
     let mut calls = TokenStream::new();
     if let Some(value) = &constraints.min_length {
-        calls.extend(
-            quote! { schema = #krate::doc::schema::with_min_length(schema, (#value) as usize); },
-        );
+        calls.extend(length_constraint(
+            &krate,
+            value,
+            "min_length",
+            quote!(with_min_length),
+        ));
     }
     if let Some(value) = &constraints.max_length {
-        calls.extend(
-            quote! { schema = #krate::doc::schema::with_max_length(schema, (#value) as usize); },
-        );
+        calls.extend(length_constraint(
+            &krate,
+            value,
+            "max_length",
+            quote!(with_max_length),
+        ));
     }
     if let Some(value) = &constraints.pattern {
         calls.extend(quote! { schema = #krate::doc::schema::with_pattern(schema, #value); });
     }
     if let Some(value) = &constraints.minimum {
-        calls.extend(
-            quote! { schema = #krate::doc::schema::with_minimum(schema, (#value) as f64); },
-        );
+        let call = if is_integer_literal(value) {
+            quote!(#krate::doc::schema::with_minimum_value(
+                schema,
+                #krate::serde_json::json!(#value),
+            ))
+        } else {
+            quote!(#krate::doc::schema::with_minimum(schema, (#value) as f64))
+        };
+        calls.extend(quote! { schema = #call; });
     }
     if let Some(value) = &constraints.maximum {
-        calls.extend(
-            quote! { schema = #krate::doc::schema::with_maximum(schema, (#value) as f64); },
-        );
+        let call = if is_integer_literal(value) {
+            quote!(#krate::doc::schema::with_maximum_value(
+                schema,
+                #krate::serde_json::json!(#value),
+            ))
+        } else {
+            quote!(#krate::doc::schema::with_maximum(schema, (#value) as f64))
+        };
+        calls.extend(quote! { schema = #call; });
     }
     if let Some(value) = &constraints.exclusive_minimum {
-        calls.extend(quote! { schema = #krate::doc::schema::with_exclusive_minimum(schema, (#value) as f64); });
+        let call = if is_integer_literal(value) {
+            quote!(#krate::doc::schema::with_exclusive_minimum_value(
+                schema,
+                #krate::serde_json::json!(#value),
+            ))
+        } else {
+            quote!(#krate::doc::schema::with_exclusive_minimum(schema, (#value) as f64))
+        };
+        calls.extend(quote! { schema = #call; });
     }
     if let Some(value) = &constraints.exclusive_maximum {
-        calls.extend(quote! { schema = #krate::doc::schema::with_exclusive_maximum(schema, (#value) as f64); });
+        let call = if is_integer_literal(value) {
+            quote!(#krate::doc::schema::with_exclusive_maximum_value(
+                schema,
+                #krate::serde_json::json!(#value),
+            ))
+        } else {
+            quote!(#krate::doc::schema::with_exclusive_maximum(schema, (#value) as f64))
+        };
+        calls.extend(quote! { schema = #call; });
     }
     if let Some(value) = &constraints.min_items {
-        calls.extend(
-            quote! { schema = #krate::doc::schema::with_min_items(schema, (#value) as usize); },
-        );
+        calls.extend(length_constraint(
+            &krate,
+            value,
+            "min_items",
+            quote!(with_min_items),
+        ));
     }
     if let Some(value) = &constraints.max_items {
-        calls.extend(
-            quote! { schema = #krate::doc::schema::with_max_items(schema, (#value) as usize); },
-        );
+        calls.extend(length_constraint(
+            &krate,
+            value,
+            "max_items",
+            quote!(with_max_items),
+        ));
     }
     if constraints.unique_items {
         calls.extend(quote! { schema = #krate::doc::schema::with_unique_items(schema); });
@@ -134,6 +174,53 @@ fn is_vec_u8(ty: &Type) -> bool {
         .and_then(|inner| crate::util::outer_ident(&inner))
         .as_deref()
         == Some("u8")
+}
+
+/// Whether a constraint expression is an integer literal (possibly negated).
+///
+/// Those can be preserved as an exact JSON number. Other expressions keep the historical `f64`
+/// conversion because their type is not known to the macro.
+fn is_integer_literal(expr: &syn::Expr) -> bool {
+    match expr {
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(_),
+            ..
+        }) => true,
+        syn::Expr::Unary(syn::ExprUnary {
+            op: syn::UnOp::Neg(_),
+            expr,
+            ..
+        }) => is_integer_literal(expr),
+        _ => false,
+    }
+}
+
+fn is_negative_integer_literal(expr: &syn::Expr) -> bool {
+    matches!(
+        expr,
+        syn::Expr::Unary(syn::ExprUnary {
+            op: syn::UnOp::Neg(_),
+            expr,
+            ..
+        }) if is_integer_literal(expr)
+    )
+}
+
+fn length_constraint(
+    krate: &TokenStream,
+    value: &syn::Expr,
+    name: &str,
+    builder: TokenStream,
+) -> TokenStream {
+    if is_negative_integer_literal(value) {
+        let message = format!("`{name}` must not be negative");
+        let message = syn::LitStr::new(&message, proc_macro2::Span::call_site());
+        quote!(compile_error!(#message);)
+    } else {
+        quote! {
+            schema = #krate::doc::schema::#builder(schema, (#value) as usize);
+        }
+    }
 }
 
 pub(crate) fn field_validation(

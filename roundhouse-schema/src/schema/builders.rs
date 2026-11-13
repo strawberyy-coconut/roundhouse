@@ -171,6 +171,41 @@ pub fn with_exclusive_maximum(schema: RefOr<Schema>, value: f64) -> RefOr<Schema
     })
 }
 
+/// Convert a JSON number to utoipa's number model without routing integers through `f64`.
+fn json_number(value: &Value) -> Option<utoipa::Number> {
+    if let Some(value) = value.as_i64() {
+        Some((value as isize).into())
+    } else if let Some(value) = value.as_u64() {
+        Some((value as usize).into())
+    } else {
+        value.as_f64().map(Into::into)
+    }
+}
+
+/// Exact numeric bounds, preserving integers larger than `f64`'s exact range.
+///
+/// The macro emits `serde_json::json!` for an integer constraint expression, so an integer
+/// literal keeps its exact value instead of being rounded through `f64`.
+pub fn with_minimum_value(schema: RefOr<Schema>, value: Value) -> RefOr<Schema> {
+    map_object(schema, |object| object.minimum = json_number(&value))
+}
+
+pub fn with_maximum_value(schema: RefOr<Schema>, value: Value) -> RefOr<Schema> {
+    map_object(schema, |object| object.maximum = json_number(&value))
+}
+
+pub fn with_exclusive_minimum_value(schema: RefOr<Schema>, value: Value) -> RefOr<Schema> {
+    map_object(schema, |object| {
+        object.exclusive_minimum = json_number(&value)
+    })
+}
+
+pub fn with_exclusive_maximum_value(schema: RefOr<Schema>, value: Value) -> RefOr<Schema> {
+    map_object(schema, |object| {
+        object.exclusive_maximum = json_number(&value)
+    })
+}
+
 pub fn with_min_items(schema: RefOr<Schema>, value: usize) -> RefOr<Schema> {
     map_array(schema, |array| array.min_items = Some(value))
 }
