@@ -142,6 +142,23 @@ pub mod __private {
     pub use crate::doc::probe::*;
     pub use crate::extract::ValidationContext;
     pub use crate::shim::{Authed, Plain, ShimPolicy, ShimPolicyFor, SubstateOf};
+
+    /// Whether `module_path!()` names the crate root.
+    ///
+    /// A crate-root module path is the crate name alone; a nested module contains `::`. Used by
+    /// [`app_state!`](crate::app_state!) to reject a declaration that would never be visible to
+    /// the route tables.
+    pub const fn is_crate_root(path: &str) -> bool {
+        let bytes = path.as_bytes();
+        let mut index = 0;
+        while index < bytes.len() {
+            if bytes[index] == b':' {
+                return false;
+            }
+            index += 1;
+        }
+        true
+    }
 }
 
 /// Typed multipart extraction, re-exported from `roundhouse-multipart`.
@@ -238,6 +255,11 @@ macro_rules! app_state {
         /// The crate-wide application state declared by `app_state!`.
         #[doc(hidden)]
         pub type __RoundhouseAppState = $state;
+
+        const _: () = assert!(
+            $crate::__private::is_crate_root(module_path!()),
+            "roundhouse::app_state! must be called at the crate root, not in a nested module",
+        );
     };
 }
 

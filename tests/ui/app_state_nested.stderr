@@ -1,0 +1,7 @@
+error[E0080]: evaluation panicked: roundhouse::app_state! must be called at the crate root, not in a nested module
+ --> tests/ui/app_state_nested.rs:2:5
+  |
+2 |     roundhouse::app_state!(u8);
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `state::_` failed here
+  |
+  = note: this error originates in the macro `$crate::panic::panic_2021` which comes from the expansion of the macro `roundhouse::app_state` (in Nightly builds, run with -Z macro-backtrace for more info)
