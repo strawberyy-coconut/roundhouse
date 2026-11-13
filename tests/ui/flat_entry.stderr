@@ -1,4 +1,4 @@
-error: route entries must be inside a path group; write `"/path" => { get(handler) }`
+error: expected `prefix "/path" [options] { .. }` for a nested group
   --> tests/ui/flat_entry.rs:11:5
    |
 11 |     get("/x", x),

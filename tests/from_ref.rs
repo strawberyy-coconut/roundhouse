@@ -119,7 +119,7 @@ mod nested {
     routes! {
         state = super::AppState,
         prefix = "/nested",
-        "/admin" [tags = ["admin"]] {
+        prefix "/admin" [tags = ["admin"]] {
             "/" => { get(value) },
         },
     }

@@ -61,7 +61,8 @@ routes! {
 }
 ```
 
-A group may carry module policy in brackets, for example `"/notes" [tags = ["notes"]] { ... }`.
+A prefix group may carry module policy in brackets, for example
+`prefix "/notes" [tags = ["notes"]] { ... }`. A path group is always `"/path" => { ... }`.
 The flat `get("/path", handler)` and compact `get "/path" => handler` forms were removed in 0.3;
 there is one way to declare a route.
 

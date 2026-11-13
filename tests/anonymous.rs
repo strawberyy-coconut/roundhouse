@@ -55,7 +55,7 @@ mod guarded {
             get(private),
         },
 
-        "/public" [anonymous] {
+        prefix "/public" [anonymous] {
             "/ok" => {
                 get(public_ok),
             },

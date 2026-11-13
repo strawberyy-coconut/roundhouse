@@ -35,7 +35,7 @@ routes! {
         get(protected::project),
     },
 
-    "/guarded" [security = [BearerAuth]] {
+    prefix "/guarded" [security = [BearerAuth]] {
         "/whoami" => {
             get(protected::whoami),
         },

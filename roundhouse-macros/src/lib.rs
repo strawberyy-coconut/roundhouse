@@ -70,9 +70,9 @@ use proc_macro::TokenStream;
 /// }
 /// ```
 ///
-/// A module declares its prefix and shared policy before the groups, and a string followed by a
-/// block is a nested module with its own prefix and options. `...module` composes another
-/// module's tree at the point it appears:
+/// A module declares its prefix and shared policy before the groups. A `prefix` group is a
+/// nested module with its own prefix and options; a string path group declares routes directly.
+/// `...module` composes another module's tree at the point it appears:
 ///
 /// ```ignore
 /// // routes/mod.rs
@@ -83,7 +83,7 @@ use proc_macro::TokenStream;
 ///     prefix = "/api",
 ///     tags = ["api"],
 ///     ...notes,
-///     "/blog" [tags = ["blog"]] {
+///     prefix "/blog" [tags = ["blog"]] {
 ///         "/" => {
 ///             get(blog::list),
 ///             post(blog::create),
@@ -187,8 +187,8 @@ use proc_macro::TokenStream;
 ///
 /// # Module options
 ///
-/// The root table accepts these before the first entry; a `"/path" [..] { .. }` group accepts the
-/// same options in its brackets:
+/// The root table accepts these before the first entry; a `prefix "/path" [..] { .. }` group
+/// accepts the same options in its brackets:
 ///
 /// - `prefix = "/path"` — the module's URL segment (root table only; a group uses its path).
 /// - `state = AppState` — override the router state for every entry in this table. Without it,

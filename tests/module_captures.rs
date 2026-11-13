@@ -232,7 +232,7 @@ mod repeated_prefix {
 
     routes! {
         prefix = "/api",
-        "/api" {
+        prefix "/api" {
             "/x" => {
                 get(x, operation_id = "repeated_prefix_x"),
             },

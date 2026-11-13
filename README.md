@@ -80,7 +80,7 @@ routes! {
         delete(destroy),
     },
 
-    "/admin" [security = [Bearer]] {
+    prefix "/admin" [security = [Bearer]] {
         "/audit" => {
             get(audit),
         },
@@ -146,7 +146,7 @@ The full grammar and precedence rules are in
 
 ### Module options
 
-`prefix` is declared before a table's first entry; a path group uses its path as the prefix. Every route entry lives inside a path group.
+`prefix` is declared before a table's first entry. A path group, `"/path" => { .. }`, declares routes directly; a `prefix "/path" [..] { .. }` group nests another table. Every route entry lives inside a path group.
 `state`, `tags`, `security`, `layer`, `layer_mode`, `hidden`, `anonymous` and `doc` can be declared
 before a table's first entry or in the brackets of a path group. `layer_mode = full` applies a
 module layer to the whole subtree; `layer_mode = route` uses `route_layer`.

@@ -20,13 +20,13 @@ pub async fn entry_ok() -> &'static str {
 }
 
 routes! {
-    "/full" [layer = middleware::from_fn(crate::headers::module)] {
+    prefix "/full" [layer = middleware::from_fn(crate::headers::module)] {
         "/ok" => {
             get(full_ok),
         },
     },
 
-    "/route-layer" [
+    prefix "/route-layer" [
         layer = middleware::from_fn(crate::headers::route_layer),
         layer_mode = route,
     ] {
@@ -35,7 +35,7 @@ routes! {
         },
     },
 
-    "/entry" {
+    prefix "/entry" {
         "/ok" => {
             get(entry_ok, layer = middleware::from_fn(crate::headers::entry)),
         },

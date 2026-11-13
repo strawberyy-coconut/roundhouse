@@ -75,8 +75,8 @@ mod compact {
     }
 
     routes! {
-        "/api" {
-            "/notes" [tags = ["notes"]] {
+        prefix "/api" {
+            prefix "/notes" [tags = ["notes"]] {
                 "/" => {
                     get(list),
                     post(create),
@@ -85,7 +85,7 @@ mod compact {
                     get(show, operation_id = "compact_get_note"),
                 },
             }
-            "/blog" [tags = ["blog"]] {
+            prefix "/blog" [tags = ["blog"]] {
                 "/posts" => {
                     get(posts),
                 },

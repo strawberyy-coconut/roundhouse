@@ -131,28 +131,47 @@ impl Body {
                 continue;
             }
 
-            if input.peek(LitStr) {
+            if shared_path.is_none() && input.peek(syn::Ident) {
+                let keyword: Ident = input.parse()?;
+                if keyword != "prefix" {
+                    return Err(syn::Error::new(
+                        keyword.span(),
+                        "expected `prefix \"/path\" [options] { .. }` for a nested group",
+                    ));
+                }
                 let path: LitStr = input.parse()?;
-                let shared_path = input.peek(Token![=>]);
-                let options = if shared_path {
-                    input.parse::<Token![=>]>()?;
-                    ModuleOptions::default()
-                } else {
-                    parse_module_options(input)?
-                };
+                let options = parse_module_options(input)?;
                 let content;
                 syn::braced!(content in input);
-                let group_body = if shared_path {
-                    // `"/{id}" => { get(show) }` is one path shared by several methods.
-                    Body::parse_shared(&content, path.clone())?
-                } else {
-                    // `"/notes" [tags = ..] { "/" => { get(list) } }` is a prefix group.
-                    Body::parse(&content)?
-                };
+                let group_body = Body::parse(&content)?;
                 let mut group = Group {
                     path,
                     options,
-                    shared_path,
+                    shared_path: false,
+                    body: group_body,
+                };
+                for entry in &mut group.body.entries {
+                    entry.attrs.splice(0..0, attrs.clone());
+                }
+                body.groups.push(group);
+            } else if input.peek(LitStr) {
+                let path: LitStr = input.parse()?;
+                if !input.peek(Token![=>]) {
+                    return Err(syn::Error::new(
+                        path.span(),
+                        "prefix groups use `prefix \"/path\" [options] { .. }`; a path group is \
+                         `\"/path\" => { get(handler) }`",
+                    ));
+                }
+                input.parse::<Token![=>]>()?;
+                let content;
+                syn::braced!(content in input);
+                // `"/{id}" => { get(show) }` is one path shared by several methods.
+                let group_body = Body::parse_shared(&content, path.clone())?;
+                let mut group = Group {
+                    path,
+                    options: ModuleOptions::default(),
+                    shared_path: true,
                     body: group_body,
                 };
                 // In a group, attributes written before the path apply to every entry inside.
@@ -200,11 +219,11 @@ impl Parse for RoutesInput {
         //     routes! {
         //         prefix = "/api",
         //         tags = ["api"],
-        //         "/notes" [tags = ["notes"]] { ... }
+        //         prefix "/notes" [tags = ["notes"]] { ... }
         //     }
         //
-        // A bare `"/api" { ... }` is the same tree with an anonymous root; group options live in
-        // the brackets.
+        // A `prefix "/api" { ... }` group is the same tree with an anonymous root; group options
+        // live in the brackets.
         let options = parse_root_options(input)?;
         let body = Body::parse(input)?;
         Ok(Self { options, body })
