@@ -92,6 +92,9 @@ fn downgrade_nullable(object: &mut Map<String, Value>) {
             let other = items[1 - null_index].clone();
             if let Value::Object(mut other) = other {
                 other.insert("nullable".to_string(), Value::Bool(true));
+                if let Some(Value::Array(values)) = other.get_mut("enum") {
+                    values.retain(|value| value != &Value::Null);
+                }
                 // The original object may carry metadata such as `description` or `example`
                 // beside the `oneOf`; keep it while replacing the schema branch.
                 let mut merged = object.clone();

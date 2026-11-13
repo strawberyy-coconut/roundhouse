@@ -44,6 +44,17 @@ fn the_validator_rejects_a_capture_without_a_parameter() {
 }
 
 #[test]
+fn the_validator_rejects_a_dangling_response_reference() {
+    let app = built();
+    let mut value = serde_json::to_value(app.document()).unwrap();
+    value["paths"]["/validity/items/{id}"]["get"]["responses"] =
+        serde_json::json!({ "200": { "$ref": "#/components/responses/Missing" } });
+    let broken: roundhouse::utoipa::openapi::OpenApi = serde_json::from_value(value).unwrap();
+    let error = validate_document(&broken).expect_err("a missing response component is invalid");
+    assert!(error.contains("has no component `Missing`"), "{error}");
+}
+
+#[test]
 fn the_validator_rejects_a_requirement_without_a_scheme() {
     let app = built();
     let mut value = serde_json::to_value(app.document()).unwrap();
