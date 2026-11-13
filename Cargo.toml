@@ -87,6 +87,10 @@ tower = { version = "0.5", features = ["util"] }
 trybuild = "1"
 uuid = { version = "1", features = ["serde"] }
 
+[[bench]]
+name = "throughput"
+harness = false
+
 [[test]]
 name = "files"
 path = "tests/files.rs"

@@ -305,6 +305,23 @@ build rejects it unless the entry acknowledges the decision with `unverified = "
 would avoid the second parse; streaming JSON Schema validation is not planned, because
 `required`, `additionalProperties` and `oneOf` need the whole value.
 
+### Performance
+
+`cargo bench -p roundhouse --bench throughput` measures the request path against plain axum.
+On the development container, a small validated JSON request costs roughly 2–4 µs more than the
+same handler on plain axum; `validate_body = false` still costs roughly 1.5–2 µs more, so the
+layer/shim path dominates and the schema engine is a smaller share. The benchmark prints both
+small and ~20 KiB bodies; run it on the target hardware before making deployment decisions.
+
+The current deliberate trade-offs are:
+
+- JSON bodies are parsed once for validation and once for extraction. Use
+  `validate_body = false` for a large body that should be parsed but not checked twice.
+- `validate = false` is a whole-route opt-out and requires `unverified = "reason"`.
+- Swapping the engine for `validator`/`garde` would validate the typed value after one parse, but
+  it would not remove the framework overhead measured above and would narrow the set of JSON
+  Schema keywords the document can enforce. Measure first; the benchmark exists for that.
+
 Failures carry JSON Pointers and stable codes:
 
 ```json

@@ -117,6 +117,16 @@ document, and `App::strict()` rejects that marker unless the entry acknowledges 
 `strict()` because the author made a body-only decision. `Strict<Json<T>>` honors both policies,
 so it is not an escape hatch for large bodies.
 
+### Measured cost
+
+`benches/throughput.rs` compares plain axum, schema validation, `validate_body = false` and
+`validate = false`. On the development container the framework's layer/shim path costs about
+1.5–2 µs per small request before any schema work; the schema engine adds roughly another 1 µs.
+The engine is therefore not the dominant cost, and replacing it with `validator`/`garde` would not
+remove the overhead that dominates the comparison. The benchmark is the decision gate for any
+change here: measure, then optimize the layer path or the double parse, not the engine in
+isolation.
+
 A later optimization may skip the raw layer when the body schema has no enforceable keywords, or
 offer a validate-after-extraction mode for `Serialize` body types. The latter would need an
 explicit extractor or route mode so the `Serialize` bound is checked at compile time. Neither
