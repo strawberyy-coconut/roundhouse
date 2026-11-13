@@ -5,7 +5,9 @@
 //! `proc-macro = true` entry point.
 
 use proc_macro2::TokenStream;
-use syn::{DeriveInput, Item, ItemFn};
+use quote::ToTokens;
+use syn::punctuated::Punctuated;
+use syn::{DeriveInput, Item, ItemFn, Meta, Token};
 
 mod api_response;
 mod api_schema;
@@ -49,7 +51,7 @@ pub fn expand_schema(attr: TokenStream, item: TokenStream) -> TokenStream {
         )
         .to_compile_error();
     }
-    let item = match syn::parse2::<Item>(item) {
+    let mut item = match syn::parse2::<Item>(item) {
         Ok(item) => item,
         Err(error) => return error.to_compile_error(),
     };
@@ -72,11 +74,73 @@ pub fn expand_schema(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
         return syn::Error::new(proc_macro2::Span::call_site(), message).to_compile_error();
     }
+    if let Err(error) = rewrite_component_name(&mut item) {
+        return error.to_compile_error();
+    }
     let krate = util::krate();
     quote::quote! {
-        #[derive(#krate::ToSchema, #krate::ApiSchema)]
+        #[derive(#krate::__private::utoipa::ToSchema, #krate::ApiSchema)]
         #item
     }
+}
+
+/// Translate `#[roundhouse(name = "module.Name")]` into utoipa's `#[schema(as = module::Name)]`
+/// so the injected `ToSchema` derive and roundhouse agree on the component name.
+fn rewrite_component_name(item: &mut Item) -> syn::Result<()> {
+    let attrs = match item {
+        Item::Struct(item) => &mut item.attrs,
+        Item::Enum(item) => &mut item.attrs,
+        _ => return Ok(()),
+    };
+    let mut rewritten = Vec::with_capacity(attrs.len());
+    for attr in attrs.drain(..) {
+        if !attr.path().is_ident("roundhouse") {
+            rewritten.push(attr);
+            continue;
+        }
+        let metas = attr.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)?;
+        let mut name = None;
+        let mut remaining = Punctuated::<Meta, Token![,]>::new();
+        for meta in metas {
+            let is_name = matches!(
+                &meta,
+                Meta::NameValue(value)
+                    if value.path.is_ident("name") || value.path.is_ident("as")
+            );
+            if is_name {
+                if let Meta::NameValue(value) = &meta
+                    && let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(lit),
+                        ..
+                    }) = &value.value
+                {
+                    name = Some(lit.value());
+                    continue;
+                }
+                return Err(syn::Error::new_spanned(
+                    &meta,
+                    "a component name must be a string literal, such as                      `#[roundhouse(name = \"module.Name\")]`",
+                ));
+            }
+            remaining.push(meta);
+        }
+        if let Some(name) = name {
+            let path = syn::parse_str::<syn::Path>(&name.replace('.', "::")).map_err(|_| {
+                syn::Error::new_spanned(
+                    &attr,
+                    "a component name must look like `module::Name` or `module.Name`",
+                )
+            })?;
+            rewritten.push(syn::parse_quote!(#[schema(as = #path)]));
+        }
+        if !remaining.is_empty() {
+            let mut tokens = TokenStream::new();
+            remaining.to_tokens(&mut tokens);
+            rewritten.push(syn::parse_quote!(#[roundhouse(#tokens)]));
+        }
+    }
+    *attrs = rewritten;
+    Ok(())
 }
 
 pub fn expand_api_schema(input: TokenStream) -> TokenStream {

@@ -1,5 +1,6 @@
 //! Explicit module composition: one `routes!` macro, nested prefixes and module spreads.
 
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 
 #[derive(Clone, Default)]

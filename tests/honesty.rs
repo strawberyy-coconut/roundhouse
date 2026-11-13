@@ -1,6 +1,7 @@
 //! Build-time honesty: fallible builds, loud derivation, and declared metadata.
 
 use axum::http::StatusCode;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use roundhouse::{App, BuildError, Built};
 use serde::Serialize;

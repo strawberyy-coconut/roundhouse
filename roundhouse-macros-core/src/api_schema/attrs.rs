@@ -22,6 +22,8 @@ pub(crate) struct Constraints {
 #[derive(Default, Clone)]
 pub(crate) struct SchemaAttrs {
     pub(crate) constraints: Constraints,
+    /// `#[roundhouse(name = "module.Name")]`, the roundhouse spelling for a component name.
+    pub(crate) name: Option<LitStr>,
 }
 
 pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
@@ -29,43 +31,28 @@ pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
     for attr in attrs {
         if attr.path().is_ident("roundhouse") {
             attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("unique_items") {
-                    schema.constraints.unique_items = true;
-                } else if meta.path.is_ident("validate_with") {
-                    schema.constraints.validate_with = Some(meta.value()?.parse()?);
-                } else {
-                    return Err(meta.error(
-                        "unknown `roundhouse` attribute; expected `unique_items` or `validate_with`",
-                    ));
+                if meta.path.is_ident("name") || meta.path.is_ident("as") {
+                    schema.name = Some(meta.value()?.parse()?);
+                    return Ok(());
                 }
+                let _ = parse_constraint(&meta, &mut schema.constraints, true)?;
                 Ok(())
             })?;
         } else if attr.path().is_ident("schema") {
             attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("min_length") {
-                    schema.constraints.min_length = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("max_length") {
-                    schema.constraints.max_length = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("pattern") {
-                    schema.constraints.pattern = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("minimum") {
-                    schema.constraints.minimum = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("maximum") {
-                    schema.constraints.maximum = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("exclusive_minimum") {
-                    schema.constraints.exclusive_minimum = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("exclusive_maximum") {
-                    schema.constraints.exclusive_maximum = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("min_items") {
-                    schema.constraints.min_items = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("max_items") {
-                    schema.constraints.max_items = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("format") {
-                    schema.constraints.format = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("description") {
-                    schema.constraints.description = Some(meta.value()?.parse()?);
-                } else if meta.path.is_ident("example") {
-                    schema.constraints.example = Some(meta.value()?.parse()?);
+                // `#[schema(..)]` remains the utoipa-compatible spelling. Known constraints are
+                // enforced by roundhouse; other keys belong to the injected ToSchema derive and
+                // are consumed here so they do not trip the parser.
+                if meta.path.is_ident("name") {
+                    return Err(meta.error(
+                        "component names are a roundhouse concept; use \
+                         `#[roundhouse(name = \"module.Name\")]`",
+                    ));
+                } else if meta.path.is_ident("via") {
+                    return Err(meta.error(
+                        "`via = utoipa` is not supported: derive `utoipa::ToSchema` alongside \
+                         `ApiSchema`",
+                    ));
                 } else if meta.path.is_ident("skip_validation") {
                     return Err(meta.error(
                         "`#[schema(skip_validation)]` is not supported: a declared constraint is \
@@ -82,24 +69,17 @@ pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
                         "`validate_with` is a roundhouse constraint; write \
                          `#[roundhouse(validate_with = path)]` instead",
                     ));
-                } else if meta.path.is_ident("name") {
-                    return Err(meta.error(
-                        "component names come from utoipa; use `#[schema(as = path::Name)]` \
-                         instead of `#[schema(name = ...)]`",
-                    ));
-                } else if meta.path.is_ident("via") {
-                    return Err(meta.error(
-                        "`via = utoipa` is not supported: derive `utoipa::ToSchema` alongside \
-                         `ApiSchema`",
-                    ));
-                } else if meta.input.peek(syn::token::Paren) {
+                }
+                if parse_constraint(&meta, &mut schema.constraints, false)? {
+                    return Ok(());
+                }
+                if meta.input.peek(syn::token::Paren) {
                     // A utoipa attribute with a nested group, such as `extensions(...)`.
                     let content;
                     syn::parenthesized!(content in meta.input);
                     let _ = content;
                 } else if meta.input.peek(syn::Token![=]) {
-                    // An attribute owned by utoipa (`as`, `value_type`, `example`, ...).
-                    // Consume its value so `parse_nested_meta` can move to the next attribute.
+                    // An attribute owned by utoipa (`as`, `value_type`, ...).
                     let _: Expr = meta.value()?.parse()?;
                 }
                 Ok(())
@@ -109,7 +89,49 @@ pub(crate) fn schema_attrs(attrs: &[syn::Attribute]) -> Result<SchemaAttrs> {
     Ok(schema)
 }
 
-/// A parameter's description: `#[schema(description = "...")]` wins over a `@description:` tag.
+/// Parse one constraint key. Returns `true` when the key was recognized.
+///
+/// `strict` is used for `#[roundhouse(..)]`: an unknown key is a compile error. The
+/// `#[schema(..)]` spelling stays permissive because utoipa owns the rest of that namespace.
+fn parse_constraint(
+    meta: &syn::meta::ParseNestedMeta<'_>,
+    constraints: &mut Constraints,
+    strict: bool,
+) -> Result<bool> {
+    let key = meta
+        .path
+        .get_ident()
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    match key.as_str() {
+        "min_length" => constraints.min_length = Some(meta.value()?.parse()?),
+        "max_length" => constraints.max_length = Some(meta.value()?.parse()?),
+        "pattern" => constraints.pattern = Some(meta.value()?.parse()?),
+        "minimum" => constraints.minimum = Some(meta.value()?.parse()?),
+        "maximum" => constraints.maximum = Some(meta.value()?.parse()?),
+        "exclusive_minimum" => constraints.exclusive_minimum = Some(meta.value()?.parse()?),
+        "exclusive_maximum" => constraints.exclusive_maximum = Some(meta.value()?.parse()?),
+        "min_items" => constraints.min_items = Some(meta.value()?.parse()?),
+        "max_items" => constraints.max_items = Some(meta.value()?.parse()?),
+        "format" => constraints.format = Some(meta.value()?.parse()?),
+        "description" => constraints.description = Some(meta.value()?.parse()?),
+        "example" => constraints.example = Some(meta.value()?.parse()?),
+        "unique_items" if strict => constraints.unique_items = true,
+        "validate_with" if strict => constraints.validate_with = Some(meta.value()?.parse()?),
+        _ if strict => {
+            return Err(meta.error(
+                "unknown `roundhouse` attribute; expected a constraint such as `min_length`, \
+                 `max_length`, `pattern`, `minimum`, `maximum`, `min_items`, `max_items`, \
+                 `format`, `description`, `example`, `unique_items`, `validate_with`, or `name`",
+            ));
+        }
+        _ => return Ok(false),
+    }
+    Ok(true)
+}
+
+/// A parameter's description: `#[roundhouse(description = "...")]` or
+/// `#[schema(description = "...")]` wins over a `@description:` tag.
 pub(crate) fn description_lit(attrs: &[Attribute], span: Span) -> Result<Option<LitStr>> {
     let schema = schema_attrs(attrs)?;
     if let Some(description) = schema.constraints.description {

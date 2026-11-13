@@ -49,16 +49,18 @@ impl AppState {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
+#[roundhouse::schema]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Note {
     pub id: i64,
-    #[schema(min_length = 1, max_length = 200)]
+    #[roundhouse(min_length = 1, max_length = 200)]
     pub title: String,
 }
 
-#[derive(Deserialize, ToSchema, ApiSchema)]
+#[roundhouse::schema]
+#[derive(Deserialize)]
 pub struct NewNote {
-    #[schema(min_length = 1, max_length = 200)]
+    #[roundhouse(min_length = 1, max_length = 200)]
     pub title: String,
 }
 
@@ -69,7 +71,7 @@ pub struct NoteId {
 
 #[derive(Default, Deserialize, QueryParams)]
 pub struct ListQuery {
-    #[schema(minimum = 1, maximum = 100)]
+    #[roundhouse(minimum = 1, maximum = 100)]
     pub limit: Option<usize>,
 }
 

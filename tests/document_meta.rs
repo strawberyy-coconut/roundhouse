@@ -1,8 +1,8 @@
 //! App-level document metadata: servers, tag descriptions and the document hook.
 
+use roundhouse::interop::utoipa::openapi::Server;
+use roundhouse::interop::utoipa::openapi::tag::Tag;
 use roundhouse::prelude::*;
-use roundhouse::utoipa::openapi::Server;
-use roundhouse::utoipa::openapi::tag::Tag;
 
 #[derive(Clone, Default)]
 pub struct State;

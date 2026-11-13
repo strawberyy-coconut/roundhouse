@@ -167,7 +167,7 @@ use proc_macro::TokenStream;
 /// - `deprecated` — mark the operation deprecated in the document.
 /// - `anonymous` — clear inherited `security` guards for this entry and document `security: []`.
 ///   A handler's own `Auth<A>` still applies.
-/// - `validate = false` — parse the request as usual but skip `#[schema(..)]` constraint
+/// - `validate = false` — parse the request as usual but skip `#[roundhouse(..)]` constraint
 ///   validation for this route. Malformed bodies are still rejected. The document records
 ///   `x-roundhouse-validation: false`. This is a whole-route opt-out; `unverified = "reason"`
 ///   acknowledges it so `strict()` passes.
@@ -367,31 +367,30 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// response, should be a named component, uses `unique_items` or the `url` to `uri` format
 /// mapping, or has a `validate_with` hook.
 ///
-/// Component names follow utoipa; use `#[schema(as = module::Name)]` when two types share a simple
-/// name.
+/// Component names are the Rust type name by default; use
+/// `#[roundhouse(name = "module.Name")]` when two types share a simple name.
 ///
 /// # Constraints
 ///
-/// Constraints are read from `#[schema(..)]` where utoipa understands them, and from
-/// `#[roundhouse(..)]` for the roundhouse-only checks:
+/// Constraints use the `#[roundhouse(..)]` spelling. `#[schema(..)]` remains accepted for
+/// utoipa interop:
 ///
-/// - `#[schema(min_length = n)]` / `max_length = n` — character-count bounds for strings.
-/// - `#[schema(pattern = "regex")]` — a regular expression the string must match.
-/// - `#[schema(minimum = n, maximum = n)]`, `exclusive_minimum`, `exclusive_maximum` —
+/// - `#[roundhouse(min_length = n)]` / `max_length = n` — character-count bounds for strings.
+/// - `#[roundhouse(pattern = "regex")]` — a regular expression the string must match.
+/// - `#[roundhouse(minimum = n, maximum = n)]`, `exclusive_minimum`, `exclusive_maximum` —
 ///   numeric bounds.
-/// - `#[schema(min_items = n, max_items = n)]` — collection bounds.
-/// - `#[schema(format = "email" | "uuid" | "url" | "uri" | ...)]` — an OpenAPI format. `email`,
+/// - `#[roundhouse(min_items = n, max_items = n)]` — collection bounds.
+/// - `#[roundhouse(format = "email" | "uuid" | "url" | "uri" | ...)]` — an OpenAPI format. `email`,
 ///   `uuid`, `url` and `uri` are also checked at runtime; other formats are documentation only.
-/// - `#[schema(example = expression)]` — an example value for the schema.
+/// - `#[roundhouse(example = expression)]` — an example value for the schema.
+/// - `#[roundhouse(description = "…")]` — a field or type description.
 /// - `#[roundhouse(unique_items)]` — uniqueness for a collection.
 /// - `#[roundhouse(validate_with = path)]` — a function `fn(&T) -> Result<(), ValidationErrors>`
 ///   run in addition to the declared constraints. Its errors keep the field's JSON Pointer.
 ///
 /// Constraints are published and enforced: the emitted schema is compiled and executed by the
-/// `schema-engine` feature. `#[schema(..)]` constraints work with `ToSchema` alone; `unique_items`,
-/// the `url` to `uri` mapping and `validate_with` require this derive. `validate_with` is Rust
-/// code, so it runs after the engine. Opt a route out of constraint checks with `validate = false`
-/// in `routes!`.
+/// `schema-engine` feature. Opt a route out of constraint checks with `validate = false` in
+/// `routes!`.
 ///
 /// # Example
 ///
@@ -402,11 +401,11 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// #[derive(Serialize, Deserialize, ToSchema, ApiSchema)]
 /// #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// pub struct Signup {
-///     #[schema(min_length = 3, max_length = 32)]
+///     #[roundhouse(min_length = 3, max_length = 32)]
 ///     pub user_name: String,
-///     #[schema(format = "email")]
+///     #[roundhouse(format = "email")]
 ///     pub email: String,
-///     #[schema(minimum = 18)]
+///     #[roundhouse(minimum = 18)]
 ///     #[roundhouse(validate_with = validate_age)]
 ///     pub age: u8,
 /// }
@@ -432,14 +431,13 @@ pub fn derive_api_schema(input: TokenStream) -> TokenStream {
 /// #[roundhouse::schema]
 /// #[derive(Serialize, Deserialize)]
 /// pub struct Note {
-///     #[schema(min_length = 1)]
+///     #[roundhouse(min_length = 1)]
 ///     pub title: String,
 /// }
 /// ```
 ///
-/// The attribute re-emits the item with `#[derive(roundhouse::ToSchema,
-/// roundhouse::ApiSchema)]`, so `#[schema(..)]`, `#[serde(..)]` and `#[roundhouse(..)]` keep
-/// working exactly as they do with the two derives. Use it on a struct or enum, as the outermost
+/// The attribute re-emits the item with the internal `ToSchema` and `ApiSchema` derives, so
+/// `#[serde(..)]`, `#[roundhouse(..)]` and the utoipa-compatible `#[schema(..)]` keep working. Use it on a struct or enum, as the outermost
 /// attribute; do not also derive `ToSchema` or `ApiSchema` on the same item.
 #[proc_macro_attribute]
 pub fn schema(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -449,7 +447,7 @@ pub fn schema(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Derive OpenAPI query-parameter documentation and validation for a struct.
 ///
 /// Use it together with `serde::Deserialize`: `Deserialize` handles extraction and
-/// `QueryParams` describes the parameters and enforces their `#[schema(..)]` constraints for
+/// `QueryParams` describes the parameters and enforces their `#[roundhouse(..)]` constraints for
 /// `Query<T>` handler arguments.
 ///
 /// ```ignore
@@ -459,11 +457,11 @@ pub fn schema(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// #[derive(Deserialize, QueryParams)]
 /// #[serde(rename_all = "camelCase")]
 /// pub struct NoteFilter {
-///     #[schema(min_length = 1)]
+///     #[roundhouse(min_length = 1)]
 ///     pub search: Option<String>,
 ///     #[serde(default)]
 ///     pub limit: Option<u32>,
-///     #[schema(min_items = 1, max_items = 20)]
+///     #[roundhouse(min_items = 1, max_items = 20)]
 ///     pub tags: Vec<String>,
 /// }
 /// ```
@@ -478,7 +476,7 @@ pub fn schema(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// - `Vec<T>` and `Option<Vec<T>>` are documented as exploded form-style arrays. Read them with
 ///   `RepeatedQuery<T>`; axum's `Query<T>` uses `serde_urlencoded` and cannot represent repeated
 ///   keys.
-/// - `#[schema(..)]` constraints are published and validated with JSON Pointers.
+/// - `#[roundhouse(..)]` constraints are published and validated with JSON Pointers.
 #[proc_macro_derive(QueryParams, attributes(serde, schema, roundhouse))]
 pub fn derive_query_params(input: TokenStream) -> TokenStream {
     roundhouse_macros_core::expand_query_params(input.into()).into()
@@ -507,7 +505,7 @@ pub fn derive_query_params(input: TokenStream) -> TokenStream {
 ///
 /// The derive implements `Params`, so [`routes!`](macro@routes) can check at compile time that
 /// every `{capture}` in the leaf path is declared by the struct. It also publishes the parts
-/// schema and runs the `#[schema(..)]` constraints through `Params::validate_at`.
+/// schema and runs the `#[roundhouse(..)]` constraints through `Params::validate_at`.
 ///
 /// # Rules
 ///
@@ -515,7 +513,7 @@ pub fn derive_query_params(input: TokenStream) -> TokenStream {
 /// - `#[serde(rename = "..")]` and `#[serde(rename_all = "..")]` control the capture names.
 /// - `#[serde(skip)]`, `#[serde(skip_deserializing)]`, `#[serde(default)]` and
 ///   `#[serde(flatten)]` are rejected: a path capture is always present and path names are flat.
-/// - `#[schema(..)]` constraints are published and validated for the extracted values.
+/// - `#[roundhouse(..)]` constraints are published and validated for the extracted values.
 #[proc_macro_derive(PathParams, attributes(serde, schema, roundhouse))]
 pub fn derive_path_params(input: TokenStream) -> TokenStream {
     roundhouse_macros_core::expand_path_params(input.into()).into()

@@ -5,6 +5,7 @@
 //! that actually runs.
 
 use axum::http::{StatusCode, header};
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 

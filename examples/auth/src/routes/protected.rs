@@ -4,7 +4,8 @@ use serde::Serialize;
 
 use crate::schemes::{ApiKeyAuth, BearerAuth, ReadPosts, WritePosts};
 
-#[derive(Serialize, ToSchema, ApiSchema)]
+#[roundhouse::schema]
+#[derive(Serialize)]
 pub struct Message {
     pub message: String,
 }

@@ -1,7 +1,7 @@
 //! `#[roundhouse::schema]` is the one-annotation form of `ToSchema` + `ApiSchema`.
 
+use roundhouse::interop::utoipa::openapi::schema::Components;
 use roundhouse::prelude::*;
-use roundhouse::utoipa::openapi::schema::Components;
 use serde::{Deserialize, Serialize};
 
 #[roundhouse::schema]
@@ -21,7 +21,7 @@ pub enum Shape {
 
 #[test]
 fn the_attribute_derives_both_traits() {
-    fn assert_both<T: roundhouse::ToSchema + roundhouse::ApiSchema>() {}
+    fn assert_both<T: roundhouse::interop::ToSchema + roundhouse::ApiSchema>() {}
     assert_both::<Thing>();
     assert_both::<Shape>();
 
@@ -32,4 +32,25 @@ fn the_attribute_derives_both_traits() {
         <Thing as roundhouse::ApiSchema>::description(),
         Some("A stored thing.")
     );
+}
+
+#[roundhouse::schema]
+#[derive(Serialize)]
+#[roundhouse(name = "schema_attr.Renamed", description = "A renamed component.")]
+pub struct Renamed {
+    #[roundhouse(min_length = 2, max_length = 4)]
+    pub code: String,
+}
+
+#[test]
+fn roundhouse_attributes_feed_the_document_and_validation() {
+    let mut components = Components::new();
+    Renamed::register(&mut components);
+    let schema = components
+        .schemas
+        .get("schema_attr.Renamed")
+        .expect("the explicit component name is used");
+    let value = serde_json::to_value(schema).unwrap();
+    assert_eq!(value["properties"]["code"]["minLength"], 2);
+    assert_eq!(value["properties"]["code"]["maxLength"], 4);
 }

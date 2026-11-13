@@ -2,6 +2,7 @@
 //! unused-binding warning.
 
 use axum::http::StatusCode;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 
 #[derive(Clone, Default)]

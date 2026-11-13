@@ -1,5 +1,13 @@
 error: `#[roundhouse::schema]` already derives `ToSchema` and `ApiSchema`; remove the separate derive
- --> tests/ui/schema_attr_duplicate.rs:2:1
+ --> tests/ui/schema_attr_duplicate.rs:3:1
   |
-2 | #[derive(serde::Serialize, roundhouse::ToSchema)]
+3 | #[derive(serde::Serialize, roundhouse::ToSchema)]
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `roundhouse::interop::ToSchema`
+ --> tests/ui/schema_attr_duplicate.rs:1:5
+  |
+1 | use roundhouse::interop::ToSchema;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

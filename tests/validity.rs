@@ -1,5 +1,6 @@
 //! The generated document must satisfy the invariants the document is supposed to guarantee.
 
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use roundhouse::{App, validate_document};
 
@@ -38,7 +39,8 @@ fn the_validator_rejects_a_capture_without_a_parameter() {
     let app = built();
     let mut value = serde_json::to_value(app.document()).unwrap();
     value["paths"]["/validity/items/{id}"]["get"]["parameters"] = serde_json::json!([]);
-    let broken: roundhouse::utoipa::openapi::OpenApi = serde_json::from_value(value).unwrap();
+    let broken: roundhouse::interop::utoipa::openapi::OpenApi =
+        serde_json::from_value(value).unwrap();
     let error = validate_document(&broken).expect_err("a missing parameter is invalid");
     assert!(error.contains("has no path parameter"), "{error}");
 }
@@ -49,7 +51,8 @@ fn the_validator_rejects_a_dangling_response_reference() {
     let mut value = serde_json::to_value(app.document()).unwrap();
     value["paths"]["/validity/items/{id}"]["get"]["responses"] =
         serde_json::json!({ "200": { "$ref": "#/components/responses/Missing" } });
-    let broken: roundhouse::utoipa::openapi::OpenApi = serde_json::from_value(value).unwrap();
+    let broken: roundhouse::interop::utoipa::openapi::OpenApi =
+        serde_json::from_value(value).unwrap();
     let error = validate_document(&broken).expect_err("a missing response component is invalid");
     assert!(error.contains("has no component `Missing`"), "{error}");
 }
@@ -60,7 +63,8 @@ fn the_validator_rejects_a_requirement_without_a_scheme() {
     let mut value = serde_json::to_value(app.document()).unwrap();
     value["paths"]["/validity/items/{id}"]["get"]["security"] =
         serde_json::json!([{ "ghost": [] }]);
-    let broken: roundhouse::utoipa::openapi::OpenApi = serde_json::from_value(value).unwrap();
+    let broken: roundhouse::interop::utoipa::openapi::OpenApi =
+        serde_json::from_value(value).unwrap();
     let error = validate_document(&broken).expect_err("an undeclared scheme is invalid");
     assert!(error.contains("has no scheme"), "{error}");
 }

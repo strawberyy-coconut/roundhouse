@@ -114,7 +114,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
             fn parts_schema(
                 context: &mut dyn #krate::doc::SchemaContext,
-            ) -> #krate::utoipa::openapi::RefOr<#krate::utoipa::openapi::schema::Schema> {
+            ) -> #krate::__private::utoipa::openapi::RefOr<#krate::__private::utoipa::openapi::schema::Schema> {
                 <Self as #krate::doc::Params>::register(context);
                 #krate::doc::schema::object_from_params(
                     <Self as #krate::doc::Params>::params(context),

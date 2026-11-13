@@ -1,8 +1,9 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use roundhouse::App;
+use roundhouse::interop::ToSchema;
+use roundhouse::interop::utoipa::openapi::Info;
 use roundhouse::prelude::*;
-use roundhouse::utoipa::openapi::Info;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default)]

@@ -18,7 +18,8 @@ pub mod routes {
         "/x" => { get(x, operation_id = "renamed_x") },
     }
 
-    #[derive(serde::Serialize, ToSchema, ApiSchema)]
+    #[rh::schema]
+    #[derive(serde::Serialize)]
     pub struct Out {
         pub value: i64,
     }

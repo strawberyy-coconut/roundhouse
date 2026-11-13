@@ -1,3 +1,4 @@
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 
 #[derive(Clone, Default)]
@@ -118,7 +119,7 @@ pub struct HookOuter {
 
 #[test]
 fn an_api_schema_container_can_hold_plain_to_schema_fields() {
-    let mut components = roundhouse::utoipa::openapi::schema::Components::new();
+    let mut components = roundhouse::interop::utoipa::openapi::schema::Components::new();
     <HookOuter as roundhouse::doc::ApiSchema>::register(&mut components);
     assert!(components.schemas.contains_key("PlainInner"));
     assert!(!components.schemas.contains_key("Vec"));

@@ -23,7 +23,8 @@ pub struct UploadForm {
     pub title: Option<String>,
 }
 
-#[derive(Serialize, ToSchema, ApiSchema)]
+#[roundhouse::schema]
+#[derive(Serialize)]
 pub struct UploadInfo {
     pub file_name: Option<String>,
     pub file_len: usize,

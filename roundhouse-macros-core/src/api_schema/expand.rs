@@ -37,7 +37,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         if let syn::GenericParam::Type(param) = param {
             param
                 .bounds
-                .push(syn::parse_quote!(#krate::utoipa::ToSchema));
+                .push(syn::parse_quote!(#krate::__private::utoipa::ToSchema));
         }
     }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -55,11 +55,11 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
     Ok(quote! {
         impl #impl_generics #krate::doc::ApiSchema for #ident #ty_generics #where_clause {
-            fn schema() -> #krate::utoipa::openapi::RefOr<
-                #krate::utoipa::openapi::schema::Schema,
+            fn schema() -> #krate::__private::utoipa::openapi::RefOr<
+                #krate::__private::utoipa::openapi::schema::Schema,
             > {
                 #krate::doc::schema::r#ref(
-                    <Self as #krate::utoipa::ToSchema>::name().into_owned(),
+                    <Self as #krate::__private::utoipa::ToSchema>::name().into_owned(),
                 )
             }
 
@@ -70,7 +70,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             fn register(
                 context: &mut dyn #krate::doc::SchemaContext,
             ) {
-                let name = <Self as #krate::utoipa::ToSchema>::name().into_owned();
+                let name = <Self as #krate::__private::utoipa::ToSchema>::name().into_owned();
                 match context.claim(&name, ::core::any::type_name::<Self>()) {
                     #krate::doc::Claim::Already
                     | #krate::doc::Claim::Collision => return,
@@ -87,7 +87,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                     #krate::doc::schema::any_value(),
                 );
                 #(#register_calls)*
-                let mut schema = <Self as #krate::utoipa::PartialSchema>::schema();
+                let mut schema = <Self as #krate::__private::utoipa::PartialSchema>::schema();
                 #(#patches)*
                 context.components().schemas.insert(name, schema);
             }
@@ -235,6 +235,98 @@ fn push_schema_patches(
         patches.push(quote! {
             #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
                 #krate::doc::schema::with_format(property, #format)
+            });
+        });
+    }
+    if let Some(value) = &constraints.min_length {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_min_length(property, #value)
+            });
+        });
+    }
+    if let Some(value) = &constraints.max_length {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_max_length(property, #value)
+            });
+        });
+    }
+    if let Some(value) = &constraints.pattern {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_pattern(property, #value)
+            });
+        });
+    }
+    if let Some(value) = &constraints.minimum {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_minimum_value(
+                    property,
+                    #krate::serde_json::json!(#value),
+                )
+            });
+        });
+    }
+    if let Some(value) = &constraints.maximum {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_maximum_value(
+                    property,
+                    #krate::serde_json::json!(#value),
+                )
+            });
+        });
+    }
+    if let Some(value) = &constraints.exclusive_minimum {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_exclusive_minimum_value(
+                    property,
+                    #krate::serde_json::json!(#value),
+                )
+            });
+        });
+    }
+    if let Some(value) = &constraints.exclusive_maximum {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_exclusive_maximum_value(
+                    property,
+                    #krate::serde_json::json!(#value),
+                )
+            });
+        });
+    }
+    if let Some(value) = &constraints.min_items {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_min_items(property, #value)
+            });
+        });
+    }
+    if let Some(value) = &constraints.max_items {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_max_items(property, #value)
+            });
+        });
+    }
+    if let Some(value) = &constraints.description {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_description(property, #value)
+            });
+        });
+    }
+    if let Some(value) = &constraints.example {
+        patches.push(quote! {
+            #krate::doc::schema::patch_property(&mut schema, #name, &mut |property| {
+                #krate::doc::schema::with_example(
+                    property,
+                    #krate::serde_json::json!(#value),
+                )
             });
         });
     }

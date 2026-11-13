@@ -192,9 +192,10 @@ alias, so neither needs to repeat it. `state = OtherState` overrides one table;
 
 ## Schemas
 
-`utoipa::ToSchema` defines the underlying schema shape. `#[roundhouse::schema]` derives both
-`ToSchema` and `ApiSchema` with one annotation; the explicit
-`#[derive(ToSchema, ApiSchema)]` form remains available. `#[derive(ApiSchema)]` adds:
+`#[roundhouse::schema]` is the one-annotation form: it derives the schema and the roundhouse
+adapter, and constraints use the `#[roundhouse(..)]` namespace. The explicit
+`#[derive(ToSchema, ApiSchema)]` form remains available through `roundhouse::interop` for
+projects that already share utoipa types. `#[derive(ApiSchema)]` adds:
 
 - a named component (`$ref`) for the type;
 - `#[roundhouse(unique_items)]`;
@@ -206,10 +207,10 @@ alias, so neither needs to repeat it. `state = OtherState` overrides one table;
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Profile {
-    #[schema(min_length = 3, max_length = 32)]
+    #[roundhouse(min_length = 3, max_length = 32)]
     pub user_name: String,
 
-    #[schema(format = "email")]
+    #[roundhouse(format = "email")]
     pub email: String,
 
     #[roundhouse(validate_with = validate_age)]
@@ -232,7 +233,7 @@ It requires `ToSchema` on the type and publishes the component plus everything r
 overlap the derive and the primitive implementations.
 
 `QueryParams` and `PathParams` derive the parameter documentation for query and path structs.
-A field's `@description:` tag supplies the parameter description; `#[schema(description = "…")]`
+A field's `@description:` tag supplies the parameter description; `#[roundhouse(description = "…")]`
 takes priority. `RepeatedQuery<T>` reads repeated query keys (`?tag=a&tag=b`); axum's `Query<T>`
 cannot represent them.
 
@@ -264,7 +265,7 @@ but the operation is marked `x-roundhouse-unverified-extractor`/`-body` and `App
 that marker into a build error.
 
 Component names come from utoipa. Two different Rust types that claim one component name are a
-`BuildError::ComponentCollision`; use `#[schema(as = module::Name)]` on one of them. Utoipa formats
+`BuildError::ComponentCollision`; use `#[roundhouse(name = "module.Name")]` on one of them. Utoipa formats
 the name with dots (`module.Name`) in the document.
 
 ## Validation

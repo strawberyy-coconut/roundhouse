@@ -151,6 +151,12 @@ pub fn with_pattern(schema: RefOr<Schema>, value: &str) -> RefOr<Schema> {
     map_object(schema, |object| object.pattern = Some(value.to_string()))
 }
 
+pub fn with_description(schema: RefOr<Schema>, value: &str) -> RefOr<Schema> {
+    map_object(schema, |object| {
+        object.description = Some(value.to_string())
+    })
+}
+
 pub fn with_minimum(schema: RefOr<Schema>, value: f64) -> RefOr<Schema> {
     map_object(schema, |object| object.minimum = Some(value.into()))
 }

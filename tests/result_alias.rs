@@ -1,5 +1,6 @@
 //! Result aliases are documented through the `ResultShape` probe.
 
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use serde::Serialize;
 

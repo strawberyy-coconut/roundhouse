@@ -1,5 +1,6 @@
 //! Generic `ApiResponse` / `ApiError` derives.
 
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use serde::Serialize;
 

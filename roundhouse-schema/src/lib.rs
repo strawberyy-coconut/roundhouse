@@ -19,7 +19,6 @@ pub mod validate;
 #[cfg(feature = "schema-engine")]
 pub use jsonschema;
 pub use schema::{ApiSchema, Claim, Params, PartsDoc, SchemaContext};
-pub use utoipa;
 pub use validate::{ValidationError, ValidationErrors, pointer};
 
 /// Where a parameter is read from.

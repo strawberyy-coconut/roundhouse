@@ -338,8 +338,8 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
             fn schema(
                 context: &mut dyn #krate::doc::SchemaContext,
-            ) -> #krate::utoipa::openapi::RefOr<
-                #krate::utoipa::openapi::schema::Schema,
+            ) -> #krate::__private::utoipa::openapi::RefOr<
+                #krate::__private::utoipa::openapi::schema::Schema,
             > {
                 #(#registers)*
                 let mut builder = #krate::multipart::schema_object();

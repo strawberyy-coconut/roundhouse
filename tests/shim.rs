@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header, request::Parts};
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use roundhouse::{App, Built, Problem, SecuritySchemeKind, Validation};
 use serde::{Deserialize, Serialize};
@@ -355,7 +356,7 @@ fn a_body_without_api_schema_still_builds_as_an_unverified_extractor() {
     use roundhouse::__private::ArgProbe;
     use roundhouse::__private::ProbeArg as _;
 
-    let mut components = roundhouse::utoipa::openapi::schema::Components::new();
+    let mut components = roundhouse::interop::utoipa::openapi::schema::Components::new();
     let mut context = roundhouse::doc::DocContext::new(&mut components);
     let mut docs = roundhouse::doc::OperationDoc::default();
     let arg = (&ArgProbe::<axum::Json<NotASchema>>::new()).document(&mut context);

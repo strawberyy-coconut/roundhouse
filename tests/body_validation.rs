@@ -3,6 +3,7 @@
 #![cfg(feature = "schema-engine")]
 
 use axum::http::StatusCode;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use serde::{Deserialize, Serialize};
 

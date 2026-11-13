@@ -1,6 +1,7 @@
 //! Response variants that carry data must say where that data goes.
 
 use axum::http::StatusCode;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 
 #[derive(Clone, Default)]

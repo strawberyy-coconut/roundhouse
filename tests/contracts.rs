@@ -42,7 +42,9 @@ mod manual {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, roundhouse::utoipa::ToSchema, roundhouse::ApiSchema)]
+#[derive(
+    Debug, Serialize, Deserialize, roundhouse::interop::utoipa::ToSchema, roundhouse::ApiSchema,
+)]
 pub struct Foreign {
     pub id: i64,
 }
@@ -119,7 +121,7 @@ mod manual_conflict {
                     "id",
                     roundhouse::ParamIn::Path,
                     roundhouse::doc::schema::integer(
-                        roundhouse::utoipa::openapi::schema::KnownFormat::Int64,
+                        roundhouse::interop::utoipa::openapi::schema::KnownFormat::Int64,
                     ),
                 ));
             },) },
@@ -260,7 +262,7 @@ fn the_facade_covers_info_openapi_and_components() {
     assert_eq!(info.as_utoipa().title, "Facade");
     assert_eq!(info.as_utoipa().description.as_deref(), Some("desc"));
 
-    let _components = roundhouse::openapi::Components::new();
+    let _components = roundhouse::interop::Components::new();
     let built = App::new(State)
         .include(&mounted::MODULE)
         .openapi(move || info.clone())

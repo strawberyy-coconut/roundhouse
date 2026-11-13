@@ -37,8 +37,6 @@ pub use roundhouse_schema::schema;
 pub use roundhouse_schema::{ApiSchema, Claim, Param, ParamIn, Params, PartsDoc, SchemaContext};
 use std::any::TypeId;
 
-pub use utoipa;
-
 mod arg;
 mod body;
 mod context;

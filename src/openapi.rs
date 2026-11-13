@@ -19,9 +19,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Components table passed to hand-written schema and response documentation.
-pub use utoipa::openapi::schema::Components;
-
 /// API metadata, the `info` object of an OpenAPI document.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct Info(utoipa::openapi::Info);
@@ -78,20 +75,6 @@ impl From<Info> for utoipa::openapi::Info {
     }
 }
 
-impl std::ops::Deref for Info {
-    type Target = utoipa::openapi::Info;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for Info {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
 impl Serialize for Info {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.0.serialize(serializer)
@@ -144,20 +127,6 @@ impl From<utoipa::openapi::OpenApi> for OpenApi {
 impl From<OpenApi> for utoipa::openapi::OpenApi {
     fn from(document: OpenApi) -> Self {
         document.0
-    }
-}
-
-impl std::ops::Deref for OpenApi {
-    type Target = utoipa::openapi::OpenApi;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for OpenApi {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }
 

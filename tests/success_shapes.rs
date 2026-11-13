@@ -1,6 +1,7 @@
 //! Return-type inference publishes the status the runtime actually produces.
 
 use axum::http::StatusCode;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use serde::Serialize;
 

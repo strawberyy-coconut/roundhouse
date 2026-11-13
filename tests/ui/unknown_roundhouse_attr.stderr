@@ -1,0 +1,5 @@
+error: unknown `roundhouse` attribute; expected a constraint such as `min_length`, `max_length`, `pattern`, `minimum`, `maximum`, `min_items`, `max_items`, `format`, `description`, `example`, `unique_items`, `validate_with`, or `name`
+ --> tests/ui/unknown_roundhouse_attr.rs:8:18
+  |
+8 |     #[roundhouse(min_lenght = 3)]
+  |                  ^^^^^^^^^^

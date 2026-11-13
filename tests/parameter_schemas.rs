@@ -2,6 +2,7 @@
 //! optional value.
 
 use axum::http::StatusCode;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use roundhouse::{App, BuildError};
 use serde::{Deserialize, Serialize};

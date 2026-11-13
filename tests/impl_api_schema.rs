@@ -1,5 +1,6 @@
 //! The opt-in adapter for generated `ToSchema` types.
 
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use serde::Serialize;
 
@@ -17,7 +18,7 @@ pub struct Nested {
     pub name: String,
 }
 
-roundhouse::impl_api_schema!(Row, Nested);
+roundhouse::interop::impl_from_utoipa!(Row, Nested);
 
 mod routes {
     use super::*;

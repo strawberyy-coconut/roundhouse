@@ -7,6 +7,7 @@
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::Response;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use roundhouse::{App, BuildError};
 use serde::Deserialize;

@@ -1,7 +1,7 @@
 //! The best-effort OpenAPI 3.0 downgrade must preserve the constructs it claims to cover.
 
 use roundhouse::doc::downgrade::to_openapi_30;
-use roundhouse::utoipa::openapi::OpenApi;
+use roundhouse::interop::utoipa::openapi::OpenApi;
 use serde_json::json;
 
 fn document(schema: serde_json::Value) -> serde_json::Value {

@@ -1,5 +1,6 @@
 //! Two Rust types must not silently share one component name.
 
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use roundhouse::{App, BuildError};
 

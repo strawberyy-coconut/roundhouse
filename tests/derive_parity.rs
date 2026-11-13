@@ -7,6 +7,7 @@
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum::http::request::Parts;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use roundhouse::{App, BuildError};
 use serde::{Deserialize, Serialize};

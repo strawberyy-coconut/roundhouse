@@ -1,5 +1,6 @@
 //! Reusable `Created<T>` and `NoContent` responses.
 
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use serde::Serialize;
 

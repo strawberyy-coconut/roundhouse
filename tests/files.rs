@@ -1,6 +1,7 @@
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
 use roundhouse::Built;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use serde::Serialize;
 

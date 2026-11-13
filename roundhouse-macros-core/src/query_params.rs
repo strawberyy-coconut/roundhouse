@@ -86,7 +86,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 .is_some_and(|inner| is_vec(inner).is_some());
         let style = if array {
             quote! {
-                .style(#krate::utoipa::openapi::path::ParameterStyle::Form)
+                .style(#krate::__private::utoipa::openapi::path::ParameterStyle::Form)
                 .explode(true)
             }
         } else {
@@ -127,7 +127,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
             fn parts_schema(
                 context: &mut dyn #krate::doc::SchemaContext,
-            ) -> #krate::utoipa::openapi::RefOr<#krate::utoipa::openapi::schema::Schema> {
+            ) -> #krate::__private::utoipa::openapi::RefOr<#krate::__private::utoipa::openapi::schema::Schema> {
                 #krate::doc::schema::object_from_params(
                     <Self as #krate::doc::Params>::params(context),
                 )

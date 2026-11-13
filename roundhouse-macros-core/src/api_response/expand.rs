@@ -264,7 +264,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
                 #krate::doc::HeaderDoc {
                     name: "Location".to_string(),
                     schema: #krate::doc::schema::string_with_format(
-                        #krate::utoipa::openapi::schema::SchemaFormat::Custom(
+                        #krate::__private::utoipa::openapi::schema::SchemaFormat::Custom(
                             "uri".to_string()
                         )
                     ),

@@ -1,5 +1,6 @@
 //! Typed `#[handler(..)]` metadata produces the same document as doc tags, without a string DSL.
 
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use serde::Serialize;
 

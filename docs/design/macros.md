@@ -141,8 +141,8 @@ The derives keep their own rules on top:
   path names are flat.
 - `QueryParams` documents `Vec<T>` as an exploded form array and expects
   `RepeatedQuery<T>` to read it.
-- `ApiSchema` splits attributes: `#[schema(..)]` for what utoipa understands,
-  `#[roundhouse(..)]` for `unique_items` and `validate_with`. `#[schema(skip_validation)]` is
+- `ApiSchema` splits attributes: `#[roundhouse(..)]` for the documented constraint grammar. `#[schema(..)]` remains the
+  utoipa-compatible spelling. `#[schema(skip_validation)]` is
   rejected: a declared constraint is published and enforced; opting out is a route policy
   (`validate = false` or `validate_body = false`), not a field property.
 

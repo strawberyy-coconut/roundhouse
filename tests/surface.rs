@@ -2,8 +2,9 @@ use axum::http::{HeaderValue, Request, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::Response;
 use roundhouse::App;
+use roundhouse::interop::ToSchema;
+use roundhouse::interop::utoipa::openapi::Info;
 use roundhouse::prelude::*;
-use roundhouse::utoipa::openapi::Info;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default)]
@@ -362,18 +363,18 @@ mod shapes {
         pub name: String,
     }
 
-    impl ::roundhouse::utoipa::PartialSchema for FromUtoipa {
-        fn schema()
-        -> ::roundhouse::utoipa::openapi::RefOr<::roundhouse::utoipa::openapi::schema::Schema>
-        {
-            ::roundhouse::utoipa::openapi::schema::Object::with_type(
-                ::roundhouse::utoipa::openapi::schema::Type::String,
+    impl ::roundhouse::interop::utoipa::PartialSchema for FromUtoipa {
+        fn schema() -> ::roundhouse::interop::utoipa::openapi::RefOr<
+            ::roundhouse::interop::utoipa::openapi::schema::Schema,
+        > {
+            ::roundhouse::interop::utoipa::openapi::schema::Object::with_type(
+                ::roundhouse::interop::utoipa::openapi::schema::Type::String,
             )
             .into()
         }
     }
 
-    impl ::roundhouse::utoipa::ToSchema for FromUtoipa {}
+    impl ::roundhouse::interop::utoipa::ToSchema for FromUtoipa {}
 
     #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
     #[serde(tag = "kind", rename_all = "snake_case")]
@@ -451,9 +452,9 @@ mod shapes {
     }
 
     impl ::roundhouse::doc::ApiSchema for Lying {
-        fn schema()
-        -> ::roundhouse::utoipa::openapi::RefOr<::roundhouse::utoipa::openapi::schema::Schema>
-        {
+        fn schema() -> ::roundhouse::interop::utoipa::openapi::RefOr<
+            ::roundhouse::interop::utoipa::openapi::schema::Schema,
+        > {
             ::roundhouse::doc::schema::string()
         }
     }

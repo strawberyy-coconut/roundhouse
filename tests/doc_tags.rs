@@ -1,5 +1,6 @@
 //! Compatibility doc tags: prose and the structured tags that typed metadata replaced.
 
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 
 #[derive(Clone, Default)]

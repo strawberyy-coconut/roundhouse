@@ -1,3 +1,4 @@
+use roundhouse::interop::ToSchema;
 #[roundhouse::schema]
 #[derive(serde::Serialize, roundhouse::ToSchema)]
 pub struct Bad {

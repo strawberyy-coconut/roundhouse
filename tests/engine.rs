@@ -3,6 +3,7 @@
 #![cfg(feature = "schema-engine")]
 
 use axum::http::StatusCode;
+use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use roundhouse::schema::engine;
 use roundhouse::{App, Built, Validation};
@@ -14,11 +15,11 @@ pub struct State;
 #[derive(Debug, Deserialize, Serialize, ToSchema, ApiSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Note {
-    #[schema(min_length = 1, max_length = 5)]
+    #[roundhouse(min_length = 1, max_length = 5)]
     pub title: String,
-    #[schema(minimum = 0)]
+    #[roundhouse(minimum = 0)]
     pub views: i64,
-    #[schema(pattern = r"^[a-z-]+$")]
+    #[roundhouse(pattern = r"^[a-z-]+$")]
     pub slug: String,
 }
 
@@ -261,7 +262,7 @@ async fn response_validation_checks_an_openapi_default_response() {
 
 #[test]
 fn validate_with_is_published_and_runs_after_the_schema() {
-    let mut components = roundhouse::utoipa::openapi::schema::Components::new();
+    let mut components = roundhouse::interop::utoipa::openapi::schema::Components::new();
     Checked::register(&mut components);
     let schema = serde_json::to_value(&components.schemas["Checked"]).unwrap();
     assert_eq!(schema["properties"]["value"]["x-validate-with"], true);
