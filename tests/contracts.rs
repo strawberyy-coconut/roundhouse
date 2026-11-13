@@ -257,6 +257,18 @@ fn app_merge_is_visible_and_strict_rejects_it() {
 }
 
 #[test]
+fn an_acknowledged_merge_passes_strict_and_records_its_reason() {
+    let merged = axum::Router::new().route("/merged-ok", axum::routing::get(|| async { "merged" }));
+    let built = App::new(State)
+        .include(&mounted::MODULE)
+        .merge_undocumented(merged, "test fixture")
+        .try_build()
+        .expect("an acknowledged merge is explicitly allowed");
+    let record = built.merges().first().expect("the merge is recorded");
+    assert_eq!(record.reason(), Some("test fixture"));
+}
+
+#[test]
 fn the_facade_covers_info_openapi_and_components() {
     let info = roundhouse::openapi::Info::new("Facade", "1.0.0").description("desc");
     assert_eq!(info.as_utoipa().title, "Facade");

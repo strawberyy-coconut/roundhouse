@@ -633,4 +633,65 @@ fn a_status_code_return_documents_a_default_response() {
     assert!(document["paths"]["/default-status/x"]["get"]["responses"]["default"].is_object());
 }
 
+mod any_undocumented {
+    use super::*;
+
+    routes! {
+        prefix = "/any-undocumented",
+        "/" => { any(x, operation_id = "any_undocumented_x") },
+    }
+
+    #[handler]
+    pub async fn x() -> &'static str {
+        "x"
+    }
+}
+
+mod any_acknowledged {
+    use super::*;
+
+    routes! {
+        prefix = "/any-acknowledged",
+        "/" => {
+            any(
+                x,
+                operation_id = "any_acknowledged_x",
+                unverified = "served by design",
+            )
+        },
+    }
+
+    #[handler]
+    pub async fn x() -> &'static str {
+        "x"
+    }
+}
+
+#[test]
+fn an_undocumented_any_route_needs_an_acknowledgement() {
+    let error = scoped(&any_undocumented::MODULE)
+        .try_build()
+        .err()
+        .expect("an undocumented any route is a strict error");
+    assert!(matches!(error, BuildError::Diagnostic { .. }));
+    assert!(error.to_string().contains("unverified"));
+
+    let app = scoped(&any_undocumented::MODULE)
+        .permissive()
+        .try_build()
+        .expect("permissive mode keeps the warning");
+    assert!(
+        app.diagnostics()
+            .iter()
+            .any(|diagnostic| { diagnostic.message.contains("`any` route") })
+    );
+}
+
+#[test]
+fn an_acknowledged_any_route_builds_strictly() {
+    scoped(&any_acknowledged::MODULE)
+        .try_build()
+        .expect("an explicit acknowledgement is enough");
+}
+
 roundhouse::app_state!(State);
