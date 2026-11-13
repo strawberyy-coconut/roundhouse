@@ -44,17 +44,16 @@ fn capture_specs(template: &str) -> Vec<(String, bool)> {
     let mut specs = Vec::new();
     let mut index = 0;
     while index < chars.len() {
-        if chars[index] == (b'{', false) {
+        if chars[index] == ('{', false) {
             let start = index + 1;
             let mut end = start;
-            while end < chars.len() && chars[end] != (b'}', false) {
+            while end < chars.len() && chars[end] != ('}', false) {
                 end += 1;
             }
             if end >= chars.len() {
                 break;
             }
-            let name: Vec<u8> = chars[start..end].iter().map(|(byte, _)| *byte).collect();
-            let name = String::from_utf8_lossy(&name).into_owned();
+            let name: String = chars[start..end].iter().map(|(ch, _)| *ch).collect();
             let catch_all = name.starts_with('*');
             let name = name.strip_prefix('*').unwrap_or(&name).to_string();
             specs.push((name, catch_all));
@@ -68,18 +67,15 @@ fn capture_specs(template: &str) -> Vec<(String, bool)> {
 
 /// matchit unescapes `{{` / `}}` before it looks for captures. Do the same so a literal brace is
 /// never mistaken for a parameter (and a real capture is never hidden by an escaped brace).
-fn unescaped_chars(template: &str) -> Vec<(u8, bool)> {
-    let bytes = template.as_bytes();
-    let mut chars = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        let byte = bytes[index];
-        if (byte == b'{' || byte == b'}') && bytes.get(index + 1) == Some(&byte) {
-            chars.push((byte, true));
-            index += 2;
+fn unescaped_chars(template: &str) -> Vec<(char, bool)> {
+    let mut chars = Vec::with_capacity(template.len());
+    let mut iter = template.chars().peekable();
+    while let Some(ch) = iter.next() {
+        if (ch == '{' || ch == '}') && iter.peek() == Some(&ch) {
+            chars.push((ch, true));
+            iter.next();
         } else {
-            chars.push((byte, false));
-            index += 1;
+            chars.push((ch, false));
         }
     }
     chars
@@ -175,14 +171,14 @@ pub fn normalise_template(template: &str) -> String {
     let mut out = String::with_capacity(template.len());
     let mut index = 0;
     while index < chars.len() {
-        if chars[index] == (b'{', false) {
+        if chars[index] == ('{', false) {
             let start = index + 1;
             let mut end = start;
-            while end < chars.len() && chars[end] != (b'}', false) {
+            while end < chars.len() && chars[end] != ('}', false) {
                 end += 1;
             }
             if end < chars.len() {
-                if chars[start..end].iter().any(|(byte, _)| *byte == b'*') {
+                if chars[start..end].iter().any(|(ch, _)| *ch == '*') {
                     out.push_str("{*}");
                 } else {
                     out.push_str("{}");
@@ -191,7 +187,7 @@ pub fn normalise_template(template: &str) -> String {
                 continue;
             }
         }
-        out.push(chars[index].0 as char);
+        out.push(chars[index].0);
         index += 1;
     }
     out
@@ -300,6 +296,13 @@ mod tests {
         // Escaped literal braces are static text, not captures.
         assert_eq!(normalise_template("/{{a}}"), "/{a}");
         assert_eq!(normalise_template("/{{b}}"), "/{b}");
+    }
+
+    #[test]
+    fn non_ascii_paths_keep_their_characters() {
+        assert_eq!(normalise_template("/café/{id}"), "/café/{}");
+        assert_eq!(normalise_template("/日本語/{name}"), "/日本語/{}");
+        assert_eq!(captures("/café/{id}"), ["id"]);
     }
 
     #[test]
