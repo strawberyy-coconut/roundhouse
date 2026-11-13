@@ -4,6 +4,7 @@
 //! document fills the name in from the template instead of omitting the parameter (which would
 //! make the OpenAPI document invalid).
 
+use axum::http::StatusCode;
 use roundhouse::prelude::*;
 use roundhouse::{App, BuildError};
 
@@ -71,6 +72,35 @@ mod capture_in_prefix {
     pub async fn list() -> &'static str {
         "members"
     }
+}
+
+mod absolute_and_prefixed_leaf {
+    use super::*;
+
+    routes! {
+        prefix = "/api",
+        "/x" => { get(absolute, absolute, operation_id = "absolute_prefixed_x") },
+        "/x" => { get(relative, operation_id = "relative_prefixed_x") },
+    }
+
+    #[handler]
+    pub async fn absolute() -> &'static str {
+        "absolute"
+    }
+
+    #[handler]
+    pub async fn relative() -> &'static str {
+        "relative"
+    }
+}
+
+#[tokio::test]
+async fn an_absolute_route_does_not_false_positive_against_a_prefixed_leaf() {
+    let app = scoped(&absolute_and_prefixed_leaf::MODULE)
+        .try_build()
+        .expect("absolute and prefixed paths are distinct");
+    assert_eq!(app.oneshot_get("/x").await.status(), StatusCode::OK);
+    assert_eq!(app.oneshot_get("/api/x").await.status(), StatusCode::OK);
 }
 
 mod duplicate_capture {

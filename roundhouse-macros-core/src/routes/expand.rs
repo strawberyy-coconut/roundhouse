@@ -9,7 +9,13 @@ use super::validate::{flatten, validate_entries};
 
 pub fn expand(input: RoutesInput) -> TokenStream {
     let mut flattened = Vec::new();
-    flatten(&input.body, "", &mut flattened);
+    let root_prefix = input
+        .options
+        .prefix
+        .as_ref()
+        .map(LitStr::value)
+        .unwrap_or_default();
+    flatten(&input.body, &root_prefix, &mut flattened);
     if let Err(error) = validate_entries(&flattened) {
         return error.to_compile_error();
     }

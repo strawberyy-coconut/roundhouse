@@ -1,10 +1,10 @@
-error: duplicate route `get /a` in this routes! table
+error: duplicate route `get /x/a` in this routes! table
  --> tests/ui/duplicate_route.rs:7:15
   |
 7 |     "/a" => { get(second) },
   |               ^^^
 
-error: first declared as `get /a`
+error: first declared as `get /x/a`
  --> tests/ui/duplicate_route.rs:6:15
   |
 6 |     "/a" => { get(first) },

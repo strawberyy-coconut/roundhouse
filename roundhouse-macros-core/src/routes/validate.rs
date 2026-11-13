@@ -8,7 +8,13 @@ use super::parse::{Body, Entry};
 
 pub(super) fn flatten<'a>(body: &'a Body, prefix: &str, out: &mut Vec<(String, &'a Entry)>) {
     for entry in &body.entries {
-        let path = join(prefix, &entry.path.value());
+        // An absolute entry owns its full URL; joining the enclosing prefix here would make
+        // table-local duplicate detection disagree with the resolver.
+        let path = if entry.absolute {
+            join("", &entry.path.value())
+        } else {
+            join(prefix, &entry.path.value())
+        };
         out.push((path, entry));
     }
     for group in &body.groups {
