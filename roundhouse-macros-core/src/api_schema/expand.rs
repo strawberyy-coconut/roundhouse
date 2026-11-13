@@ -17,11 +17,12 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     let container_schema = schema_attrs(&input.attrs)?;
     let tags =
         crate::doc_tags::parse(&input.attrs, crate::doc_tags::AllowedTags::DESCRIPTION_ONLY)?;
-    // `#[schema(description = "..")]` is the schema's own description and wins over the
-    // roundhouse `@description:` tag.
+    // `#[roundhouse(description = "..")]` (or the compatible `#[schema(description = "..")]`)
+    // is the schema's own description and wins over the roundhouse `@description:` tag.
     let description = container_schema
         .constraints
         .description
+        .clone()
         .map(|description| description.value())
         .or(tags.description);
     let description = match description {
@@ -31,6 +32,18 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
         }
         None => quote!(::core::option::Option::None),
     };
+
+    let container_description =
+        container_schema
+            .constraints
+            .description
+            .as_ref()
+            .map(|description| {
+                let description = LitStr::new(&description.value(), description.span());
+                quote! {
+                    schema = #krate::doc::schema::with_description(schema, #description);
+                }
+            });
 
     let mut generics = input.generics.clone();
     for param in &mut generics.params {
@@ -88,6 +101,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 );
                 #(#register_calls)*
                 let mut schema = <Self as #krate::__private::utoipa::PartialSchema>::schema();
+                #container_description
                 #(#patches)*
                 context.components().schemas.insert(name, schema);
             }

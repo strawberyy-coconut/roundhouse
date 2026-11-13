@@ -53,4 +53,5 @@ fn roundhouse_attributes_feed_the_document_and_validation() {
     let value = serde_json::to_value(schema).unwrap();
     assert_eq!(value["properties"]["code"]["minLength"], 2);
     assert_eq!(value["properties"]["code"]["maxLength"], 4);
+    assert_eq!(value["description"], "A renamed component.");
 }
