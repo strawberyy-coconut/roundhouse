@@ -294,19 +294,22 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// The return type documents itself through `roundhouse::doc::ApiResponse`. The framework provides
 /// impls for the common axum shapes:
 ///
-/// - no return type — `204 No Content`;
-/// - `()` — `200 OK`;
+/// - no return type or `()` — `200 OK`;
 /// - `Json<T>` — `200` with an `application/json` schema for `T: ApiSchema`;
 /// - `Html<T>` — `200` with a `text/html` schema;
 /// - `String` and `&str` — `200` with `text/plain`;
 /// - `Vec<u8>`, `Bytes` and `Body` — a binary response; other `Vec<T>` values are JSON arrays;
 /// - `Attachment<T>`, `File` and `Sse` — the corresponding attachment/file/event-stream response;
 /// - `StatusCode` — the OpenAPI `default` response, because the status is chosen at runtime;
-/// - `(StatusCode, Body)` and similar tuples — the `default` response when a leading status code
-///   makes the status dynamic, otherwise the body's response;
+/// - `(StatusCode, Body)` — the `default` response. Other tuples are not classified; declare
+///   them with `@responses:`;
 /// - `Result<T, E>` — `T`'s success response plus every response registered by the error type
 ///   `E`. Derive `ApiError` / `ApiResponse` on `E`, or use `Problem`, so that `E` has documented
 ///   responses; otherwise the build reports an undocumented error.
+///
+/// A known shape whose body type publishes no schema (for example `Created<T>` where `T` is only
+/// `Serialize`) is documented with its status and `x-roundhouse-unverified-response`; `strict()`
+/// rejects it unless the entry acknowledges it with `unverified = "reason"`.
 ///
 /// A custom response type implements `ApiResponse` and its `SUCCESS` statuses. For any other
 /// `IntoResponse` type, declare the response on the handler with `@responses:`. An operation with

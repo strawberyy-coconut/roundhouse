@@ -235,6 +235,20 @@ async fn list(State(db): State<Db>) -> Json<Vec<Note>> { ... }
 inherit the table state. A spread module is a separate `routes!` expansion and declares its own
 state when it uses substates. `AuthScheme::State` must still equal the table state.
 
+## Return-type inference
+
+A handler with no return type documents `200 OK`, matching the response axum actually sends
+(`()` is `200`). It used to document `204 No Content`.
+
+A known return shape whose body type publishes no schema is now documented with its bare status
+and `x-roundhouse-unverified-response` instead of leaving the response out and failing the build.
+This applies to `Json`/`Vec` (as before) and now also to `Html`, `Created` and the other known
+shapes. `strict()` still rejects the marker unless the entry acknowledges it with
+`unverified = "reason"`.
+
+Tuples other than `(StatusCode, T)` are no longer classified from their last element. They are
+treated as unknown, so they need an explicit `@responses:` declaration.
+
 ## Generic responses
 
 `ApiResponse`/`ApiError` now support generic enums. `Created<T>` and `NoContent` are available for

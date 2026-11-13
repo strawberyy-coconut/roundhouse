@@ -3,8 +3,8 @@
 **Status: implemented.** Phases 2–9 are in the tree: private machinery, `DocContext`, the
 four-probe surface, `Params` as the only parameter bound, `ArgDoc`, the `OperationDoc` /
 `HandlerSpec` split, `Scopes`, and the `roundhouse-macros-core` split. The `doc = |docs|` hook
-still exposes `OperationDoc` fields; builder methods are a follow-up. The inventory below
-records the starting point, not the current tree.
+uses `OperationDoc`'s builder methods and read accessors. The inventory below records the
+starting point, not the current tree.
 
 This note is a target map for roundhouse's trait system. It exists because the current public
 surface mixes three different kinds of trait:

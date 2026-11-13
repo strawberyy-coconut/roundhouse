@@ -10,7 +10,7 @@ use syn::{FnArg, ItemFn, LitStr, Type};
 use crate::doc_tags::{AllowedTags, DocLine, DocTags};
 use crate::util::{outer_ident, single_generic};
 
-use self::response::{inferred_successes, response_statements};
+use self::response::{classify_return, inferred_successes, response_statements};
 use self::signature::{
     ExtractorKind, auth_types, classify, is_explicit_strict, is_parts_arg, is_wrapper_type,
     result_ok_type, strip_wrappers,
@@ -161,7 +161,8 @@ pub fn expand(item: ItemFn) -> TokenStream {
         Err(error) => return error.to_compile_error(),
     }
 
-    let response_statements = match response_statements(&item.sig.output) {
+    let return_shape = classify_return(&item.sig.output);
+    let response_statements = match response_statements(&return_shape) {
         Ok(statements) => statements,
         Err(error) => return error.to_compile_error(),
     };
@@ -260,7 +261,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
     } else {
         quote!(#name(#(#shim_idents),*))
     };
-    let inferred_success = match inferred_successes(&item.sig.output) {
+    let inferred_success = match inferred_successes(&return_shape) {
         Some(statuses) => {
             let statuses = statuses
                 .iter()

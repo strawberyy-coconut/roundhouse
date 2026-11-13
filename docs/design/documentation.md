@@ -119,11 +119,23 @@ pub trait ApiResponse {
 }
 ```
 
-`SUCCESS` declares the success statuses the type can produce. The macro's compile-time check uses
-its own syntactic classification (`HandlerSpec::INFERRED_SUCCESS`), because a return type need
-not implement `ApiResponse`; the trait constant is the contract for a custom response type.
-`&[]` means "known, but no success" (`Option<T>`, `Infallible`); `&[0]` means "status chosen at
-runtime" and is documented as OpenAPI's `default` response.
+`SUCCESS` declares the success statuses the type can produce. The macro classifies the return type
+once (`ReturnShape` in `roundhouse-macros-core`) and derives both
+`HandlerSpec::INFERRED_SUCCESS` and the document statements from that value, so the compile-time
+check and the published response cannot disagree. `&[]` means "known, but no success"
+(`Option<T>`, `Infallible`, a bare `impl Trait`); `&[0]` means "status chosen at runtime" and is
+documented as OpenAPI's `default` response.
+
+| Return type | Inferred status |
+|---|---|
+| no `->`, `()` | `200` |
+| `Json<T>`, `Html<T>`, `String`, `&str`, `Vec<u8>`, `Bytes`, `Body`, `Attachment<T>`, `File`, `Sse` | `200` |
+| `Created<T>` | `201` |
+| `NoContent` | `204` |
+| `StatusCode`, `(StatusCode, T)` | `0` (`default`) |
+| `Option<T>`, `Infallible`, bare `impl Trait` | none |
+| `Result<T, E>` | `T`'s statuses |
+| other tuples, custom `ApiResponse` | unknown (probe or declaration) |
 
 The macro still special-cases three shapes:
 
@@ -137,8 +149,10 @@ The macro still special-cases three shapes:
 
 Everything else goes through `ResponseProbe<T>`, which uses the same autoref trick: a type
 implementing `ApiResponse` contributes its responses; a type that only implements
-`IntoResponse` contributes none. A `Json`/`Vec` shape the probe cannot see is marked
-unverified; any other unknown shape reaches the undeclared-success check.
+`IntoResponse` contributes none. A known shape whose probe finds no `ApiResponse` (an `Html` or
+`Created` body without `ApiSchema`, for example) is published with its bare status and
+`x-roundhouse-unverified-response`; `strict()` rejects it. An unknown shape reaches the
+undeclared-success check.
 
 `Result<_, Problem>` documents a `default` problem response. `ApiError`/`ApiResponse` derives
 register the responses of an error enum, so `Result<Json<T>, NoteError>` documents both sides.
