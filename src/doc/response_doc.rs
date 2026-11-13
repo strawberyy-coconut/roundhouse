@@ -61,13 +61,6 @@ pub fn extension_failures() -> Vec<ResponseDoc> {
     vec![ResponseDoc::problem(500, "Internal Server Error")]
 }
 
-pub fn json_response_for<T>(components: &mut dyn SchemaContext, status: u16) -> Vec<ResponseDoc>
-where
-    T: ApiSchema,
-{
-    json_response::<T>(components, status)
-}
-
 /// One JSON response, for an `@responses: 200: Post` declaration.
 pub fn json_response_doc<T: ApiSchema>(
     components: &mut dyn SchemaContext,
@@ -90,16 +83,6 @@ pub fn json_response_doc_to_schema<T: utoipa::ToSchema>(
     ResponseDoc::json(status, <T as utoipa::PartialSchema>::schema())
 }
 
-/// Look up responses declared by `#[derive(ApiResponse)]` / `#[derive(ApiError)]`.
-///
-/// A hand-written `IntoResponse` type that does not implement [`ApiResponse`] contributes no
-/// responses; the build then reports it as undocumented instead of failing to compile.
-pub fn stored_responses_for<T: ApiResponse>(
-    components: &mut dyn SchemaContext,
-) -> Vec<ResponseDoc> {
-    <T as ApiResponse>::responses(components)
-}
-
 pub fn text_response<T: ApiSchema>(
     components: &mut dyn SchemaContext,
     status: u16,
@@ -111,22 +94,6 @@ pub fn text_response<T: ApiSchema>(
         description: canonical_reason(status).to_string(),
         content_type: Some(content_type.to_string()),
         schema: Some(T::schema()),
-        headers: Vec::new(),
-    }
-}
-
-/// A non-JSON response body documented from `ToSchema` alone.
-pub fn text_response_to_schema<T: utoipa::ToSchema>(
-    components: &mut dyn SchemaContext,
-    status: u16,
-    content_type: &str,
-) -> ResponseDoc {
-    register_to_schema::<T>(components);
-    ResponseDoc {
-        status,
-        description: canonical_reason(status).to_string(),
-        content_type: Some(content_type.to_string()),
-        schema: Some(<T as utoipa::PartialSchema>::schema()),
         headers: Vec::new(),
     }
 }

@@ -40,23 +40,8 @@ pub fn build_with_options(
     build_with_observations(info, routes, include_rejections, strict, &mut observations)
 }
 
-/// Build the document, collecting non-fatal observations into `diagnostics`.
-pub fn build_with_diagnostics(
-    info: impl Into<Info>,
-    routes: &[ResolvedRoute],
-    include_rejections: bool,
-    strict: bool,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Result<OpenApi, BuildError> {
-    let mut observations = Observations::default();
-    let result =
-        build_with_observations(info, routes, include_rejections, strict, &mut observations);
-    diagnostics.append(&mut observations.diagnostics);
-    result
-}
-
 /// Build the document and collect every documented request body's inline schema, keyed by the
-/// Rust type, so schema mode can enforce composite bodies (`Vec<T>`, `Option<T>`, maps, tuples).
+/// Rust type, so schema mode can enforce composite bodies (`Vec<T>`, `Option<T>` and maps).
 pub(crate) fn build_with_observations(
     info: impl Into<Info>,
     routes: &[ResolvedRoute],
