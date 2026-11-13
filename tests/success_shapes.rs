@@ -37,6 +37,18 @@ mod shapes {
         "/result-created-plain" => {
             get(result_created_plain, operation_id = "shape_result_created_plain")
         },
+        "/redirect" => { get(redirect, operation_id = "shape_redirect") },
+    }
+
+    #[derive(ApiResponse)]
+    pub enum Redirect {
+        #[status(304)]
+        NotModified,
+    }
+
+    #[handler]
+    pub async fn redirect() -> Redirect {
+        Redirect::NotModified
     }
 
     #[handler]
@@ -113,6 +125,13 @@ fn app() -> roundhouse::Built {
         .include(&shapes::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Shapes", "0.1.0"))
         .build()
+}
+
+#[test]
+fn redirect_statuses_count_as_success() {
+    assert_eq!(shapes::Redirect::SUCCESS, &[304]);
+    let document = serde_json::to_value(app().document()).unwrap();
+    assert!(document["paths"]["/shapes/redirect"]["get"]["responses"]["304"].is_object());
 }
 
 #[test]

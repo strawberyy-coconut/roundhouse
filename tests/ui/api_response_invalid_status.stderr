@@ -1,0 +1,5 @@
+error: `999` is not an HTTP status code
+ --> tests/ui/api_response_invalid_status.rs:5:17
+  |
+5 |     #[status(999)]
+  |                 ^

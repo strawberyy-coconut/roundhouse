@@ -66,6 +66,12 @@ impl Parse for VariantAttrs {
                 "every variant needs #[status(..)]; a response you can produce but cannot describe is a bug",
             )
         })?;
+        if !(100..=599).contains(&status) {
+            return Err(syn::Error::new(
+                input.span(),
+                format!("`{status}` is not an HTTP status code"),
+            ));
+        }
 
         Ok(Self {
             status,

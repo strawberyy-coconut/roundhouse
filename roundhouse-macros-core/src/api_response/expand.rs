@@ -101,7 +101,7 @@ pub fn expand(input: DeriveInput, error_only: bool) -> Result<TokenStream> {
 
         let bindings = bindings(&variant.fields, &variant.ident, &fields);
         let status = attrs.status;
-        if (200..300).contains(&status) && !success_statuses.contains(&status) {
+        if (200..400).contains(&status) && !success_statuses.contains(&status) {
             success_statuses.push(status);
         }
         // Response descriptions fall back to the body type's `ApiSchema::description()` before
