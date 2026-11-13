@@ -18,9 +18,7 @@ pub mod validate;
 
 #[cfg(feature = "schema-engine")]
 pub use jsonschema;
-pub use schema::{
-    ApiSchema, Claim, Components, Params, PartsDoc, RefOr, Schema, SchemaContext,
-};
+pub use schema::{ApiSchema, Claim, Components, Params, PartsDoc, RefOr, Schema, SchemaContext};
 
 /// OpenAPI parameter serialization style.
 pub type ParamStyle = schema::ParameterStyle;
