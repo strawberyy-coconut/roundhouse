@@ -264,6 +264,31 @@ of the default feature set), so the page works without browser network access. C
 `App::docs_cdn()` to opt back into the pinned unpkg assets. `App::swagger()` remains available for
 a second local UI at `/docs/swagger`.
 
+## Authorization and body limits
+
+`AuthScheme::Identity` now requires `Clone`. A module guard caches the authenticated identity so a
+later `Auth<A>` or `Option<Auth<A>>` extractor on the same request reuses it instead of
+authenticating twice.
+
+`Scopes::authorize` is now required. Publishing a scope with `NAMES` no longer silently grants
+every authenticated identity; implement `authorize`, or use `NoScopes` when authentication is the
+only check.
+
+The default request-body limit is 2 MiB for every extractor, including multipart. Use
+`App::max_body` to raise it for uploads; a field's `#[file(max_bytes = ..)]` can only narrow it.
+
+`ConnectInfo<T>` is now installed by `App::serve` and `App::serve_with`.
+
+## Response headers and document hooks
+
+`HeaderDoc` no longer carries `required` or `append`; the utoipa header model this crate uses
+cannot represent them, so they are not silently ignored API. `Attachment` always emits
+`Content-Disposition: attachment` (with a filename when supplied).
+
+`App::document(..)` hooks are for metadata such as tags, servers and extensions. They must not
+change request/response validation schemas; the schema engine is compiled from the route
+declarations.
+
 ## New opt-in route policies
 
 These are additions, not required migrations:

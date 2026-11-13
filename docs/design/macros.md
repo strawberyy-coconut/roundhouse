@@ -51,7 +51,9 @@ a type that does not exist, producing one "type not found" error at the handler 
 interpreting the marker path as a module and cascading.
 
 `#[cfg(..)]` and other outer attributes on an entry are copied to every generated item for that
-entry, and to every entry in a group. They are not interpreted by the macro.
+entry, and to direct entries in a group. They are not interpreted by the macro. A nested group or
+spread is a separate item and must carry its own `cfg`; table-local duplicate checks also see
+conditional entries as present because the macro cannot evaluate `cfg`.
 
 The macro never parses a function body. `#[handler]` reads the signature and doc attributes only;
 routing metadata cannot be inferred from what the function does.

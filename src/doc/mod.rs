@@ -190,7 +190,7 @@ pub struct OperationDoc {
     pub(crate) path_schema:
         Option<fn() -> Option<utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>>>,
     /// The Rust type of the request body, so schema mode can compile the body's own schema even
-    /// when it is composite (`Vec<T>`, `Option<T>`, maps, tuples).
+    /// when it is composite (`Vec<T>`, `Option<T>` or a map).
     pub(crate) body_type: Option<fn() -> std::any::TypeId>,
 }
 

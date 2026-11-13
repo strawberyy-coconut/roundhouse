@@ -220,11 +220,13 @@ describes what it is; a route decides how it is enforced.
 ```rust
 pub trait Scopes<A: AuthScheme>: Send + Sync + 'static {
     const NAMES: &'static [&'static str] = &[];
-    fn authorize(identity: &A::Identity) -> Result<(), Problem> { Ok(()) }
+    fn authorize(identity: &A::Identity) -> Result<(), Problem>;
 }
 
 pub struct NoScopes;
-impl<A: AuthScheme> Scopes<A> for NoScopes {}
+impl<A: AuthScheme> Scopes<A> for NoScopes {
+    fn authorize(_identity: &A::Identity) -> Result<(), Problem> { Ok(()) }
+}
 ```
 
 `Auth<A, Scopes = NoScopes>` keeps its shape. `AuthScheme` stays pure metadata and `Authenticate`

@@ -57,7 +57,7 @@ impl SchemaEngine {
 
     /// Compile named components and inline body schemas in one pass.
     ///
-    /// Composite bodies (`Vec<T>`, `Option<T>`, maps, tuples) have no component of their own; the
+    /// Composite bodies (`Vec<T>`, `Option<T>` and maps) have no component of their own; the
     /// document knows their inline schema, so schema mode compiles that instead of skipping them.
     pub fn from_components_and_bodies(
         components: &Components,

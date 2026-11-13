@@ -14,10 +14,9 @@
 //!
 //! A `routes!` entry with one scheme is enforced by the generated handler shim instead: the
 //! shim extracts [`AuthEnforce<A>`] before the body, and the route's guard is skipped
-//! (`RouteRecord::shim_auth`). If the handler also takes `Auth<A>` (or a module guard already
-//! authenticated), the successful extraction leaves an [`Authenticated<A>`] marker in the
-//! request extensions and the shim's enforcement is a no-op, so one request authenticates at
-//! most once per scheme.
+//! (`RouteRecord::shim_auth`). A successful extraction stores the identity in an
+//! [`Authenticated<A>`] marker. A later `Auth<A>` or `Option<Auth<A>>` reuses that identity, and
+//! the shim's enforcement is a no-op, so one request authenticates at most once per scheme.
 //!
 //! The schemes in `examples/auth` are a compact reference implementation. Production code should
 //! verify tokens with a maintained library or gateway.
@@ -196,12 +195,13 @@ impl<A: Authenticate> FromRequestParts<A::State> for AuthEnforce<A> {
             if parts.extensions.get::<Authenticated<A>>().is_some() {
                 return Ok(AuthEnforce(std::marker::PhantomData));
             }
-            let identity = A::authenticate(parts, state)
-                .await
-                .map_err(|problem| AuthRejection {
-                    problem,
-                    scheme: A::KIND,
-                })?;
+            let identity =
+                A::authenticate(parts, state)
+                    .await
+                    .map_err(|problem| AuthRejection {
+                        problem,
+                        scheme: A::KIND,
+                    })?;
             parts.extensions.insert(Authenticated::<A>(identity));
             Ok(AuthEnforce(std::marker::PhantomData))
         }

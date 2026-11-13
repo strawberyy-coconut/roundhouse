@@ -303,6 +303,11 @@ app = app.document(|document| {
 `App::server(..)` / `App::servers(..)` add `servers` entries. The validity checks run again
 after the hook, so a hook cannot publish a path that contradicts its own parameters.
 
+Hooks are metadata-only. The schema engine is compiled from the route declarations; changing a
+request or response validation schema in a hook would publish a document the runtime does not
+enforce. Use an `ApiSchema`/`ApiResponse` implementation or a `doc = |docs|` entry hook for schema
+changes.
+
 ## Constraints
 
 - **No parallel extractor types.** `roundhouse::Json` is `axum::Json`. The traits go on axum's

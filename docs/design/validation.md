@@ -187,8 +187,8 @@ part. Opting out is not an invitation to skip deserialisation.
 `SchemaEngine` is built from the final document at the end of `App::try_build`:
 
 - named components are compiled once per `(TypeId, component name)`;
-- inline body schemas are compiled per body `TypeId`, so composites (`Vec<T>`, `Option<T>`,
-  maps, tuples) work without inventing a component;
+- inline body schemas are compiled per body `TypeId`, so composites (`Vec<T>`, `Option<T>` and
+  maps) work without inventing a component;
 - parts schemas are compiled separately, because the same Rust type can be a JSON body in one
   operation and a query struct in another.
 

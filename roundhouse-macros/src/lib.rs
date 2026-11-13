@@ -113,7 +113,7 @@ use proc_macro::TokenStream;
 /// Paths must start with `/`; use `"/"` for the module's own path. Captures use `{id}` for a
 /// segment and `{*rest}` for a trailing wildcard. Escaped braces use `{{` and `}}`.
 ///
-/// If the handler takes `Path<T>` where `T: roundhouse::PathNames`, the macro statically checks
+/// If the handler takes `Path<T>` where `T: roundhouse::Params`, the macro statically checks
 /// that every capture in the leaf path is declared by `T`. The check is deliberately a subset
 /// check: a parent module prefix may add captures that the entry cannot see. The full resolved
 /// path is validated again when the app is built.
@@ -269,10 +269,10 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// - `State<T>` — extracted from the route table's `state = S` using `T: FromRef<S>`. Without a
 ///   table state, a single `State<T>` is the default router state. The app state is still exact at
 ///   the `App::new` boundary; the table only names it.
-/// - `Path<T>` — records the capture names from `T: roundhouse::PathNames` and the schema for a
+/// - `Path<T>` — records the capture names from `T: roundhouse::Params` and the schema for a
 ///   scalar `Path<T>`. With a scalar type the names are unknown, so the compile-time check is
 ///   skipped and the build validates the document instead.
-/// - `Query<T>` and `RepeatedQuery<T>` — document query parameters from `T: roundhouse::QueryParams`.
+/// - `Query<T>` and `RepeatedQuery<T>` — document query parameters from `T: roundhouse::Params`.
 /// - `Json<T>`, `Form<T>` and `Multipart<F>` — document the request body. `Json<T>` and `Form<T>`
 ///   require `T: roundhouse::ApiSchema` for automatic documentation. A handler may read the
 ///   request body at most once; a second body extractor is a compile error.
@@ -499,9 +499,9 @@ pub fn derive_query_params(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// The derive implements `PathNames`, so [`routes!`](macro@routes) can check at compile time that
-/// every `{capture}` in the leaf path is declared by the struct. It also implements
-/// `PathValidate` for the `#[schema(..)]` constraints.
+/// The derive implements `Params`, so [`routes!`](macro@routes) can check at compile time that
+/// every `{capture}` in the leaf path is declared by the struct. It also publishes the parts
+/// schema and runs the `#[schema(..)]` constraints through `Params::validate_at`.
 ///
 /// # Rules
 ///

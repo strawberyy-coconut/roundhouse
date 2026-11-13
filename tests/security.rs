@@ -211,7 +211,11 @@ async fn an_optional_handler_still_requires_the_module_scheme() {
         request(&app, "/guarded/optional", None).await.status(),
         StatusCode::UNAUTHORIZED
     );
-    assert_eq!(state.calls(), 1, "the failed guard checked credentials once");
+    assert_eq!(
+        state.calls(),
+        1,
+        "the failed guard checked credentials once"
+    );
     assert_eq!(
         request(&app, "/guarded/optional", Some("Bearer ok"))
             .await
@@ -244,7 +248,10 @@ async fn an_optional_extractor_without_a_guard_does_not_authenticate_absent_cred
     let state = State::default();
     let app = scoped(&optional_only::MODULE, state.clone()).build();
 
-    assert_eq!(request(&app, "/optional-only", None).await.status(), StatusCode::OK);
+    assert_eq!(
+        request(&app, "/optional-only", None).await.status(),
+        StatusCode::OK
+    );
     assert_eq!(state.calls(), 0);
 
     assert_eq!(
