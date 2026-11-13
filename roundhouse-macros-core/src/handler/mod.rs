@@ -1,5 +1,6 @@
 //! `#[handler]` expansion: signature metadata, extractor docs and the route shim.
 
+mod args;
 mod response;
 mod signature;
 
@@ -10,6 +11,7 @@ use syn::{FnArg, ItemFn, LitStr, Type};
 use crate::doc_tags::{AllowedTags, DocLine, DocTags};
 use crate::util::{outer_ident, single_generic};
 
+pub(crate) use self::args::HandlerArgs;
 use self::response::{classify_return, inferred_successes, response_statements};
 use self::signature::{
     ExtractorKind, auth_types, classify, is_explicit_strict, is_parts_arg, is_wrapper_type,
@@ -46,7 +48,7 @@ fn shim_wrap(ty: &Type) -> ShimWrap {
     }
 }
 
-pub fn expand(item: ItemFn) -> TokenStream {
+pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
     let krate = crate::util::krate();
     if !item.sig.generics.params.is_empty() {
         return syn::Error::new_spanned(
@@ -59,11 +61,11 @@ pub fn expand(item: ItemFn) -> TokenStream {
         Ok(tags) => tags,
         Err(error) => return error.to_compile_error(),
     };
-    let (declared_responses, declared_success) = match declared_response_statements(&tags) {
+    let (declared_responses, declared_success) = match declared_response_statements(&tags, &args) {
         Ok(statements) => statements,
         Err(error) => return error.to_compile_error(),
     };
-    let response_descriptions = match response_description_statements(&tags) {
+    let response_descriptions = match response_description_statements(&tags, &args) {
         Ok(statements) => statements,
         Err(error) => return error.to_compile_error(),
     };
@@ -156,7 +158,7 @@ pub fn expand(item: ItemFn) -> TokenStream {
     }
     statements.extend(declared_responses);
     statements.extend(response_descriptions);
-    match path_statements(&tags) {
+    match path_statements(&tags, &args) {
         Ok(path_statements) => statements.extend(path_statements),
         Err(error) => return error.to_compile_error(),
     }
@@ -328,42 +330,54 @@ pub fn expand(item: ItemFn) -> TokenStream {
     }
 }
 
-/// Expand the handler's `@path:` block into `OperationDoc.path_descriptions` statements.
-fn path_statements(tags: &DocTags) -> syn::Result<Vec<TokenStream>> {
-    let Some(lines) = &tags.path else {
-        return Ok(Vec::new());
-    };
+/// Expand `#[handler(path(..))]` and `@path:` into path-description statements.
+fn path_statements(tags: &DocTags, args: &HandlerArgs) -> syn::Result<Vec<TokenStream>> {
+    let mut descriptions: Vec<(String, String, proc_macro2::Span)> = Vec::new();
+    if let Some(lines) = &tags.path {
+        for line in lines {
+            let Some((name, description)) = line.text.split_once(':') else {
+                return Err(syn::Error::new(
+                    line.span,
+                    "`@path:` lines must be `name: description`",
+                ));
+            };
+            descriptions.push((
+                name.trim().to_string(),
+                description.trim().to_string(),
+                line.span,
+            ));
+        }
+    }
+    for path in &args.paths {
+        descriptions.push((path.name.clone(), path.description.clone(), path.span));
+    }
+
     let mut seen = std::collections::BTreeSet::new();
     let mut statements = Vec::new();
-    for line in lines {
-        let Some((name, description)) = line.text.split_once(':') else {
-            return Err(syn::Error::new(
-                line.span,
-                "`@path:` lines must be `name: description`",
-            ));
-        };
-        let name = name.trim();
-        let description = description.trim();
+    for (name, description, span) in descriptions {
         if name.is_empty() {
             return Err(syn::Error::new(
-                line.span,
-                "`@path:` needs a parameter name",
+                span,
+                "a path description needs a parameter name",
             ));
         }
         if description.is_empty() {
             return Err(syn::Error::new(
-                line.span,
-                "`@path:` needs a description after the name",
+                span,
+                "a path description needs a description after the name",
             ));
         }
-        if !seen.insert(name.to_string()) {
+        if !seen.insert(name.clone()) {
             return Err(syn::Error::new(
-                line.span,
-                format!("`{name}` is described more than once in `@path:`"),
+                span,
+                format!(
+                    "`{name}` is described more than once; typed `#[handler(path(..))]` and \
+                     `@path:` cannot both describe it"
+                ),
             ));
         }
-        let name_lit = LitStr::new(name, line.span);
-        let description_lit = LitStr::new(description, line.span);
+        let name_lit = LitStr::new(&name, span);
+        let description_lit = LitStr::new(&description, span);
         statements.push(quote! {
             docs.push_path_description(
                 #name_lit.to_string(),
@@ -374,44 +388,64 @@ fn path_statements(tags: &DocTags) -> syn::Result<Vec<TokenStream>> {
     Ok(statements)
 }
 
-/// Expand the handler's `@responses:` block into `OperationDoc.declared_responses` statements.
+/// Expand `#[handler(response(..))]` and `@responses:` into declared-response statements.
 fn declared_response_statements(
     tags: &DocTags,
+    args: &HandlerArgs,
 ) -> syn::Result<(Vec<TokenStream>, Option<Vec<u16>>)> {
     let krate = crate::util::krate();
-    let Some(section) = &tags.responses else {
+    let mut declarations = Vec::new();
+    let mut override_existing = args.override_existing;
+
+    if let Some(section) = &tags.responses {
+        if section.lines.is_empty() {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`@responses:` needs at least one `status[: Type]` line",
+            ));
+        }
+        override_existing |= section.override_existing;
+        for line in &section.lines {
+            let (status, body) = response_line(line)?;
+            declarations.push(self::args::DeclaredResponse {
+                status,
+                body,
+                span: line.span,
+            });
+        }
+    }
+    declarations.extend(args.responses.iter().cloned());
+
+    if declarations.is_empty() {
         return Ok((Vec::new(), None));
-    };
-    if section.lines.is_empty() {
-        return Err(syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "`@responses:` needs at least one `status[: Type]` line",
-        ));
     }
 
     let mut seen = std::collections::BTreeSet::new();
     let mut success = Vec::new();
     let mut statements = Vec::new();
-    if section.override_existing {
+    if override_existing {
         statements.push(quote! {
             docs.set_declared_response_override();
         });
     }
 
-    for line in &section.lines {
-        let (status, body) = response_line(line)?;
-        if !seen.insert(status) {
+    for declaration in &declarations {
+        let status_u16 = declaration.status;
+        if !seen.insert(status_u16) {
             return Err(syn::Error::new(
-                line.span,
-                format!("status {status} is declared more than once in `@responses:`"),
+                declaration.span,
+                format!(
+                    "status {status_u16} is declared more than once; typed \
+                     `#[handler(response(..))]` and `@responses:` cannot both declare it"
+                ),
             ));
         }
-        if status == 0 || (200..400).contains(&status) {
-            success.push(status);
+        if status_u16 == 0 || (200..400).contains(&status_u16) {
+            success.push(status_u16);
         }
-        let status = proc_macro2::Literal::u16_suffixed(status);
+        let status = proc_macro2::Literal::u16_suffixed(status_u16);
 
-        statements.push(match body {
+        statements.push(match &declaration.body {
             ResponseBody::Empty => quote! {
                 docs.push_declared_response(#krate::doc::ResponseDoc::new(
                     #status,
@@ -437,51 +471,68 @@ fn declared_response_statements(
     Ok((statements, Some(success)))
 }
 
-/// Expand `@response-descriptions:` into per-status description overrides.
-fn response_description_statements(tags: &DocTags) -> syn::Result<Vec<TokenStream>> {
-    let Some(lines) = &tags.response_descriptions else {
-        return Ok(Vec::new());
-    };
+/// Expand `#[handler(response_description(..))]` and `@response-descriptions:` into overrides.
+fn response_description_statements(
+    tags: &DocTags,
+    args: &HandlerArgs,
+) -> syn::Result<Vec<TokenStream>> {
+    let mut descriptions: Vec<(u16, String, proc_macro2::Span)> = Vec::new();
+    if let Some(lines) = &tags.response_descriptions {
+        for line in lines {
+            let Some((status, description)) = line.text.split_once(':') else {
+                return Err(syn::Error::new(
+                    line.span,
+                    "`@response-descriptions:` lines must be `status: description`",
+                ));
+            };
+            let status = status.trim();
+            let status = if status.eq_ignore_ascii_case("default") {
+                0
+            } else {
+                status.parse::<u16>().map_err(|_| {
+                    syn::Error::new(
+                        line.span,
+                        format!("`{status}` is not an HTTP status or `default`"),
+                    )
+                })?
+            };
+            if status != 0 && !(100..=599).contains(&status) {
+                return Err(syn::Error::new(
+                    line.span,
+                    format!("`{status}` is not an HTTP status code"),
+                ));
+            }
+            descriptions.push((status, description.trim().to_string(), line.span));
+        }
+    }
+    for description in &args.response_descriptions {
+        descriptions.push((
+            description.status,
+            description.description.clone(),
+            description.span,
+        ));
+    }
+
     let mut seen = std::collections::BTreeSet::new();
     let mut statements = Vec::new();
-    for line in lines {
-        let Some((status, description)) = line.text.split_once(':') else {
-            return Err(syn::Error::new(
-                line.span,
-                "`@response-descriptions:` lines must be `status: description`",
-            ));
-        };
-        let status = status.trim();
-        let status = if status.eq_ignore_ascii_case("default") {
-            0
-        } else {
-            status.parse::<u16>().map_err(|_| {
-                syn::Error::new(
-                    line.span,
-                    format!("`{status}` is not an HTTP status or `default`"),
-                )
-            })?
-        };
-        if status != 0 && !(100..=599).contains(&status) {
-            return Err(syn::Error::new(
-                line.span,
-                format!("`{status}` is not an HTTP status code"),
-            ));
-        }
+    for (status, description, span) in descriptions {
         if !seen.insert(status) {
             return Err(syn::Error::new(
-                line.span,
-                format!("status {status} is described more than once in `@response-descriptions:`"),
+                span,
+                format!(
+                    "status {status} is described more than once; typed \
+                     `#[handler(response_description(..))]` and `@response-descriptions:` \
+                     cannot both describe it"
+                ),
             ));
         }
-        let description = description.trim();
         if description.is_empty() {
             return Err(syn::Error::new(
-                line.span,
-                "`@response-descriptions:` needs a description after the status",
+                span,
+                "a response description needs text after the status",
             ));
         }
-        let description = syn::LitStr::new(description, line.span);
+        let description = syn::LitStr::new(&description, span);
         let status = proc_macro2::Literal::u16_suffixed(status);
         statements.push(quote! {
             docs.push_response_description(#status, #description.to_string());
@@ -490,6 +541,7 @@ fn response_description_statements(tags: &DocTags) -> syn::Result<Vec<TokenStrea
     Ok(statements)
 }
 
+#[derive(Clone)]
 enum ResponseBody {
     Empty,
     Problem,

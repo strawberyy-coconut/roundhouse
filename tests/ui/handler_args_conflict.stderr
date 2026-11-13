@@ -1,0 +1,5 @@
+error: status 200 is declared more than once; typed `#[handler(response(..))]` and `@responses:` cannot both declare it
+ --> tests/ui/handler_args_conflict.rs:9:11
+  |
+9 | #[handler(response(200, Note))]
+  |           ^^^^^^^^

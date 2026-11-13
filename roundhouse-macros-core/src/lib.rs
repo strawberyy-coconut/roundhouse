@@ -26,15 +26,16 @@ pub fn expand_routes(input: TokenStream) -> TokenStream {
 }
 
 pub fn expand_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "`#[handler]` takes no arguments; routing metadata lives in `routes!`",
-        )
-        .to_compile_error();
-    }
+    let args = if attr.is_empty() {
+        handler::HandlerArgs::default()
+    } else {
+        match syn::parse2::<handler::HandlerArgs>(attr) {
+            Ok(args) => args,
+            Err(error) => return error.to_compile_error(),
+        }
+    };
     match syn::parse2::<ItemFn>(item) {
-        Ok(item) => handler::expand(item),
+        Ok(item) => handler::expand(item, args),
         Err(error) => error.to_compile_error(),
     }
 }
