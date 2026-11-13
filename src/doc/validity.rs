@@ -111,33 +111,48 @@ pub fn validate_document(document: &impl serde::Serialize) -> Result<(), String>
 /// `Pointer '/$defs/...' does not exist`. Checking the finished document catches an unregistered
 /// parameter type and a hand-written `doc` hook that published a dangling reference.
 fn validate_refs(value: &serde_json::Value) -> Result<(), String> {
-    let schemas = value
-        .pointer("/components/schemas")
-        .and_then(|value| value.as_object())
-        .map(|object| {
-            object
-                .keys()
-                .cloned()
-                .collect::<std::collections::HashSet<_>>()
-        })
-        .unwrap_or_default();
-    validate_ref_values(value, &schemas)
+    let mut components: std::collections::HashMap<String, std::collections::HashSet<String>> =
+        std::collections::HashMap::new();
+    if let Some(serde_json::Value::Object(kinds)) = value.get("components") {
+        for (kind, members) in kinds {
+            if let serde_json::Value::Object(members) = members {
+                components.insert(
+                    kind.clone(),
+                    members
+                        .keys()
+                        .cloned()
+                        .collect::<std::collections::HashSet<_>>(),
+                );
+            }
+        }
+    }
+    validate_ref_values(value, &components)
 }
 
 fn validate_ref_values(
     value: &serde_json::Value,
-    schemas: &std::collections::HashSet<String>,
+    components: &std::collections::HashMap<String, std::collections::HashSet<String>>,
 ) -> Result<(), String> {
     match value {
         serde_json::Value::Object(object) => {
             if let Some(serde_json::Value::String(reference)) = object.get("$ref")
-                && let Some(name) = reference.strip_prefix("#/components/schemas/")
-                && !schemas.contains(name)
+                && let Some(rest) = reference.strip_prefix("#/components/")
             {
-                return Err(format!(
-                    "component reference `{reference}` has no component `{name}`; \
-                     register the type with `ApiSchema` or declare it explicitly"
-                ));
+                let mut parts = rest.splitn(2, '/');
+                let kind = parts.next().unwrap_or_default();
+                let name = parts.next().and_then(|rest| rest.split('/').next());
+                let found = name.is_some_and(|name| {
+                    components
+                        .get(kind)
+                        .is_some_and(|members| members.contains(name))
+                });
+                if !found {
+                    let name = name.unwrap_or("");
+                    return Err(format!(
+                        "component reference `{reference}` has no component `{name}`; \
+                         register the type with `ApiSchema` or declare it explicitly"
+                    ));
+                }
             }
             for (key, value) in object {
                 // These keywords hold instance data, not schemas; an example may contain a
@@ -148,13 +163,13 @@ fn validate_ref_values(
                 ) {
                     continue;
                 }
-                validate_ref_values(value, schemas)?;
+                validate_ref_values(value, components)?;
             }
             Ok(())
         }
         serde_json::Value::Array(values) => {
             for value in values {
-                validate_ref_values(value, schemas)?;
+                validate_ref_values(value, components)?;
             }
             Ok(())
         }
