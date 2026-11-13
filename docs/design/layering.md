@@ -93,6 +93,19 @@ introduced.
 A handler can therefore use `axum::extract::Path` directly and still be documented and
 validated.
 
+### utoipa is an implementation detail
+
+Application code writes `#[roundhouse::schema]` and `#[roundhouse(..)]`. The facade still depends
+on utoipa for schema derivation, but the supported integration surface is `roundhouse::interop`;
+`ToSchema`, `PartialSchema`, `Components` and the `utoipa` crate are re-exported there explicitly.
+
+One mechanical exception exists: utoipa's derive expands to bare `utoipa::` paths. To make
+`#[roundhouse::schema]` work without forcing every application to depend on utoipa, the prelude
+keeps `#[doc(hidden)]` re-exports of `utoipa`, `ToSchema` and `PartialSchema`. They are plumbing,
+not API, and are deliberately absent from the generated documentation. If utoipa gains a
+crate-path attribute (or the shape derivation moves in-house), the hidden re-exports and the
+`__private::utoipa` path in generated code can be removed together.
+
 ## Feature policy
 
 The default feature set is `schema-engine` + `serve` + `swagger`.
