@@ -1,21 +1,25 @@
-> **0.4:** production request validation reads `.roundhouse/contract.json`. The document builder
-> under the `contract` feature derives that artifact; the runtime compiles its plans and never
-> assembles a document. See [`contract.md`](contract.md).
-
 # Validation
 
-roundhouse publishes one schema and executes it. The document emitter and the request enforcer
-share the same components, refs and constraints, so a route cannot advertise a check it does
-not run — or run a check the document does not describe.
+Roundhouse publishes one schema and executes it. The contract build and the request enforcer
+share the same components, refs and constraints, so a route cannot advertise a check it does not
+run — or run a check the document does not describe.
 
-## One artifact, two uses
+## One contract, one engine
 
-`#[derive(ApiSchema)]` emits the shape and the roundhouse patches. The document builder
-registers it as a component. At build time, when validation is enabled, the schema engine
-compiles those components (plus inline body and parts schemas) into `jsonschema` validators.
+`#[roundhouse::schema]` emits the shape and the roundhouse patches. The contract build registers
+it as a component and records request plans in `.roundhouse/contract.json`:
 
-There is no second, hand-written validation model. A constraint that appears in the document
-came from the same attribute that produced the validator.
+- the shared component schemas (`$defs`);
+- body plans keyed by operation id and stable type name;
+- parts plans for path/query/form types;
+- the response table used by verification.
+
+The production runtime reads that artifact, compiles the plans with `jsonschema`, and never
+assembles or derives a document. There is no second, hand-written validation model: a constraint
+that appears in the document came from the same attribute that produced the validator.
+
+The contract build and the runtime are split so a production build does not carry utoipa, the
+document builder or the response probes. See [Contract](contract.md).
 
 ## Modes
 
@@ -198,25 +202,25 @@ part. Opting out is not an invitation to skip deserialisation.
 
 ## The schema engine
 
-`SchemaEngine` is built from the final document at the end of `App::try_build`:
+`SchemaEngine` is built from `.roundhouse/contract.json` during `App::build`:
 
-- named components are compiled once per `(TypeId, component name)`;
-- inline body schemas are compiled per body `TypeId`, so composites (`Vec<T>`, `Option<T>` and
-  maps) work without inventing a component;
-- parts schemas are compiled separately, because the same Rust type can be a JSON body in one
+- the shared `$defs` table is compiled once;
+- body plans are keyed by operation id and stable type name, so composites (`Vec<T>`,
+  `Option<T>` and maps) work without inventing a component;
+- parts plans are keyed separately, because the same Rust type can be a JSON body in one
   operation and a query struct in another.
 
-The engine compiles JSON Schema draft 2020-12 with `jsonschema`, offline, with format
-assertions and regex patterns enabled. References are rewritten from
-`#/components/schemas/..` to `#/$defs/..` for execution.
+The contract builder writes those plans; it does not compile a separate runtime document. The
+engine compiles JSON Schema draft 2020-12 with `jsonschema`, offline, with format assertions and
+regex patterns enabled. References are already expressed as `#/$defs/..` in the contract artifact.
 
 Every violation is collected, not short-circuited. For a tagged enum (`oneOf`) or `anyOf`, the
 engine reports the branch with the fewest failures, so the client sees `/title` and
 `min_length` rather than a root-level union code. The translation reads the structured
 `ValidationErrorKind`, not the engine's message text, so `code` and `limit` stay stable.
 
-A schema that cannot compile is `BuildError::SchemaCompilation`, not a runtime surprise. The
-same applies to response validation, which compiles at build time.
+A malformed or incompatible plan is `BuildError::SchemaCompilation`, not a runtime surprise.
+Response verification compiles from the same contract response table.
 
 ## Errors
 
@@ -275,7 +279,8 @@ checks the actual status, content type and JSON body against `.roundhouse/contra
 
 `cargo roundhouse verify` runs `cargo test` with `ROUNDHOUSE_VERIFY=1`, which installs the same
 middleware without a code change. It requires `contract-runtime` + `schema-engine` and is not
-intended for production traffic.
+intended for production traffic. The standalone `ContractResponseValidator` exposes the same
+checks to tests that already have the response in hand.
 
 ## Limits
 

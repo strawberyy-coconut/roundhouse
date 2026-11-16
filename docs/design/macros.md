@@ -1,6 +1,3 @@
-> **0.4:** schema/doc impls are wrapped so a production build resolves no utoipa paths. See
-> [`contract.md`](contract.md).
-
 # Macros
 
 The macro is the product. `routes!` plus `#[handler]` are why roundhouse exists: they make the
@@ -12,8 +9,10 @@ be a runtime-checked copy with fewer guarantees, so it is not on the roadmap.
 | Macro | Kind | Responsibility |
 |---|---|---|
 | `routes!` | function-like | Parse the table, check it, emit the module tree |
+| `api!` | function-like | Generate `__roundhouse_contract()` from the crate-root configuration |
 | `#[handler]` | attribute | Emit the marker type and the route shim |
-| `ApiSchema` | derive | Register a documented body/response and its patches |
+| `#[roundhouse::schema]` | attribute | Emit the runtime schema hooks and, with `contract`, the schema derive |
+| `ApiSchema` | derive | Internal shape/registration derive used by `#[roundhouse::schema]` |
 | `QueryParams` | derive | Query parameter table, parts schema, hooks |
 | `PathParams` | derive | Path capture names, parts schema, hooks |
 | `Multipart` | derive | Multipart field table, extraction and body schema |
@@ -34,7 +33,7 @@ routes! { prefix = "/api", "/notes" => { get(list), post(create) } }
            fn __roundhouse_fragment() -> Fragment
            per entry:
              type __RoundhouseHandlerN = <marker type>;
-             const _: () = { /* success + capture assertions */ };
+             const _: () = { /* capture assertions */ };
              fn __roundhouse_route_N() -> Box<dyn Any + Send + Sync>
              fn __roundhouse_layer_N(..)                 (optional)
              fn __roundhouse_entry_doc_N(..)             (optional)
@@ -58,7 +57,8 @@ spread is a separate item and must carry its own `cfg`. Table-local duplicate ch
 `cfg` is still caught by the resolved route table at build time.
 
 The macro never parses a function body. `#[handler]` reads the signature and doc attributes only;
-routing metadata cannot be inferred from what the function does.
+routing metadata cannot be inferred from what the function does. Response inference happens later,
+in the contract build, from the source file on disk—not inside the proc macro.
 
 ## Prose and typed metadata
 
@@ -103,7 +103,6 @@ One invocation can check its own tokens. These fail `cargo check`:
 | Duplicate route in the table | Combined error pointing at both entries |
 | `any` conflicting with a method | Combined error pointing at both entries |
 | Duplicate explicit/derived operation id | Combined error pointing at both declarations |
-| No success response | Const assertion naming the method, path and fix |
 | `Path<T>` misses a capture | Const assertion naming the handler and template |
 | Missing `#[handler]` | Missing marker type at the handler |
 | Unknown option, non-type security, removed attribute | `syn::Error` at the offending token |
@@ -114,8 +113,8 @@ entry's literals. The panic is evaluated during type checking, so
 it is still a `cargo check` failure, not a runtime one.
 
 `tests/ui/*.rs` + `tests/ui/*.stderr` pin these messages with `trybuild`: duplicate routes,
-duplicate ids, missing handlers, path mismatches, security state mismatches, removed attributes
-and an undeclared success.
+duplicate ids, missing handlers, path mismatches, security state mismatches and removed
+attributes. Missing success responses are a contract-build error, not an expansion error.
 
 ## What cannot be checked at expansion time
 
@@ -157,7 +156,7 @@ The derives keep their own rules on top:
 - **Module scope only.** `routes!` emits items, so it cannot be invoked inside a function.
 - **One `routes!` per module.** It owns `MODULE` and `__roundhouse_fragment()`.
 - **Free functions, no generics on handlers.** `#[handler]` rejects generic handlers and cannot
-  be applied to a method in an `impl` block. Response and error enums may be generic.
+  be applied to a method in an `impl` block. Response body types may be generic.
 - **The handler must be reachable by path.** A local closure or a function alias without the
   marker is not a handler.
 - **`doc` and `layer` are expressions.** They are type-checked in the emitted context: `doc`
@@ -176,6 +175,13 @@ capabilities are optional, the authoring model is not.
 The trait refactor and the macro are complements, not alternatives. `ExtractArg` and `ApiSchema`
 moved semantics out of the expansion, so the macro is now mostly parsing, validation and wiring.
 That is the part that benefits from a separate library crate.
+
+## `api!`
+
+`api!` is the crate-root configuration macro. It validates the option names and emits
+`__roundhouse_contract() -> Contract<State>` under the `contract` feature. Supported options are
+`state`, `title`, `version`, `root`, `servers`, `register` and `response_defaults`. The generated
+function is what the `target/roundhouse` harness calls; it is absent from a production build.
 
 ## Future
 

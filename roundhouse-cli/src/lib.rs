@@ -1,11 +1,39 @@
 //! Build-time contract generation for roundhouse.
 //!
-//! This crate is both a library and the `cargo roundhouse` binary. Applications can call
-//! [`prepare`] from a `build.rs` to refresh `.roundhouse/` automatically, and the binary exposes
-//! the same operations as subcommands.
+//! This crate is both a library and the `cargo roundhouse` binary:
+//!
+//! ```text
+//! roundhouse_cli::prepare()      // generate .roundhouse/contract.json + openapi.json
+//! roundhouse_cli::check()        // verify committed artifacts are current
+//! roundhouse_cli::explain(op)    // print one operation's responses
+//! roundhouse_cli::verify(args)   // cargo test with response verification
+//! roundhouse_cli::diff(..)       // compare contracts for breaking changes
+//! ```
+//!
+//! A `build.rs` should call [`prepare`] so the artifacts are refreshed before rustc reads
+//! `include_contract!`:
+//!
+//! ```ignore
+//! fn main() {
+//!     println!("cargo:rerun-if-changed=src");
+//!     if std::env::var_os("ROUNDHOUSE_BUILDING_CONTRACT").is_some() {
+//!         return;
+//!     }
+//!     roundhouse_cli::prepare().expect("roundhouse contract generation failed");
+//! }
+//! ```
+//!
+//! Add it with `default-features = false`; the `cli` feature only exists for the binary's argument
+//! parsing and for `init`'s manifest editing:
+//!
+//! ```toml
+//! [build-dependencies]
+//! roundhouse-cli = { version = "0.4", default-features = false }
+//! ```
 //!
 //! The generated harness lives under `target/roundhouse`; nothing outside `target/` and
-//! `.roundhouse/` is written.
+//! `.roundhouse/` is written. Generation is re-entrant-safe: the harness run sets
+//! `ROUNDHOUSE_BUILDING_CONTRACT`, so an application build script does not recurse.
 
 use std::error::Error;
 use std::ffi::OsString;

@@ -61,8 +61,8 @@ pub struct App<S> {
     pub(crate) swagger_route: Option<&'static str>,
     #[cfg(feature = "contract")]
     pub(crate) document_rejections: DocumentRejections,
-    /// When set, the OpenAPI route serves this build-time artifact instead of the document
-    /// assembled at startup.
+    /// When set, the OpenAPI route serves this build-time artifact. The runtime never assembles
+    /// a document.
     #[cfg(feature = "contract-runtime")]
     pub(crate) contract_bundle: Option<crate::ContractBundle>,
     pub(crate) validation_status: axum::http::StatusCode,

@@ -1,49 +1,64 @@
 # Design notes
 
-These documents record the constraints, decisions and open questions behind roundhouse.
-They are for contributors, and for users who need to know *why* the API looks the way it
-does rather than only how to call it.
+Roundhouse has one source of truth: the declarations in your crate. The same `routes!` table and
+`#[handler]` signatures produce the runtime router and the OpenAPI contract. These notes describe
+how that works in 0.4 and why the boundaries are where they are.
 
-User-facing documentation lives elsewhere:
+## The system at a glance
 
-- the [root README](../../README.md) is the pitch, quick start and feature tour;
-- the crate documentation (`cargo doc --workspace --no-deps --open`) is the API reference;
-- the [examples](../../examples) are runnable end-to-end programs.
+```text
+src/lib.rs + #[roundhouse::schema] + routes! + #[handler]
+        │
+        │  macro expansion
+        ▼
+Module / Fragment / RouteRecord + DocSource + ExtractArg/ExtractDoc metadata
+        │
+        │  build.rs → roundhouse_cli::prepare()
+        │     target/roundhouse harness
+        │     discovery build → response inference → strict build
+        ▼
+.roundhouse/contract.json     runtime plans, response table, shared $defs
+.roundhouse/openapi.json      OpenAPI 3.1 document
+        │
+        │  include_contract!()
+        ▼
+contract-runtime: Router + request validation + verbatim docs + response verification
+```
+
+Two rules shape the design:
+
+- **The runtime never builds documentation.** Schema derivation and the document builder are
+  compiled only under the `contract` feature, and normally only in the `target/roundhouse`
+  harness. A production binary consumes the committed contract.
+- **Inference proposes; the contract build decides.** Response inference reads source and records
+  candidates with provenance. The strict contract build is the authority for missing, unknown or
+  contradictory responses.
 
 ## Index
 
-- [The build-time contract](contract.md) — artifacts, features, inference, runtime consumption,
-  verification and the CLI workflow.
-- [Layering and capability policy](layering.md) — the crate map, the dependency direction,
-  and why roundhouse is axum-specific with no `roundhouse-core`/`roundhouse-axum` split.
-- [Routing](routing.md) — the `routes!` → `Module` → `App::build` pipeline, the checks at
-  each stage, and how module policy becomes an axum router.
-- [Documentation](documentation.md) — how `#[handler]` plus `ApiSchema` and `ExtractArg`
-  produce an OpenAPI operation, and what the document promises.
-- [Validation](validation.md) — why the published schema is also the enforced schema, the
-  request pipeline, the schema engine, and contract response verification.
-- [Extensibility](extensibility.md) — the trait seams, how to document a custom extractor
-  or response, and where a `doc` hook is the right tool instead.
-- [Traits and internal API](traits.md) — the target trait map: domain specs versus macro
-  probes and shim plumbing, the probe consolidation, and the migration order.
-- [Macros](macros.md) — why `routes!` is the product, how the expansion is organised, and
-  the diagnostic philosophy.
-- [Doc tags](doc-tags.md) — the prose `@summary:`/`@description:` layer, the typed
-  `#[handler(..)]` metadata that replaces structured doc tags, and the precedence rules.
+- [Contract](contract.md) — the build pipeline, `api!`, artifacts, inference, versioning and the
+  CLI. Start here.
+- [Routing](routing.md) — `routes!` → `Module` → `App::build` → `axum::Router`, including the
+  static checks at each stage.
+- [Documentation](documentation.md) — how a handler signature and extractor contribute an
+  `OperationDoc`, how responses are merged, and how the OpenAPI document is emitted.
+- [Validation](validation.md) — contract-backed request validation, the JSON Schema engine,
+  validation hooks, rejection bodies and response verification.
+- [Traits](traits.md) — the current public extension traits versus internal macro machinery.
+- [Macros](macros.md) — what `routes!`, `#[handler]`, `api!` and the derives expand to, and which
+  mistakes are compile-time versus build-time errors.
+- [Extensibility](extensibility.md) — the supported seams for custom extractors, responses,
+  schemas, layers and operation metadata.
+- [Layering](layering.md) — crate boundaries, dependency direction and the feature matrix.
+- [Doc tags](doc-tags.md) — prose tags, typed metadata and their precedence.
 
 ## Conventions
 
-Each document separates:
+Each note describes the code as it exists in 0.4:
 
-- **Constraints** — deliberate limits that keep the design coherent.
-- **Decisions** — tradeoffs that have already been made.
-- **Future** — work that is not implemented. Nothing in a *Future* section is an API
-  promise.
+- **Constraints** are deliberate limits that keep the design coherent.
+- **Decisions** are tradeoffs that have already been made.
+- **Future** is not implemented and is not an API promise.
 
-When a change alters one of these documents, update the relevant note in the same change.
-If a decision is superseded, keep the history in the document rather than silently
-rewriting it: the reason a path was rejected is part of the design.
-
-The notes describe the current `0.4` line. Version-specific behaviour that changes is
-called out explicitly; everything else should be read as "this is how the current code
-behaves". The contract pipeline is described in [Contract](contract.md).
+Version-specific migration details belong in `MIGRATING-0.4.md`, not in these notes. Historical
+alternatives are noted only when they explain why the current shape was chosen.

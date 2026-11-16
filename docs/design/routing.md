@@ -10,7 +10,7 @@ assembly and the OpenAPI document. Nothing is discovered from the linker.
 routes! { .. }
     │
     ├─ parse            tokens → module options, entries, groups, spreads
-    ├─ flatten/check    table-local paths, duplicates, operation ids, success responses
+    ├─ flatten/check    table-local paths, duplicates and operation ids
     └─ expand           Module, RouteRecord, shim aliases, const assertions
             │
             ▼
@@ -23,11 +23,11 @@ routes! { .. }
         ├─ probe the matchit tree (the same one axum will build)
         └─ reject duplicate routes and operation ids across tables
             │
-            ├──► doc::build ──► OpenAPI 3.1 document
-            └──► assemble  ──► axum::Router
+            ├──► contract build ──► .roundhouse/contract.json + openapi.json
+            └──► assemble       ──► axum::Router
             │
             ▼
-          Built { router, routes, document, merges, diagnostics }
+          Built { router, routes, contract_openapi, merges, diagnostics }
 ```
 
 `App::build()` panics on failure and prints diagnostics. `App::try_build()` returns a
@@ -235,13 +235,16 @@ name.
 
 - `router()` — the ready `axum::Router<()>`;
 - `routes()` — the resolved table, sorted by path then method, with each declaration's source;
-- `document()` — the always-built OpenAPI 3.1 document;
-- `openapi_30()` — a best-effort 3.0.3 shape;
+- `openapi_json()` — the embedded `openapi.json` string;
+- `document()` — a lazily parsed `OpenApi` view, available under `contract`;
+- `openapi_30()` — a best-effort 3.0.3 shape, available under `contract`;
 - `merges()` and `diagnostics()` — what the build had to work around;
 - `oneshot*()` — request helpers for tests.
 
-The document is always built even when it is not served. `App::openapi(..)` controls the
-`/openapi.json` route and the info object, not whether the document exists.
+A production build does not build a document. It consumes the committed contract bundle,
+compiles the request plans and serves the embedded `openapi.json`. `App::openapi(..)` and
+`App::openapi_route(..)` configure documentation serving; they do not select whether a document
+is generated.
 
 ## Constraints
 
@@ -261,8 +264,8 @@ The document is always built even when it is not served. `App::openapi(..)` cont
 
 ## Future
 
-- The `roundhouse-macros-core` split (see [Macros](macros.md)) would not change this pipeline;
-  it would only make the expansion unit-testable.
+- The `roundhouse-macros-core` split is implemented; further macro work does not change this
+  pipeline.
 - A macro-free builder is not planned. It would move duplicate, capture and operation-id checks
   from `cargo check` into `App::build`, which is a strictly weaker position.
 - Cross-table checks stay at build time. A proc macro cannot see sibling invocations, and

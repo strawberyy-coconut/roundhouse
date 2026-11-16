@@ -28,6 +28,35 @@ routes! + #[handler] + #[roundhouse::schema]
 `contract.json` is the runtime artifact. `openapi.json` is the documentation artifact. They are
 siblings written by one `prepare` run and committed together.
 
+## Build modes
+
+| Mode | Who runs it | What it does |
+|---|---|---|
+| Automatic | generated `build.rs` | calls `roundhouse_cli::prepare()` when source or manifest inputs change |
+| Explicit | `cargo roundhouse prepare` | the same generation on demand |
+| Verify | `cargo roundhouse check` | regenerates into `target/roundhouse-check-*` and compares the committed files |
+
+The build script and the CLI share the `roundhouse-cli` library, so there is one implementation.
+The generated script skips while the harness compiles the application (the harness sets
+`ROUNDHOUSE_BUILDING_CONTRACT`) and skips in CI unless `ROUNDHOUSE_AUTO_CONTRACT=1`. That keeps
+`cargo roundhouse check` meaningful: CI builds the committed artifact and the check detects drift.
+
+The CLI writes only `.roundhouse/` and temporary directories under `target/`. The application's
+`src/` and `Cargo.toml` are untouched after `init`.
+
+## Artifact shape
+
+`contract.json` contains:
+
+- `kind` and `contract_version` — the only layout the runtime accepts;
+- `generator_version` — informational, from the roundhouse version;
+- `operations` — path, method, operation id, handler/source location and the response table with
+  `inferred` / `declared` / `unknown` provenance;
+- `validation` — request body/parts plans and the shared `$defs`;
+- `diagnostics` and `openapi` metadata.
+
+`openapi.json` is the OpenAPI 3.1 projection of the same build. It is what the runtime serves.
+
 ## Features
 
 | Feature | Adds | utoipa |

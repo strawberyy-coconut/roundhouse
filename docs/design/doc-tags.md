@@ -28,7 +28,7 @@ not swallowed. `@description:` keeps blank lines as paragraphs.
 | Tag | Where | Meaning |
 |---|---|---|
 | `@summary:` | handler, route entry | OpenAPI operation summary |
-| `@description:` | handler, route entry, response variant, response body type, query/path field | OpenAPI description |
+| `@description:` | handler, route entry, response body type, query/path field | OpenAPI description |
 
 Summary lines are joined with spaces. Description lines preserve paragraphs. A duplicate tag in one
 doc block is a compile error, and a tag in the wrong context is a compile error.
@@ -64,11 +64,12 @@ Operation prose:
 
 Response descriptions:
 
-1. `response_description(status, "…")` (applied after the response table is merged),
-2. `#[status(description = "…")]`,
-3. the response variant's `@description:`,
-4. the response body type's `@description:`,
-5. the canonical HTTP reason phrase.
+1. `@response <status>: text` on the handler,
+2. `api! response_defaults`, when the response still has its canonical description,
+3. a typed `response_description(status, "…")`,
+4. the response body type's `@description:` / `ApiSchema::description()`,
+5. a literal `Problem` title,
+6. the canonical HTTP reason phrase.
 
 Parameter descriptions:
 

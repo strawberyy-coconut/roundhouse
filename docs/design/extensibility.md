@@ -8,22 +8,23 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 
 | Need | Use |
 |---|---|
-| A custom axum extractor with parameters, a body or auth | `ExtractArg` |
+| A custom axum extractor with parameters, a body or auth | `ExtractArg` + `ExtractDoc` |
 | A custom response type with a status, body or headers | `#[handler(response(..))]` plus a `doc = |docs|` hook |
 | A documented JSON body or response type | `ApiSchema` (or `#[roundhouse::schema]`) |
 | A query or path struct | `#[derive(QueryParams)]`, `#[derive(PathParams)]` |
 | A tower layer that terminates requests | `App::layer_documented` or a `doc = ..` hook |
-| Metadata the declarations cannot derive | `App::document(..)` |
+| Metadata the declarations cannot derive | `Contract::document(..)` or `App::document(..)` (contract build) |
 | A one-off operation addition | `doc = |docs| ..` on the `routes!` entry |
 | Operation prose | `@summary:` and `@description:` in the handler doc block |
 | Response declarations | `#[handler(response(..))]` on the handler |
 
-## Custom extractors: `ExtractArg`
+## Custom extractors: `ExtractArg` + `ExtractDoc`
 
-A custom extractor is a normal axum extractor plus one impl:
+A custom extractor is a normal axum extractor plus a runtime impl and, under `contract`, a
+documentation impl:
 
 ```rust
-use roundhouse::doc::{ArgDoc, DocContext, ExtractArg, Param, ParamIn, SchemaContext, schema};
+use roundhouse::doc::{ArgDoc, DocContext, ExtractDoc, Param, ParamIn, schema};
 
 pub struct Tenant(pub String);
 
@@ -46,7 +47,10 @@ where
     }
 }
 
-impl ExtractArg for Tenant {
+impl roundhouse::ExtractArg for Tenant {}
+
+#[cfg(feature = "contract")]
+impl ExtractDoc for Tenant {
     fn document(_context: &mut DocContext<'_>) -> ArgDoc {
         ArgDoc {
             params: vec![
@@ -60,7 +64,8 @@ impl ExtractArg for Tenant {
 ```
 
 `#[handler]` now documents the header and the document builder accepts it. The extractor's
-rejection type is already `Problem`, so no mapping is needed.
+rejection type is already `Problem`, so no mapping is needed. A production build compiles only
+`ExtractArg`; the documentation impl is behind `contract`.
 
 `document` returns `ArgDoc`; it does not mutate `OperationDoc`. The builder merges the contribution,
 so a trait cannot read or overwrite another argument's work. `Option<T>` and `Result<T, E>` are
@@ -87,22 +92,25 @@ it:
 ```rust
 pub struct SignedBody<T>(pub T);
 // ... FromRequest impl ...
-impl<T: ExtractArg> ExtractArg for SignedBody<T> {
+impl<T: roundhouse::ExtractArg> roundhouse::ExtractArg for SignedBody<T> {}
+
+#[cfg(feature = "contract")]
+impl<T: ExtractDoc> ExtractDoc for SignedBody<T> {
     fn document(context: &mut DocContext<'_>) -> ArgDoc {
         T::document(context)
     }
 }
 ```
 
-For an extractor you own, implement `ExtractArg` directly.
+For an extractor you own, implement `ExtractArg` and, under `contract`, `ExtractDoc`.
 
 ### Why a probe instead of a bound
 
-`#[handler]` cannot write `where T: ExtractArg`, because custom extractors that do not
+`#[handler]` cannot write `where T: ExtractDoc`, because custom extractors that do not
 implement it must still compile. Instead it calls `ArgProbe::<T>::new().document(..)`, which
 resolves through autoref specialization:
 
-- if `T: ExtractArg`, the specific impl runs;
+- if `T: ExtractDoc`, the specific impl runs;
 - otherwise the fallback returns an `ArgDoc` with `unverified_extractor` set.
 
 The build emits a diagnostic, and the strict build rejects the operation. This is why forgetting an
@@ -274,8 +282,9 @@ cannot bypass the checks; it can only supply data the signature could not.
 
 ## Document-level hooks
 
-`App::document(..)` runs over the finished document after route assembly. It is the escape hatch
-for metadata no declaration owns, such as tag descriptions or a custom extension:
+`Contract::document(..)` (or `App::document(..)` in a contract build) runs over the finished
+document before it is written. It is the escape hatch for metadata no declaration owns, such as
+tag descriptions or a custom extension:
 
 ```rust
 app = app.document(|document| {
@@ -283,8 +292,9 @@ app = app.document(|document| {
 });
 ```
 
-`App::server(..)` / `App::servers(..)` add `servers` entries. The validity checks run again
-after the hook, so a hook cannot publish a path that contradicts its own parameters.
+`api! servers = [..]` or the contract-only `App::server(..)`/`App::servers(..)` add `servers`
+entries. The validity checks run again after the hook, so a hook cannot publish a path that
+contradicts its own parameters.
 
 Hooks are metadata-only. The schema engine is compiled from the route declarations; changing a
 request or response validation schema in a hook would publish a document the runtime does not

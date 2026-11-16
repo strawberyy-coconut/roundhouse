@@ -13,13 +13,19 @@ roundhouse
 ├── roundhouse-path        path joining/template validation shared with the macros
 ├── roundhouse-schema      ApiSchema, parts schemas, validation errors, schema engine
 ├── roundhouse-problem     the RFC 9457 Problem body
-└── roundhouse-multipart   Multipart<F>, FilePart, TempFile (optional)
+├── roundhouse-multipart   Multipart<F>, FilePart, TempFile (optional)
+└── roundhouse-cli         generation library + `cargo roundhouse` binary (build-time only)
 ```
 
 `roundhouse` is the application facade. It owns the app builder, route resolution, router
 assembly, document assembly, the extractor wrappers, the reusable `Created<T>` / `NoContent`
 response wrappers and auth. It re-exports the derives and `routes!` at the crate root and in the
 prelude.
+
+`roundhouse-cli` is not a runtime dependency. `cargo roundhouse init` adds it as a
+`[build-dependencies]` entry with `default-features = false`, so the build script can call
+`roundhouse_cli::prepare()` without clap or manifest editing. The binary enables the `cli`
+feature for parsing and `init`.
 
 `roundhouse-schema` has no axum dependency. It can be used by a build script, an SDK or a
 test that never starts a server. The facade re-exports its public items, so application code
@@ -40,6 +46,7 @@ exists to keep that path honest.
 | `roundhouse-schema` | serde, jsonschema (optional), utoipa (contract feature only) | no |
 | `roundhouse-problem` | axum (no default features), http, schema, utoipa (contract feature only) | yes |
 | `roundhouse-multipart` | axum (multipart only), problem, schema | yes |
+| `roundhouse-cli` | syn, serde_json; clap/toml_edit under `cli` | no |
 
 The arrows only point one way: `schema` → `problem` → `multipart` → `roundhouse`, and
 `path` is shared by the facade and `roundhouse-macros-core`. The macro crates emit token
@@ -109,19 +116,19 @@ contract-only, not a permanent part of the runtime surface.
 
 ## Feature policy
 
-The default feature set is `schema-engine` + `serve` + `swagger`. `contract` is opt-in for
-applications that build a document; the generated `target/roundhouse` harness enables it for the
-contract build.
+The default feature set is `schema-engine` + `serve` + `swagger`. A production app adds
+`contract-runtime`; the generated build script and `target/roundhouse` harness enable `contract`
+for the contract build only.
 
 | Feature | Enables | Why it is optional |
 |---|---|---|
-| `schema-engine` | Compile and execute the emitted JSON Schema, plus the build-time regex check | Pulls in `jsonschema`; a document-only build does not need it |
+| `schema-engine` | Compile and execute the emitted JSON Schema, plus the build-time regex check | Pulls in `jsonschema`; contract generation and request validation use it |
 | `serve` | `App::serve`/`App::serve_with`, axum `http1`/`tokio`, tokio, tracing, `ConnectInfo<T>` docs | Pulls in hyper, tokio and tracing; tests and check binaries usually use `try_build` instead |
 | `multipart` | `Multipart<F>`, `FilePart`, and axum's multipart support | Pulls in `roundhouse-multipart` and `multer` |
 | `multipart-tempfile` | `TempFile` (implies `multipart`) | Pulls in `tempfile` |
 | `swagger` | Vendored Swagger UI assets for local `App::docs()` and `App::swagger()` (default) | Adds ~1.6 MB of embedded assets to the binary; disable it to use the unpkg UI |
-| `contract-runtime` | `ContractBundle`, `include_contract!`, `App::contract`, `contract.json` request plans and verbatim `openapi.json` serving (`openapi_route`) | Pulls in the schema engine; no utoipa |
-| `contract` | Schema derivation, the document builder and `App::docs`/`App::openapi` (implies `contract-runtime`) | Pulls in utoipa and the doc build; only the contract harness or a docs build needs it |
+| `contract-runtime` | `ContractBundle`, `include_contract!`, `App::contract`, `contract.json` request plans and verbatim `openapi.json` serving (`openapi_route`) | The production contract feature; implies `schema-engine`, no utoipa |
+| `contract` | Schema derivation, the document builder, `App::openapi`/`App::document` (implies `contract-runtime`) | Pulls in utoipa and the doc build; only the contract harness or a docs build needs it |
 | `uuid`, `chrono`, `time`, `jiff`, `decimal` | Schema support for those types | Forwarded to `roundhouse-schema` and utoipa |
 
 Two details are consequences of axum's own feature layout:
@@ -157,8 +164,8 @@ The no-default build must not pull in tokio, hyper, tracing, `jsonschema`, `rege
 - **Inherit workspace package metadata.** All crates share edition, license, repository and
   MSRV from `[workspace.package]`, so a version bump cannot drift.
 - **CI runs the interesting feature combinations**, not the full power set: no-default,
-  `schema-engine`, `serve`, `multipart`, plus the all-features test run. `serve` and
-  `schema-engine` are independent; `multipart` has its own crate-level check.
+  `schema-engine`, `serve`, `multipart`, `contract-runtime`, `contract`, plus the all-features
+  test run. The CLI library is also checked with `--no-default-features` for build-script users.
 
 ## Future
 

@@ -8,13 +8,12 @@
 //! into a [`Built`]:
 //!
 //! - [`Built::router`] — the ready `axum::Router`;
-//! - [`Built::document`] and [`Built::openapi_json`] — the OpenAPI 3.1 document;
+//! - `Built::document` and `Built::openapi_json` — the OpenAPI 3.1 document (`document` needs `contract`);
 //! - [`Built::routes`] — the resolved table, with each declaration's source location.
 //!
-//! A single `routes!` table checks its own duplicate routes, duplicate operation ids and missing
-//! success responses during expansion, so `cargo check` catches those. The composed tree is
-//! resolved at build time: collisions across modules, prefix joins, state mismatches and the
-//! final document need the aggregate view. Use [`App::try_build`] in a test or a check binary so
+//! A single `routes!` table checks its own duplicate routes and operation ids during expansion,
+//! so `cargo check` catches those. The composed tree is resolved at build time: collisions across
+//! modules, prefix joins, state mismatches and missing success responses need the aggregate view. Use [`App::try_build`] in a test or a check binary so
 //! CI can fail without starting a server. [`App::into_router`] returns the ready `axum::Router<()>`
 //! for embedding in a larger axum application.
 //!

@@ -1,27 +1,45 @@
 //! # roundhouse
 //!
 //! An OpenAPI-first framework for [axum]. You declare routes, parameters, schemas, auth and errors
-//! once; roundhouse builds the `axum::Router` **and** the OpenAPI 3.1 document from those same
-//! declarations. The module tree is the complete route set.
+//! once; roundhouse builds the `axum::Router` at runtime and the OpenAPI 3.1 contract at build
+//! time from the same declarations. The module tree is the complete route set.
 //!
 //! [axum]: https://docs.rs/axum
 //!
-//! ## Quick start
+//! ## Install
 //!
 //! ```toml
+//! # `cargo new hello-api --lib`
 //! [dependencies]
-//! roundhouse = "0.4"
+//! roundhouse = { version = "0.4", features = ["contract-runtime"] }
 //! axum = "0.8"
 //! serde = { version = "1", features = ["derive"] }
+//! tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 //! ```
 //!
-//! A route lives beside its handler in a `routes!` table. The table declares the module's prefix,
-//! tags, security and layers, and composes child modules with `...module`:
+//! `contract-runtime` is the production feature. Contract generation uses the
+//! `roundhouse-cli` build-dependency added by `cargo roundhouse init`.
 //!
-//! ```no_run
+//! ## Quick start
+//!
+//! Contract generation reads a library target, so keep the declarations in `src/lib.rs` and the
+//! server in a thin `src/main.rs`:
+//!
+//! ```ignore
+//! // src/lib.rs
 //! use roundhouse::prelude::*;
 //!
-//! roundhouse::app_state!(());
+//! #[derive(Clone, Default)]
+//! pub struct AppState;
+//!
+//! roundhouse::app_state!(AppState);
+//!
+//! roundhouse::api! {
+//!     state = AppState,
+//!     title = "Hello",
+//!     version = env!("CARGO_PKG_VERSION"),
+//!     root = routes::MODULE,
+//! }
 //!
 //! #[roundhouse::schema]
 //! #[derive(serde::Serialize)]
@@ -29,7 +47,7 @@
 //!     pub message: String,
 //! }
 //!
-//! mod routes {
+//! pub mod routes {
 //!     use super::*;
 //!
 //!     routes! {
@@ -46,40 +64,52 @@
 //!     }
 //! }
 //!
+//! pub fn app(state: AppState) -> roundhouse::App<AppState> {
+//!     roundhouse::app!(state, routes)
+//! }
+//! ```
+//!
+//! ```ignore
+//! // src/main.rs
+//! use hello_api::AppState;
+//!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     roundhouse::app!((), routes)
-//!         .openapi(|| roundhouse::openapi::Info::new("Hello", "0.1.0"))
+//!     hello_api::app(AppState)
+//!         .contract(roundhouse::include_contract!())
+//!         .docs()
 //!         .serve("0.0.0.0:3000")
 //!         .await?;
 //!     Ok(())
 //! }
 //! ```
 //!
-//! `GET /v1/hello/world` answers JSON, and `GET /openapi.json` describes the same operation,
-//! including the `name` path parameter inferred from the template.
+//! Run `cargo roundhouse init` once. It adds `roundhouse-cli` as a build-dependency and generates
+//! a guarded `build.rs`, so `cargo build` refreshes `.roundhouse/` before `include_contract!`
+//! expands. `cargo roundhouse check` verifies the committed artifacts in CI.
 //!
 //! ## How it fits together
 //!
 //! 1. **Declare.** `routes!` emits one [`Module`] per invocation: its prefix, tags, layers and
 //!    security guards, the routes declared in that table, and the children composed with
-//!    `...module`. `#[handler]` derives the request, response and security documentation from the
-//!    handler signature.
-//! 2. **Build.** [`App::build`](router::App::build) walks the module tree into a [`Built`]:
-//!    the `axum::Router`, the resolved route table and the OpenAPI document.
-//!    [`App::try_build`](router::App::try_build) performs the same checks and returns a
-//!    [`BuildError`] instead of panicking.
-//! 3. **Enforce.** The published schema is executed for request validation, and declared security
-//!    installs the matching guard. Rejections use the [`Problem`] body.
+//!    `..module`. `#[handler]` emits a marker implementing [`doc::HandlerSpec`] and
+//!    [`doc::DocSource`], plus the route shim.
+//! 2. **Compile the contract.** The generated build script calls `roundhouse_cli::prepare()`. It
+//!    runs a discovery build, infers responses from handler source, runs a strict build, and
+//!    writes `.roundhouse/contract.json` plus `openapi.json`.
+//! 3. **Build and enforce.** [`App::build`](router::App::build) walks the module tree into a
+//!    [`Built`]: the `axum::Router` and the resolved route table. The committed contract supplies
+//!    `openapi.json` serving, request validation and response verification. Rejections use the
+//!    [`Problem`] body.
 //!
 //! ## Where to look next
 //!
 //! | Module | What it covers |
 //! |---|---|
 //! | [`prelude`] | everything a route module normally imports |
-//! | [`router`] | `App`, `Built`, `Fragment`, `Module` |
-//! | [`extract`] | `Json`, `Form`, `Path`, `Query`, `RepeatedQuery`, `Strict`, `Mapped`, `Validation` |
-//! | `doc` | `ExtractDoc`, `ApiSchema`, parameter tables, layer docs (`contract`) |
+//! | [`router`] | `App`, `Built`, `ContractBundle`, `Fragment`, `Module` |
+//! | [`extract`] | `Json`, `Form`, `Path`, `Query`, `Strict`, `Mapped`, `Validation` |
+//! | `doc` | `ExtractDoc`, `ApiSchema`, parameter tables, response metadata (`contract`) |
 //! | [`auth`] | `Auth<A>`, `AuthScheme`, `Authenticate`, `Scopes` |
 //! | [`problem`] | the RFC 9457 `Problem` body |
 //! | [`attachment`] | `Attachment`, `File`, SSE responses |
@@ -88,26 +118,23 @@
 //! | [`schema`](mod@schema) | schema derivation and validation without axum |
 //! | `multipart` | `Multipart<F>`, `FilePart`, `TempFile` (feature-gated) |
 //!
-//! The derive macros, `#[roundhouse::schema]` (the one-annotation schema form) and `routes!` are
-//! re-exported at the crate root; [`prelude`] is the usual import for application code. Schema
-//! derivation and the document builder are behind the `contract` feature, so a production build
-//! has no utoipa dependency. Use `interop` (also `contract`-only) when sharing types with
-//! another utoipa project. The repository's `docs/design/` notes explain the crate and feature
-//! policy, the routing and document pipelines, validation and the macro diagnostics.
+//! The derive macros, `#[roundhouse::schema]` and `routes!` are re-exported at the crate root;
+//! [`prelude`] is the usual import for application code. Schema derivation and the document
+//! builder are behind the `contract` feature, so a production build has no utoipa dependency. Use
+//! the `interop` module (also `contract`-only) when sharing types with another utoipa project. The
+//! repository's `docs/design/` notes explain the contract pipeline, routing, validation,
+//! extensibility and feature policy.
 //!
 //! ## Feature flags
-//!
-//! The default build includes the schema engine, the server runtime and the local documentation
-//! UI. Building or serving a document is opt-in through `contract`; the macros are always part of
-//! the framework:
 //!
 //! | Feature | Enables |
 //! |---|---|
 //! | `schema-engine` | Execute the emitted JSON Schema for request and response validation (default) |
 //! | `serve` | `App::serve`/`App::serve_with`, axum's `ConnectInfo<T>`, and the tokio server runtime (default) |
 //! | `swagger` | Vendored Swagger UI assets for `App::docs()` and `App::swagger()` (default) |
+//! | `contract-runtime` | `ContractBundle`, `include_contract!`, contract-backed request validation, verification and verbatim `openapi.json` serving |
+//! | `contract` | Schema derivation, the document builder and the `target/roundhouse` contract harness (implies `contract-runtime`) |
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
-//! | `contract` | Schema derivation, the document builder, `App::docs`/`App::openapi`/`App::contract` and the `target/roundhouse` contract harness |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 //! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | schema support for those types |
 //!
@@ -118,7 +145,7 @@
 //!
 //! The repository ships runnable examples for routing, module composition, layers, validation,
 //! uploads, auth and utoipa interop (see the `examples/` directory). `examples/notes` is the
-//! smallest and the best starting point.
+//! smallest multi-file example; `examples/quickstart` is the smallest app.
 //!
 //! ## Minimum supported Rust version
 //!
@@ -438,7 +465,7 @@ macro_rules! include_contract {
 ///
 /// It re-exports axum's `State`, `StatusCode`, `HeaderMap`, `IntoResponse`, `Response`, the
 /// extractor traits and SSE types, so a handler module rarely needs a second `use axum::…` line.
-/// The utoipa re-exports here are hidden plumbing for the injected derive; use [`interop`] for
+/// The utoipa re-exports here are hidden plumbing for the injected derive; use `interop` for
 /// supported integration.
 pub mod prelude {
     #[cfg(feature = "contract")]

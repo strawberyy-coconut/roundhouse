@@ -9,15 +9,16 @@
 //! - [`routes!`](macro@routes) declares a module's route table, its prefix, tags, security and
 //!   layers, and composes child modules. It expands to items and must be invoked at module scope,
 //!   not inside a function body.
-//! - [`#[handler]`](macro@handler) and the derive macros attach the metadata that the route table
-//!   needs to build both an `axum::Router` and an OpenAPI document.
+//! - [`#[handler]`](macro@handler) and the derive/attribute macros attach the metadata the route
+//!   table and the build-time contract need.
 //!
 //! # Example
 //!
 //! ```ignore
 //! use roundhouse::prelude::*;
 //!
-//! #[derive(serde::Serialize, ToSchema, ApiSchema)]
+//! #[roundhouse::schema]
+//! #[derive(serde::Serialize)]
 //! struct Greeting {
 //!     message: String,
 //! }
@@ -37,9 +38,10 @@
 //! }
 //! ```
 //!
-//! The generated router and document come from the same declarations. A declaration that cannot
-//! be represented honestly fails the build, or returns a `roundhouse::BuildError` from
-//! `App::try_build`, rather than publishing a document that disagrees with the router.
+//! The generated router and contract come from the same declarations. A declaration that cannot
+//! be represented honestly fails `cargo check`, the contract build, or returns a
+//! `roundhouse::BuildError` from `App::try_build`, rather than publishing a document that
+//! disagrees with the router.
 
 use proc_macro::TokenStream;
 
