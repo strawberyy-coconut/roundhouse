@@ -19,24 +19,9 @@ mod more {
         "/declared" => { get(declared, operation_id = "toschema_declared") },
     }
 
-    #[derive(ApiResponse)]
-    pub enum Created {
-        #[status(201, description = "Created")]
-        Created {
-            #[body]
-            body: Json<Payload>,
-            #[location]
-            location: String,
-        },
-    }
-
-    #[allow(clippy::result_large_err)]
-    #[handler]
-    pub async fn created(Json(body): Json<Payload>) -> Result<Created, Problem> {
-        Ok(Created::Created {
-            body: Json(body),
-            location: "/t/more/created".to_string(),
-        })
+    #[handler(response(201, Payload))]
+    pub async fn created(Json(body): Json<Payload>) -> Response {
+        (axum::http::StatusCode::CREATED, Json(body)).into_response()
     }
 
     #[handler(response(200, Payload))]

@@ -7,8 +7,8 @@ use super::attrs::Constraints;
 pub(super) fn validate_expr(ty: &Type, value: TokenStream, pointer: TokenStream) -> TokenStream {
     let krate = crate::util::krate();
     quote!({
-        use #krate::__private::ProbeSchema as _;
-        (&#krate::__private::SchemaProbe::<#ty>::new())
+        use #krate::__private::ProbeHook as _;
+        (&#krate::__private::HookProbe::<#ty>::new())
             .probe_validate_at(#value, &#pointer, errors)
     })
 }

@@ -4,8 +4,6 @@ use serde_json::Value;
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::{KnownFormat, ObjectBuilder, Schema, SchemaFormat, Type};
 
-use crate::validate::ValidationErrors;
-
 use super::SchemaContext;
 #[cfg(any(
     feature = "uuid",
@@ -212,12 +210,6 @@ impl<T: ApiSchema> ApiSchema for Option<T> {
     fn register(context: &mut dyn SchemaContext) {
         T::register(context);
     }
-
-    fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
-        if let Some(value) = self {
-            value.validate_at(pointer, errors);
-        }
-    }
 }
 
 impl<T: ApiSchema> ApiSchema for Vec<T> {
@@ -231,15 +223,6 @@ impl<T: ApiSchema> ApiSchema for Vec<T> {
 
     fn register(context: &mut dyn SchemaContext) {
         T::register(context);
-    }
-
-    fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
-        for (index, item) in self.iter().enumerate() {
-            item.validate_at(
-                &crate::validate::pointer(pointer, &index.to_string()),
-                errors,
-            );
-        }
     }
 }
 
@@ -255,15 +238,6 @@ impl<T: ApiSchema> ApiSchema for [T] {
     fn register(context: &mut dyn SchemaContext) {
         T::register(context);
     }
-
-    fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
-        for (index, item) in self.iter().enumerate() {
-            item.validate_at(
-                &crate::validate::pointer(pointer, &index.to_string()),
-                errors,
-            );
-        }
-    }
 }
 
 impl<T: ApiSchema, S> ApiSchema for HashMap<String, T, S> {
@@ -277,12 +251,6 @@ impl<T: ApiSchema, S> ApiSchema for HashMap<String, T, S> {
 
     fn register(context: &mut dyn SchemaContext) {
         T::register(context);
-    }
-
-    fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
-        for (key, value) in self {
-            value.validate_at(&crate::validate::pointer(pointer, key), errors);
-        }
     }
 }
 
@@ -298,10 +266,6 @@ impl<T: ApiSchema> ApiSchema for Box<T> {
     fn register(context: &mut dyn SchemaContext) {
         T::register(context);
     }
-
-    fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
-        (**self).validate_at(pointer, errors);
-    }
 }
 
 impl<T: ApiSchema> ApiSchema for &T {
@@ -315,9 +279,5 @@ impl<T: ApiSchema> ApiSchema for &T {
 
     fn register(context: &mut dyn SchemaContext) {
         T::register(context);
-    }
-
-    fn validate_at(&self, pointer: &str, errors: &mut ValidationErrors) {
-        (*self).validate_at(pointer, errors)
     }
 }

@@ -1,15 +1,12 @@
 //! Schema derivation, primitives, parameter schemas and schema patches.
 //!
-//! `ApiSchema` is the shape adapter used by the document builder; [`Params`] is the single
-//! path/query/form bound. The actual OpenAPI shape comes from `utoipa::ToSchema`.
-
-use std::any::TypeId;
+//! `ApiSchema` is the shape adapter used by the document builder; [`ParamsDoc`] extends the
+//! runtime [`Params`](crate::params::Params) bound with parameter schemas. The actual OpenAPI
+//! shape comes from `utoipa::ToSchema`.
 
 pub use utoipa::openapi::RefOr;
 pub use utoipa::openapi::path::ParameterStyle;
 pub use utoipa::openapi::schema::{Components, Schema};
-
-use crate::validate::ValidationErrors;
 
 /// The result of claiming a component name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,21 +64,6 @@ pub trait ApiSchema {
 
     /// Register this type (and anything it references) under its component name.
     fn register(_context: &mut dyn SchemaContext) {}
-
-    /// Run the `validate_with` hooks, with a JSON Pointer base. Constraint checks come from the
-    /// emitted schema; this method only carries custom logic.
-    fn validate_at(&self, _pointer: &str, _errors: &mut ValidationErrors) {}
-
-    /// Run the `validate_with` hooks for this value.
-    fn validate(&self) -> Result<(), ValidationErrors> {
-        let mut errors = ValidationErrors::new();
-        self.validate_at("", &mut errors);
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
-    }
 }
 
 /// A path or query type the schema engine should validate for this operation.
@@ -90,50 +72,43 @@ pub trait ApiSchema {
 /// runtime validation. Derived path/query types expose one; scalar path types have none.
 #[derive(Clone, Copy)]
 pub struct PartsDoc {
-    pub type_id: fn() -> TypeId,
+    /// Stable key for the build-time contract. Type names are stable within one build, which is
+    /// the lifetime that matters for the generated contract.
+    pub type_name: fn() -> &'static str,
     pub schema: fn(&mut dyn SchemaContext) -> RefOr<Schema>,
 }
 
 impl PartsDoc {
-    pub fn new<T: Params + 'static>() -> Self {
+    pub fn new<T: ParamsDoc + 'static>() -> Self {
         Self {
-            type_id: || TypeId::of::<T>(),
-            schema: <T as Params>::parts_schema,
+            type_name: || std::any::type_name::<T>(),
+            schema: <T as ParamsDoc>::parts_schema,
         }
     }
 }
 
-/// A path, query or form type: its documented parameters, schema, wire value and hooks.
+/// The contract-only half of a path, query or form type: its documented parameters and schema.
 ///
-/// This is the single bound `Path<T>`, `Query<T>` and `RepeatedQuery<T>` use. `PathParams` and
-/// `QueryParams` derives emit it directly; scalar path types implement the scalar methods.
-pub trait Params {
-    const NAMES: &'static [&'static str] = &[];
-
+/// Runtime code bounds on [`Params`](crate::params::Params); the document builder additionally
+/// requires this trait. `PathParams` and `QueryParams` derive both, but only `Params` survives a
+/// production build.
+pub trait ParamsDoc: crate::params::Params {
     fn register(_context: &mut dyn SchemaContext) {}
+
     fn params(_context: &mut dyn SchemaContext) -> Vec<super::Param> {
         Vec::new()
     }
+
     fn scalar_schema() -> Option<RefOr<Schema>> {
         None
     }
+
     fn parts_schema(context: &mut dyn SchemaContext) -> RefOr<Schema> {
         crate::schema::object_from_params(Self::params(context))
     }
-    fn parts_value(&self) -> serde_json::Value;
-    fn validate_at(&self, _pointer: &str, _errors: &mut ValidationErrors) {}
+
     fn parts_doc() -> Option<PartsDoc> {
         None
-    }
-
-    fn validate(&self) -> Result<(), ValidationErrors> {
-        let mut errors = ValidationErrors::new();
-        self.validate_at("", &mut errors);
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
     }
 }
 

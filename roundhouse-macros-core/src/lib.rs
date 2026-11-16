@@ -9,7 +9,7 @@ use quote::ToTokens;
 use syn::punctuated::Punctuated;
 use syn::{DeriveInput, Item, ItemFn, Meta, Token};
 
-mod api_response;
+mod api;
 mod api_schema;
 mod doc_tags;
 mod handler;
@@ -19,6 +19,13 @@ mod query_params;
 mod routes;
 mod serde_shape;
 mod util;
+
+pub fn expand_api(input: TokenStream) -> TokenStream {
+    match syn::parse2::<api::ApiInput>(input) {
+        Ok(input) => api::expand(input),
+        Err(error) => error.to_compile_error(),
+    }
+}
 
 pub fn expand_routes(input: TokenStream) -> TokenStream {
     match syn::parse2::<routes::RoutesInput>(input) {
@@ -79,8 +86,11 @@ pub fn expand_schema(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
     let krate = util::krate();
     quote::quote! {
-        #[derive(#krate::__private::utoipa::ToSchema, #krate::ApiSchema)]
-        #item
+        #krate::__roundhouse_schema_item! {
+            #krate::__private::utoipa::ToSchema;
+            #krate::ApiSchema;
+            #item
+        }
     }
 }
 
@@ -157,10 +167,6 @@ pub fn expand_path_params(input: TokenStream) -> TokenStream {
 
 pub fn expand_multipart(input: TokenStream) -> TokenStream {
     parse_derive(input, multipart::expand)
-}
-
-pub fn expand_api_response(input: TokenStream, error_only: bool) -> TokenStream {
-    parse_derive(input, |input| api_response::expand(input, error_only))
 }
 
 fn parse_derive(

@@ -13,17 +13,20 @@ use syn::{Attribute, Expr, ExprLit, Lit, Meta, Result};
 pub(crate) struct AllowedTags {
     pub(crate) summary: bool,
     pub(crate) description: bool,
+    pub(crate) responses: bool,
 }
 
 impl AllowedTags {
     pub(crate) const HANDLER: Self = Self {
         summary: true,
         description: true,
+        responses: true,
     };
 
     pub(crate) const DESCRIPTION_ONLY: Self = Self {
         summary: false,
         description: true,
+        responses: false,
     };
 }
 
@@ -32,6 +35,8 @@ impl AllowedTags {
 pub(crate) struct DocTags {
     pub(crate) summary: Option<String>,
     pub(crate) description: Option<String>,
+    /// Response prose keyed by status. `0` means OpenAPI's `default` response.
+    pub(crate) responses: Vec<(u16, String)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -64,6 +69,31 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
                     Some(Kind::Summary) => current = None,
                     None => {}
                 }
+                continue;
+            }
+
+            if let Some(rest) = trimmed.strip_prefix("@response")
+                && rest.chars().next().is_some_and(char::is_whitespace)
+            {
+                if !allowed.responses {
+                    return Err(syn::Error::new(
+                        span,
+                        "`@response` is only valid on a handler",
+                    ));
+                }
+                let (status, text) = parse_response_tag(rest, span)?;
+                if tags
+                    .responses
+                    .iter()
+                    .any(|(existing, _)| *existing == status)
+                {
+                    return Err(syn::Error::new(
+                        span,
+                        "duplicate `@response` tag for the same status",
+                    ));
+                }
+                tags.responses.push((status, text));
+                current = None;
                 continue;
             }
 
@@ -171,6 +201,38 @@ pub(crate) fn parse(attrs: &[Attribute], allowed: AllowedTags) -> Result<DocTags
     Ok(tags)
 }
 
+fn parse_response_tag(rest: &str, span: Span) -> Result<(u16, String)> {
+    let rest = rest.trim_start();
+    let (status, text) = rest.split_once(':').ok_or_else(|| {
+        syn::Error::new(
+            span,
+            "`@response` needs `<status>: text` or `default: text`",
+        )
+    })?;
+    let status = status.trim();
+    let status = if status.eq_ignore_ascii_case("default") {
+        0
+    } else {
+        status
+            .parse::<u16>()
+            .map_err(|_| syn::Error::new(span, format!("`{status}` is not an HTTP status code")))?
+    };
+    if status != 0 && !(100..=599).contains(&status) {
+        return Err(syn::Error::new(
+            span,
+            format!("`{status}` is not an HTTP status code"),
+        ));
+    }
+    let text = text.trim();
+    if text.is_empty() {
+        return Err(syn::Error::new(
+            span,
+            "`@response` needs a response description",
+        ));
+    }
+    Ok((status, text.to_string()))
+}
+
 fn doc_value(attr: &Attribute) -> Option<(String, Span)> {
     let Meta::NameValue(name_value) = &attr.meta else {
         return None;
@@ -251,6 +313,45 @@ mod tests {
 
         assert!(tags.summary.is_none());
         assert!(tags.description.is_none());
+    }
+
+    #[test]
+    fn parses_response_prose() {
+        let tags = parse(
+            &attrs(quote! {
+                /// @summary: Read a note.
+                /// @response 200: The stored note.
+                /// @response 404: The requested note does not exist.
+                /// @response default: The request failed.
+                #[handler]
+                fn show() {}
+            }),
+            AllowedTags::HANDLER,
+        )
+        .expect("tags parse");
+
+        assert_eq!(
+            tags.responses,
+            vec![
+                (200, "The stored note.".to_string()),
+                (404, "The requested note does not exist.".to_string()),
+                (0, "The request failed.".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_response_prose_on_types() {
+        let error = parse(
+            &attrs(quote! {
+                /// @response 200: Not allowed here.
+                fn note() {}
+            }),
+            AllowedTags::DESCRIPTION_ONLY,
+        )
+        .expect_err("response tags are handler-only");
+
+        assert!(error.to_string().contains("only valid on a handler"));
     }
 
     #[test]

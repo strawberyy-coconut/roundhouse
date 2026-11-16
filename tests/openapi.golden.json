@@ -1,58 +1,87 @@
 {
-  "openapi": "3.1.0",
+  "components": {
+    "schemas": {
+      "NewNote": {
+        "properties": {
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "Note": {
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "type": "object"
+      }
+    }
+  },
   "info": {
     "title": "Test API",
     "version": "0.1.0"
   },
+  "openapi": "3.1.0",
   "paths": {
     "/healthz": {
       "get": {
-        "tags": [
-          "ops"
-        ],
         "operationId": "get_spine_health_healthz",
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "text/plain; charset=utf-8": {
                 "schema": {
                   "type": "string"
                 }
               }
-            }
+            },
+            "description": "OK"
           }
-        }
+        },
+        "tags": [
+          "ops"
+        ]
       }
     },
     "/notes": {
       "get": {
-        "tags": [
-          "notes"
-        ],
-        "summary": "List notes",
         "operationId": "get_spine_notes_list",
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/Note"
-                  }
+                  },
+                  "type": "array"
                 }
               }
-            }
+            },
+            "description": "OK"
           }
-        }
-      },
-      "post": {
+        },
+        "summary": "List notes",
         "tags": [
           "notes"
-        ],
-        "summary": "Create a note",
+        ]
+      },
+      "post": {
         "operationId": "post_spine_notes_create",
         "requestBody": {
           "content": {
@@ -66,26 +95,19 @@
         },
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Note"
                 }
               }
-            }
+            },
+            "description": "OK"
           },
           "400": {
-            "description": "Bad Request",
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "type": "object",
-                  "required": [
-                    "type",
-                    "title",
-                    "status"
-                  ],
                   "properties": {
                     "detail": {
                       "type": [
@@ -94,14 +116,7 @@
                       ]
                     },
                     "errors": {
-                      "type": "array",
                       "items": {
-                        "type": "object",
-                        "required": [
-                          "pointer",
-                          "code",
-                          "message"
-                        ],
                         "properties": {
                           "code": {
                             "type": "string"
@@ -113,72 +128,15 @@
                           "pointer": {
                             "type": "string"
                           }
-                        }
-                      }
-                    },
-                    "instance": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "status": {
-                      "type": "integer",
-                      "maximum": 599,
-                      "minimum": 100
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "type": {
-                      "type": "string",
-                      "format": "uri"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "type",
-                    "title",
-                    "status"
-                  ],
-                  "properties": {
-                    "detail": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "errors": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
+                        },
                         "required": [
                           "pointer",
                           "code",
                           "message"
                         ],
-                        "properties": {
-                          "code": {
-                            "type": "string"
-                          },
-                          "limit": {},
-                          "message": {
-                            "type": "string"
-                          },
-                          "pointer": {
-                            "type": "string"
-                          }
-                        }
-                      }
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "instance": {
                       "type": [
@@ -187,33 +145,33 @@
                       ]
                     },
                     "status": {
-                      "type": "integer",
                       "maximum": 599,
-                      "minimum": 100
+                      "minimum": 100,
+                      "type": "integer"
                     },
                     "title": {
                       "type": "string"
                     },
                     "type": {
-                      "type": "string",
-                      "format": "uri"
+                      "format": "uri",
+                      "type": "string"
                     }
-                  }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status"
+                  ],
+                  "type": "object"
                 }
               }
-            }
+            },
+            "description": "Bad Request"
           },
           "415": {
-            "description": "Unsupported Media Type",
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "type": "object",
-                  "required": [
-                    "type",
-                    "title",
-                    "status"
-                  ],
                   "properties": {
                     "detail": {
                       "type": [
@@ -222,14 +180,7 @@
                       ]
                     },
                     "errors": {
-                      "type": "array",
                       "items": {
-                        "type": "object",
-                        "required": [
-                          "pointer",
-                          "code",
-                          "message"
-                        ],
                         "properties": {
                           "code": {
                             "type": "string"
@@ -241,8 +192,15 @@
                           "pointer": {
                             "type": "string"
                           }
-                        }
-                      }
+                        },
+                        "required": [
+                          "pointer",
+                          "code",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "instance": {
                       "type": [
@@ -251,65 +209,65 @@
                       ]
                     },
                     "status": {
-                      "type": "integer",
                       "maximum": 599,
-                      "minimum": 100
+                      "minimum": 100,
+                      "type": "integer"
                     },
                     "title": {
                       "type": "string"
                     },
                     "type": {
-                      "type": "string",
-                      "format": "uri"
+                      "format": "uri",
+                      "type": "string"
                     }
-                  }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status"
+                  ],
+                  "type": "object"
                 }
               }
-            }
+            },
+            "description": "Unsupported Media Type"
           }
-        }
+        },
+        "summary": "Create a note",
+        "tags": [
+          "notes"
+        ]
       }
     },
     "/notes/{id}": {
       "get": {
-        "tags": [
-          "notes"
-        ],
-        "summary": "Read a note",
         "operationId": "get_spine_notes_show",
         "parameters": [
           {
-            "name": "id",
             "in": "path",
+            "name": "id",
             "required": true,
             "schema": {
-              "type": "integer",
-              "format": "int64"
+              "format": "int64",
+              "type": "integer"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Note"
                 }
               }
-            }
+            },
+            "description": "OK"
           },
           "400": {
-            "description": "Bad Request",
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "type": "object",
-                  "required": [
-                    "type",
-                    "title",
-                    "status"
-                  ],
                   "properties": {
                     "detail": {
                       "type": [
@@ -318,14 +276,7 @@
                       ]
                     },
                     "errors": {
-                      "type": "array",
                       "items": {
-                        "type": "object",
-                        "required": [
-                          "pointer",
-                          "code",
-                          "message"
-                        ],
                         "properties": {
                           "code": {
                             "type": "string"
@@ -337,8 +288,15 @@
                           "pointer": {
                             "type": "string"
                           }
-                        }
-                      }
+                        },
+                        "required": [
+                          "pointer",
+                          "code",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "instance": {
                       "type": [
@@ -347,33 +305,33 @@
                       ]
                     },
                     "status": {
-                      "type": "integer",
                       "maximum": 599,
-                      "minimum": 100
+                      "minimum": 100,
+                      "type": "integer"
                     },
                     "title": {
                       "type": "string"
                     },
                     "type": {
-                      "type": "string",
-                      "format": "uri"
+                      "format": "uri",
+                      "type": "string"
                     }
-                  }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status"
+                  ],
+                  "type": "object"
                 }
               }
-            }
+            },
+            "description": "Bad Request"
           },
           "404": {
-            "description": "Not Found",
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "type": "object",
-                  "required": [
-                    "type",
-                    "title",
-                    "status"
-                  ],
                   "properties": {
                     "detail": {
                       "type": [
@@ -382,14 +340,7 @@
                       ]
                     },
                     "errors": {
-                      "type": "array",
                       "items": {
-                        "type": "object",
-                        "required": [
-                          "pointer",
-                          "code",
-                          "message"
-                        ],
                         "properties": {
                           "code": {
                             "type": "string"
@@ -401,8 +352,15 @@
                           "pointer": {
                             "type": "string"
                           }
-                        }
-                      }
+                        },
+                        "required": [
+                          "pointer",
+                          "code",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "instance": {
                       "type": [
@@ -411,56 +369,34 @@
                       ]
                     },
                     "status": {
-                      "type": "integer",
                       "maximum": 599,
-                      "minimum": 100
+                      "minimum": 100,
+                      "type": "integer"
                     },
                     "title": {
                       "type": "string"
                     },
                     "type": {
-                      "type": "string",
-                      "format": "uri"
+                      "format": "uri",
+                      "type": "string"
                     }
-                  }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status"
+                  ],
+                  "type": "object"
                 }
               }
-            }
+            },
+            "description": "Not Found"
           }
-        }
-      }
-    }
-  },
-  "components": {
-    "schemas": {
-      "NewNote": {
-        "type": "object",
-        "required": [
-          "title"
-        ],
-        "properties": {
-          "title": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 1
-          }
-        }
-      },
-      "Note": {
-        "type": "object",
-        "required": [
-          "id",
-          "title"
-        ],
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "title": {
-            "type": "string"
-          }
-        }
+        },
+        "summary": "Read a note",
+        "tags": [
+          "notes"
+        ]
       }
     }
   }

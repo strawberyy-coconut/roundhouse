@@ -97,7 +97,7 @@ pub fn json_body_to_schema<T: utoipa::ToSchema>(context: &mut dyn SchemaContext)
 }
 
 #[cfg(feature = "multipart")]
-pub fn multipart_body<F: crate::multipart::MultipartForm>(
+pub fn multipart_body<F: crate::multipart::MultipartDoc>(
     context: &mut dyn SchemaContext,
 ) -> BodyDoc {
     let encoding = F::fields()

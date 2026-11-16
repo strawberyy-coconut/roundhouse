@@ -1,0 +1,752 @@
+{
+  "contract_version": 1,
+  "diagnostics": [],
+  "generator_version": "0.4.0",
+  "kind": "roundhouse.contract",
+  "openapi": "openapi.json",
+  "operations": [
+    {
+      "deprecated": false,
+      "handler": "upload",
+      "hidden": false,
+      "method": "POST",
+      "module": "uploads_example::routes::uploads",
+      "operation_id": "post_uploads_example_routes_uploads_upload",
+      "path": "/uploads",
+      "request": {
+        "body": {
+          "content_type": "multipart/form-data",
+          "schema": {
+            "properties": {
+              "file": {
+                "format": "binary",
+                "type": "string",
+                "x-max-bytes": 2097152
+              },
+              "preview": {
+                "format": "binary",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "x-max-bytes": 65536
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "temp": {
+                "format": "binary",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "x-max-bytes": 1000000
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "file"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      "responses": [
+        {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadInfo"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Bad Request",
+          "provenance": "declared",
+          "status": 400
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Payload Too Large",
+          "provenance": "declared",
+          "status": 413
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Unsupported Media Type",
+          "provenance": "declared",
+          "status": 415
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/uploads/src/routes/uploads.rs",
+        "line": 8,
+        "module": "uploads_example::routes::uploads"
+      },
+      "tags": [
+        "uploads"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "download",
+      "hidden": false,
+      "method": "GET",
+      "module": "uploads_example::routes::uploads",
+      "operation_id": "get_uploads_example_routes_uploads_download",
+      "path": "/uploads/download",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "text/plain; charset=utf-8": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "OK",
+          "headers": {
+            "Content-Disposition": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Payload Too Large",
+          "provenance": "declared",
+          "status": 413
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/uploads/src/routes/uploads.rs",
+        "line": 9,
+        "module": "uploads_example::routes::uploads"
+      },
+      "tags": [
+        "uploads"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "events",
+      "hidden": false,
+      "method": "GET",
+      "module": "uploads_example::routes::uploads",
+      "operation_id": "get_uploads_example_routes_uploads_events",
+      "path": "/uploads/events",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "text/event-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Payload Too Large",
+          "provenance": "declared",
+          "status": 413
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/uploads/src/routes/uploads.rs",
+        "line": 11,
+        "module": "uploads_example::routes::uploads"
+      },
+      "tags": [
+        "uploads"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "raw",
+      "hidden": false,
+      "method": "GET",
+      "module": "uploads_example::routes::uploads",
+      "operation_id": "get_uploads_example_routes_uploads_raw",
+      "path": "/uploads/raw",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "OK",
+          "headers": {
+            "Content-Disposition": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Payload Too Large",
+          "provenance": "declared",
+          "status": 413
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/uploads/src/routes/uploads.rs",
+        "line": 10,
+        "module": "uploads_example::routes::uploads"
+      },
+      "tags": [
+        "uploads"
+      ],
+      "validation": "schema"
+    }
+  ],
+  "validation": {
+    "bodies": {
+      "ops": {
+        "post_uploads_example_routes_uploads_upload": {
+          "content_type": "multipart/form-data",
+          "schema": {
+            "properties": {
+              "file": {
+                "format": "binary",
+                "type": "string",
+                "x-max-bytes": 2097152
+              },
+              "preview": {
+                "format": "binary",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "x-max-bytes": 65536
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "temp": {
+                "format": "binary",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "x-max-bytes": 1000000
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "file"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      "types": {
+        "uploads_example::routes::uploads::UploadForm": {
+          "properties": {
+            "file": {
+              "format": "binary",
+              "type": "string",
+              "x-max-bytes": 2097152
+            },
+            "preview": {
+              "format": "binary",
+              "type": [
+                "string",
+                "null"
+              ],
+              "x-max-bytes": 65536
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "temp": {
+              "format": "binary",
+              "type": [
+                "string",
+                "null"
+              ],
+              "x-max-bytes": 1000000
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "type": "object"
+        }
+      }
+    },
+    "defs": {
+      "UploadInfo": {
+        "properties": {
+          "file_len": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "file_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preview_len": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "temp_len": {
+            "format": "u-int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "file_len",
+          "tags"
+        ],
+        "type": "object"
+      }
+    },
+    "parts": {
+      "types": {}
+    }
+  }
+}

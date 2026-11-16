@@ -10,7 +10,7 @@
 //!
 //! The handler function itself stays exactly as written. Validation is opt-out per route
 //! (`validate = false`); the shim asks each argument's
-//! [`ExtractArg`](crate::doc::ExtractArg) implementation whether it has work to do.
+//! [`ExtractArg`](crate::ExtractArg) implementation whether it has work to do.
 //!
 //! The same seam owns the rejection contract: an argument whose extractor is one of axum's
 //! fallible built-ins is read through [`Mapped`](crate::extract::Mapped), so the rejection is a

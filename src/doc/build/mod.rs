@@ -1,6 +1,5 @@
 //! Assemble the OpenAPI document from the same resolved routes the router uses.
 
-use std::any::TypeId;
 use std::collections::BTreeMap;
 
 use crate::auth::SchemeDoc;
@@ -11,9 +10,6 @@ use utoipa::openapi::{RefOr, schema::Schema};
 
 use crate::router::ResolvedRoute;
 
-type InlineSchema = (TypeId, RefOr<Schema>);
-type RouteBody = (TypeId, String);
-
 /// Side channels collected while the document is built.
 ///
 /// The public wrappers hide this; the app builder consumes the schemas for validation and keeps
@@ -21,9 +17,12 @@ type RouteBody = (TypeId, String);
 #[derive(Default)]
 pub(crate) struct Observations {
     pub(crate) diagnostics: Vec<Diagnostic>,
-    pub(crate) bodies: Vec<InlineSchema>,
-    pub(crate) parts: Vec<InlineSchema>,
-    pub(crate) route_bodies: BTreeMap<String, RouteBody>,
+    /// Body plans keyed by operation id: stable type name plus content type.
+    pub(crate) route_body_names: BTreeMap<String, (String, String)>,
+    /// Body schemas keyed by stable type name, for the build-time contract.
+    pub(crate) bodies_named: BTreeMap<String, RefOr<Schema>>,
+    /// Parts schemas keyed by stable type name, for the build-time contract.
+    pub(crate) parts_named: BTreeMap<String, RefOr<Schema>>,
 }
 
 pub fn build(info: impl Into<Info>, routes: &[ResolvedRoute]) -> OpenApi {
@@ -49,14 +48,44 @@ pub(crate) fn build_with_observations(
     strict: bool,
     observations: &mut Observations,
 ) -> Result<OpenApi, BuildError> {
+    build_with_observations_and_inference(
+        info,
+        routes,
+        include_rejections,
+        strict,
+        false,
+        &crate::doc::inference::Inference::default(),
+        &std::collections::BTreeMap::new(),
+        &[],
+        observations,
+    )
+}
+
+/// Build the document with build-time response inference and an optional discovery mode.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_with_observations_and_inference(
+    info: impl Into<Info>,
+    routes: &[ResolvedRoute],
+    include_rejections: bool,
+    strict: bool,
+    allow_undeclared_success: bool,
+    inference: &crate::doc::inference::Inference,
+    response_defaults: &std::collections::BTreeMap<u16, String>,
+    registrations: &[fn(&mut dyn crate::doc::SchemaContext)],
+    observations: &mut Observations,
+) -> Result<OpenApi, BuildError> {
     DocumentBuild {
         routes,
         include_rejections,
         strict,
+        allow_undeclared_success,
+        inference,
+        response_defaults,
+        registrations,
         diagnostics: &mut observations.diagnostics,
-        bodies: &mut observations.bodies,
-        parts: &mut observations.parts,
-        route_bodies: &mut observations.route_bodies,
+        route_body_names: &mut observations.route_body_names,
+        bodies_named: &mut observations.bodies_named,
+        parts_named: &mut observations.parts_named,
     }
     .run(info)
 }
@@ -66,10 +95,14 @@ pub(super) struct DocumentBuild<'a> {
     routes: &'a [ResolvedRoute],
     include_rejections: bool,
     strict: bool,
+    allow_undeclared_success: bool,
+    inference: &'a crate::doc::inference::Inference,
+    response_defaults: &'a std::collections::BTreeMap<u16, String>,
+    registrations: &'a [fn(&mut dyn crate::doc::SchemaContext)],
     diagnostics: &'a mut Vec<Diagnostic>,
-    bodies: &'a mut Vec<InlineSchema>,
-    parts: &'a mut Vec<InlineSchema>,
-    route_bodies: &'a mut BTreeMap<String, RouteBody>,
+    route_body_names: &'a mut BTreeMap<String, (String, String)>,
+    bodies_named: &'a mut BTreeMap<String, RefOr<Schema>>,
+    parts_named: &'a mut BTreeMap<String, RefOr<Schema>>,
 }
 
 impl DocumentBuild<'_> {
@@ -77,6 +110,9 @@ impl DocumentBuild<'_> {
         let info = info.into();
         let mut components = utoipa::openapi::schema::Components::new();
         let mut context = crate::doc::DocContext::new(&mut components);
+        for register in self.registrations {
+            register(&mut context);
+        }
         let mut paths = Paths::new();
         let mut used_schemes: BTreeMap<String, (SchemeDoc, crate::build_error::Source)> =
             BTreeMap::new();
@@ -116,6 +152,14 @@ impl DocumentBuild<'_> {
             }
             if let Some(custom) = route.record.doc {
                 custom(&mut docs);
+            }
+            if let Some(inferred) = self.inference.operations.get(&route.operation_id) {
+                for response in inferred {
+                    if response.unknown {
+                        docs.mark_unknown_response();
+                    }
+                    docs.push_response(response.to_response_doc(&mut context));
+                }
             }
             if !docs.verification.unbounded_file_fields().is_empty() {
                 crate::build_error::report(
@@ -179,7 +223,7 @@ impl DocumentBuild<'_> {
                         route.record.source_ref(),
                         format!(
                             "operation `{}` returns `{error_type}` but that type registers no \
-                             documented responses; derive `ApiError`/`ApiResponse` or return \
+                             documented responses; return `Problem` or declare \
                              `Problem`",
                             route.operation_id
                         ),

@@ -4,7 +4,6 @@ pub mod schemes;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use roundhouse::openapi::Info;
 use schemes::User;
 
 #[derive(Clone)]
@@ -14,6 +13,13 @@ pub struct AppState {
 }
 
 roundhouse::app_state!(AppState);
+
+roundhouse::api! {
+    state = AppState,
+    title = "Auth API",
+    version = env!("CARGO_PKG_VERSION"),
+    root = routes::MODULE,
+}
 
 impl Default for AppState {
     fn default() -> Self {
@@ -54,6 +60,6 @@ impl AppState {
 
 pub fn app(state: AppState) -> roundhouse::App<AppState> {
     roundhouse::app!(state, routes)
-        .openapi(|| Info::new("Auth API", env!("CARGO_PKG_VERSION")))
+        .contract(roundhouse::include_contract!())
         .docs()
 }

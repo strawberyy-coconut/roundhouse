@@ -97,36 +97,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     }
 
     Ok(quote! {
-        impl #krate::doc::Params for #ident {
-            const NAMES: &'static [&'static str] = &[#(#names),*];
-
-            fn register(
-                context: &mut dyn #krate::doc::SchemaContext,
-            ) {
-                #(#registrations)*
-            }
-
-            fn params(
-                _context: &mut dyn #krate::doc::SchemaContext,
-            ) -> ::std::vec::Vec<#krate::doc::Param> {
-                ::std::vec![#(#params),*]
-            }
-
-            fn parts_schema(
-                context: &mut dyn #krate::doc::SchemaContext,
-            ) -> #krate::__private::utoipa::openapi::RefOr<#krate::__private::utoipa::openapi::schema::Schema> {
-                <Self as #krate::doc::Params>::register(context);
-                #krate::doc::schema::object_from_params(
-                    <Self as #krate::doc::Params>::params(context),
-                )
-            }
-
-            fn parts_value(&self) -> #krate::serde_json::Value {
-                let mut map = #krate::serde_json::Map::new();
-                #(#value_inserts)*
-                #krate::serde_json::Value::Object(map)
-            }
-
+        impl #krate::doc::ValidateHook for #ident {
             fn validate_at(
                 &self,
                 pointer: &str,
@@ -134,9 +105,44 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             ) {
                 #(#validations)*
             }
+        }
 
-            fn parts_doc() -> ::core::option::Option<#krate::doc::PartsDoc> {
-                ::core::option::Option::Some(#krate::doc::PartsDoc::new::<Self>())
+        impl #krate::doc::Params for #ident {
+            const NAMES: &'static [&'static str] = &[#(#names),*];
+
+            fn parts_value(&self) -> #krate::serde_json::Value {
+                let mut map = #krate::serde_json::Map::new();
+                #(#value_inserts)*
+                #krate::serde_json::Value::Object(map)
+            }
+        }
+
+        #krate::__roundhouse_contract_code! {
+            impl #krate::doc::ParamsDoc for #ident {
+                fn register(
+                    context: &mut dyn #krate::doc::SchemaContext,
+                ) {
+                    #(#registrations)*
+                }
+
+                fn params(
+                    _context: &mut dyn #krate::doc::SchemaContext,
+                ) -> ::std::vec::Vec<#krate::doc::Param> {
+                    ::std::vec![#(#params),*]
+                }
+
+                fn parts_schema(
+                    context: &mut dyn #krate::doc::SchemaContext,
+                ) -> #krate::__private::utoipa::openapi::RefOr<#krate::__private::utoipa::openapi::schema::Schema> {
+                    <Self as #krate::doc::ParamsDoc>::register(context);
+                    #krate::doc::schema::object_from_params(
+                        <Self as #krate::doc::ParamsDoc>::params(context),
+                    )
+                }
+
+                fn parts_doc() -> ::core::option::Option<#krate::doc::PartsDoc> {
+                    ::core::option::Option::Some(#krate::doc::PartsDoc::new::<Self>())
+                }
             }
         }
     })

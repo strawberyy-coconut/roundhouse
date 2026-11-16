@@ -34,9 +34,13 @@ mod app;
 mod assemble;
 mod build;
 mod built;
+#[cfg(feature = "contract")]
+mod contract;
 mod fragment;
 mod resolve;
 
 pub use app::App;
 pub use built::{Built, ResolvedRoute};
+#[cfg(feature = "contract")]
+pub use contract::{BuiltContract, Contract};
 pub use fragment::{DocumentRejections, Fragment, MergeRecord};

@@ -6,9 +6,7 @@ use crate::util::{outer_ident, single_generic};
 
 /// The outer shape of a handler's return type.
 ///
-/// This is the single classification used by both the compile-time success check
-/// (`HandlerSpec::INFERRED_SUCCESS`) and the document statements. Keeping one value means the
-/// macro cannot say a route has a `200` while the builder documents something else.
+/// It drives the document statements; the contract build owns the success-response check.
 pub(super) enum ReturnShape<'a> {
     /// No `->`, or an explicit `()`.
     Unit,
@@ -20,7 +18,7 @@ pub(super) enum ReturnShape<'a> {
     Known { kind: KnownKind, ty: &'a Type },
     /// `Option<T>`, `Infallible`, or a bare `impl Trait`: known to have no success response.
     NoSuccess { ty: &'a Type },
-    /// The macro cannot classify it; probe `ApiResponse`.
+    /// The macro cannot classify it; probe the built-in response shapes.
     Unknown { ty: &'a Type },
 }
 
@@ -81,7 +79,10 @@ pub(super) fn classify_return_type(ty: &Type) -> ReturnShape<'_> {
                 kind: KnownKind::File,
                 ty,
             },
-            _ => ReturnShape::NoSuccess { ty },
+            // A bare `impl IntoResponse` has an unknown concrete response. Leave it unclassified
+            // so the contract compiler decides whether to infer or reject the response.
+            // infers the response (or rejects it when inference is not available).
+            _ => ReturnShape::Unknown { ty },
         };
     }
 
@@ -161,22 +162,7 @@ pub(super) fn classify_return_type(ty: &Type) -> ReturnShape<'_> {
     }
 }
 
-/// The success statuses the return shape guarantees, or `None` when the macro cannot classify it.
-///
-/// `Some(&[])` means the macro knows there is no success response, so a route entry must declare
-/// one. `Some(&[0])` means the status is chosen at runtime and documented as `default`.
-pub(super) fn inferred_successes(shape: &ReturnShape<'_>) -> Option<Vec<u16>> {
-    match shape {
-        ReturnShape::Unit => Some(vec![200]),
-        ReturnShape::Result { ok, .. } => inferred_successes(&classify_return_type(ok)),
-        ReturnShape::DynamicStatus { .. } => Some(vec![0]),
-        ReturnShape::Known { kind, .. } => Some(kind.statuses().to_vec()),
-        ReturnShape::NoSuccess { .. } => Some(Vec::new()),
-        ReturnShape::Unknown { .. } => None,
-    }
-}
-
-/// Document the handler's return type through its [`ApiResponse`](roundhouse::doc::ApiResponse)
+/// Document the handler's return type through its built-in response shape
 /// implementation.
 ///
 /// A type without one contributes no inferred response. A known shape whose probe returns
@@ -218,7 +204,13 @@ pub(super) fn response_statements(shape: &ReturnShape<'_>) -> syn::Result<Vec<To
                 vec![probe_only(&krate, ty)]
             }
         }
-        ReturnShape::Unknown { ty } => vec![probe_only(&krate, ty)],
+        ReturnShape::Unknown { ty } => {
+            if contains_impl_trait(ty) {
+                Vec::new()
+            } else {
+                vec![probe_only(&krate, ty)]
+            }
+        }
     })
 }
 
@@ -226,6 +218,7 @@ fn ok_statements(krate: &TokenStream, ok: &Type) -> TokenStream {
     match classify_return_type(ok) {
         ReturnShape::DynamicStatus { ty } => dynamic_statements(krate, ty),
         ReturnShape::Known { kind, ty } => known_statements(krate, kind, ty),
+        _ if contains_impl_trait(ok) => quote!(),
         _ => probe_only(krate, ok),
     }
 }
@@ -370,11 +363,6 @@ fn contains_impl_trait(ty: &Type) -> bool {
 mod tests {
     use super::*;
 
-    fn statuses(source: &str) -> Option<Vec<u16>> {
-        let ty: Type = syn::parse_str(source).expect("valid type");
-        inferred_successes(&classify_return_type(&ty))
-    }
-
     fn kind(source: &str) -> KnownKind {
         let ty: Type = syn::parse_str(source).expect("valid type");
         match classify_return_type(&ty) {
@@ -384,50 +372,28 @@ mod tests {
     }
 
     #[test]
-    fn no_return_type_is_ok() {
-        assert_eq!(
-            inferred_successes(&classify_return(&ReturnType::Default)),
-            Some(vec![200])
-        );
-    }
-
-    #[test]
-    fn explicit_unit_is_ok() {
-        assert_eq!(statuses("()"), Some(vec![200]));
-    }
-
-    #[test]
-    fn known_shapes_have_their_status() {
+    fn known_shapes_are_classified() {
         for (source, expected) in [
-            ("Json<Note>", (KnownKind::Json, 200)),
-            ("Html<Note>", (KnownKind::Html, 200)),
-            ("String", (KnownKind::Text, 200)),
-            ("&'static str", (KnownKind::Text, 200)),
-            ("Vec<u8>", (KnownKind::Vec, 200)),
-            ("Bytes", (KnownKind::Bytes, 200)),
-            ("Body", (KnownKind::Bytes, 200)),
-            ("Attachment<Vec<u8>>", (KnownKind::Attachment, 200)),
-            ("File", (KnownKind::File, 200)),
-            ("Sse<EventStream>", (KnownKind::Sse, 200)),
-            ("Created<Note>", (KnownKind::Created, 201)),
-            ("NoContent", (KnownKind::NoContent, 204)),
-            ("StatusCode", (KnownKind::StatusCode, 0)),
+            ("Json<Note>", KnownKind::Json),
+            ("Html<Note>", KnownKind::Html),
+            ("String", KnownKind::Text),
+            ("&'static str", KnownKind::Text),
+            ("Vec<u8>", KnownKind::Vec),
+            ("Bytes", KnownKind::Bytes),
+            ("Body", KnownKind::Bytes),
+            ("Attachment<Vec<u8>>", KnownKind::Attachment),
+            ("File", KnownKind::File),
+            ("Sse<EventStream>", KnownKind::Sse),
+            ("Created<Note>", KnownKind::Created),
+            ("NoContent", KnownKind::NoContent),
+            ("StatusCode", KnownKind::StatusCode),
         ] {
-            assert_eq!(kind(source), expected.0, "{source}");
-            assert_eq!(statuses(source), Some(vec![expected.1]), "{source}");
+            assert_eq!(kind(source), expected, "{source}");
         }
     }
 
     #[test]
-    fn result_uses_the_ok_arm() {
-        assert_eq!(statuses("Result<Json<Note>, E>"), Some(vec![200]));
-        assert_eq!(statuses("Result<Created<Note>, E>"), Some(vec![201]));
-        assert_eq!(statuses("Result<Option<Json<Note>>, E>"), Some(vec![]));
-    }
-
-    #[test]
     fn dynamic_status_is_default() {
-        assert_eq!(statuses("(StatusCode, Json<Note>)"), Some(vec![0]));
         assert!(matches!(
             classify_return_type(&syn::parse_str::<Type>("(StatusCode, Json<Note>)").unwrap()),
             ReturnShape::DynamicStatus { .. }
@@ -437,7 +403,6 @@ mod tests {
     #[test]
     fn unsupported_tuples_are_unknown() {
         for source in ["(String, String)", "(String, StatusCode)", "(Json<Note>,)"] {
-            assert_eq!(statuses(source), None, "{source}");
             assert!(
                 matches!(
                     classify_return_type(&syn::parse_str::<Type>(source).unwrap()),
@@ -449,22 +414,17 @@ mod tests {
     }
 
     #[test]
-    fn no_success_shapes() {
-        for source in ["Option<Json<Note>>", "Infallible", "impl IntoResponse"] {
-            assert_eq!(statuses(source), Some(vec![]), "{source}");
-        }
-    }
-
-    #[test]
-    fn hidden_sse_keeps_its_status() {
-        assert_eq!(statuses("Sse<impl Stream>"), Some(vec![200]));
+    fn hidden_sse_keeps_its_shape() {
         assert_eq!(kind("Sse<impl Stream>"), KnownKind::Sse);
     }
 
     #[test]
     fn unknown_types_are_not_claimed() {
         for source in ["Problem", "CustomResponse"] {
-            assert_eq!(statuses(source), None, "{source}");
+            assert!(matches!(
+                classify_return_type(&syn::parse_str::<Type>(source).unwrap()),
+                ReturnShape::Unknown { .. }
+            ));
         }
     }
 }

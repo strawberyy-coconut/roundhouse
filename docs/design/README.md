@@ -12,14 +12,16 @@ User-facing documentation lives elsewhere:
 
 ## Index
 
+- [The build-time contract](contract.md) — artifacts, features, inference, runtime consumption,
+  verification and the CLI workflow.
 - [Layering and capability policy](layering.md) — the crate map, the dependency direction,
   and why roundhouse is axum-specific with no `roundhouse-core`/`roundhouse-axum` split.
 - [Routing](routing.md) — the `routes!` → `Module` → `App::build` pipeline, the checks at
   each stage, and how module policy becomes an axum router.
-- [Documentation](documentation.md) — how `#[handler]` plus `ApiSchema`, `ExtractArg` and
-  `ApiResponse` produce an OpenAPI operation, and what the document promises.
+- [Documentation](documentation.md) — how `#[handler]` plus `ApiSchema` and `ExtractArg`
+  produce an OpenAPI operation, and what the document promises.
 - [Validation](validation.md) — why the published schema is also the enforced schema, the
-  request pipeline, the schema engine, and response validation.
+  request pipeline, the schema engine, and contract response verification.
 - [Extensibility](extensibility.md) — the trait seams, how to document a custom extractor
   or response, and where a `doc` hook is the right tool instead.
 - [Traits and internal API](traits.md) — the target trait map: domain specs versus macro
@@ -42,6 +44,6 @@ When a change alters one of these documents, update the relevant note in the sam
 If a decision is superseded, keep the history in the document rather than silently
 rewriting it: the reason a path was rejected is part of the design.
 
-The notes describe the current `0.3` line. Version-specific behaviour that changes is
+The notes describe the current `0.4` line. Version-specific behaviour that changes is
 called out explicitly; everything else should be read as "this is how the current code
-behaves".
+behaves". The contract pipeline is described in [Contract](contract.md).

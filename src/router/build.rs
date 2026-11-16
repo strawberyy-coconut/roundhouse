@@ -1,27 +1,91 @@
 use std::any::TypeId;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
+#[cfg(feature = "contract")]
+use std::sync::OnceLock;
 
 use axum::Router;
 use axum::routing::MethodRouter;
 
 use crate::build_error::BuildError;
+#[cfg(feature = "contract")]
 use crate::doc;
+#[cfg(feature = "contract")]
 use crate::openapi::{Info, OpenApi};
+#[cfg(feature = "contract-runtime")]
 use crate::prefix;
 use crate::problem::Problem;
-use crate::registry::{Method, Module, RouteRecord};
+#[cfg(feature = "contract-runtime")]
+use crate::registry::Method;
+use crate::registry::{Module, RouteRecord};
 
+#[cfg(feature = "contract")]
+use super::app::DocumentHook;
 use super::app::{App, ValidationDefaults};
-#[cfg(feature = "swagger")]
+#[cfg(feature = "contract-runtime")]
+use super::assemble::add_get_route;
+#[cfg(all(feature = "swagger", feature = "contract-runtime"))]
 use super::assemble::add_swagger_routes;
-use super::assemble::{
-    add_get_route, build_method_router, build_module, docs_html, inject_validation_config,
-    merge_router,
-};
+#[cfg(feature = "contract-runtime")]
+use super::assemble::docs_html;
+use super::assemble::{build_method_router, build_module, inject_validation_config, merge_router};
 use super::built::{Built, ResolvedRoute};
-use super::fragment::{DocumentRejections, MergeRecord};
+use super::fragment::MergeRecord;
 use super::resolve::resolve_tree;
+
+/// Build the OpenAPI document from resolved routes, apply servers and document hooks, and run
+/// the structural document checks.
+///
+/// This is the shared half of `App::build` used by the state-less contract builder. It does not
+/// know about application state, routers or merges.
+#[cfg(feature = "contract")]
+pub(crate) struct DocumentConfig<'a> {
+    pub(crate) include_rejections: bool,
+    pub(crate) strict: bool,
+    pub(crate) allow_undeclared_success: bool,
+    pub(crate) inference: &'a crate::doc::inference::Inference,
+    pub(crate) response_defaults: &'a std::collections::BTreeMap<u16, String>,
+    pub(crate) registrations: &'a [fn(&mut dyn crate::doc::SchemaContext)],
+    pub(crate) servers: &'a [utoipa::openapi::Server],
+    pub(crate) hooks: &'a [DocumentHook],
+}
+
+#[cfg(feature = "contract")]
+pub(crate) fn build_openapi(
+    info: Info,
+    resolved: &[ResolvedRoute],
+    config: DocumentConfig<'_>,
+) -> Result<(OpenApi, doc::build::Observations), BuildError> {
+    let mut observations = doc::build::Observations::default();
+    let built_document = doc::build::build_with_observations_and_inference(
+        info.into_utoipa(),
+        resolved,
+        config.include_rejections,
+        config.strict,
+        config.allow_undeclared_success,
+        config.inference,
+        config.response_defaults,
+        config.registrations,
+        &mut observations,
+    )?;
+
+    let mut document = OpenApi::from(built_document);
+    if !config.servers.is_empty() {
+        document
+            .as_utoipa_mut()
+            .servers
+            .get_or_insert_with(Vec::new)
+            .extend(config.servers.iter().cloned());
+    }
+    for hook in config.hooks {
+        hook(&mut document);
+    }
+    // The hook is part of the document too: re-run the structural checks so it cannot publish a
+    // path that contradicts its own parameters.
+    doc::validate_document(document.as_utoipa())
+        .map_err(|message| BuildError::InvalidDocument { message })?;
+    Ok((document, observations))
+}
 
 impl<S> App<S>
 where
@@ -39,35 +103,109 @@ where
     ///
     /// This is the check hook for CI: it runs the same duplicate-route, state, capture, security
     /// and document gates as [`App::build`] but never unwinds.
-    pub fn try_build(self) -> Result<Built, BuildError> {
+    #[allow(unused_mut)]
+    pub fn try_build(mut self) -> Result<Built, BuildError> {
         let mut diagnostics = Vec::new();
+        #[cfg(not(feature = "contract"))]
+        {
+            #[cfg(feature = "contract-runtime")]
+            let has_contract = self.contract_bundle.is_some();
+            #[cfg(not(feature = "contract-runtime"))]
+            let has_contract = false;
+            if self.validation != crate::extract::Validation::Off && !has_contract {
+                return Err(BuildError::MissingContract);
+            }
+        }
         let serve_openapi = self.serves_openapi();
         let resolved = self.resolve(&mut diagnostics)?;
         self.check_reserved_paths(serve_openapi, &resolved)?;
         self.report_merges(&mut diagnostics)?;
 
-        let (document, mut observations) = self.build_document(&resolved, &mut diagnostics)?;
-        let schema_engine = self.compile_schema_engine(&document, &mut observations)?;
-        let document = Arc::new(document);
+        #[cfg(feature = "contract")]
+        if self.contract_bundle.is_none() {
+            let (bundle, contract_diagnostics) = self.build_contract_bundle()?;
+            self.contract_bundle = Some(bundle);
+            diagnostics.extend(contract_diagnostics);
+        }
+        #[cfg(feature = "contract-runtime")]
+        if let Some(bundle) = self.contract_bundle {
+            bundle
+                .validate()
+                .map_err(|message| BuildError::InvalidContract { message })?;
+        }
+        #[cfg(feature = "contract")]
+        let (schema_engine, contract_openapi) = {
+            let bundle = self
+                .contract_bundle
+                .expect("a contract bundle is installed before assembly");
+            let schema_engine = self.compile_contract_schema_engine(bundle)?;
+            (schema_engine, Some(bundle.openapi))
+        };
+        #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+        let (schema_engine, contract_openapi) = if let Some(bundle) = self.contract_bundle {
+            (
+                self.compile_contract_schema_engine(bundle)?,
+                Some(bundle.openapi),
+            )
+        } else {
+            (None, None)
+        };
+        #[cfg(not(feature = "contract-runtime"))]
+        let (schema_engine, contract_openapi): (
+            Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
+            Option<&'static str>,
+        ) = (None, None);
+        #[cfg(not(feature = "contract-runtime"))]
+        let _ = contract_openapi;
+
         let merge_ledger = self.merge_ledger();
-        let router = self.assemble_app(&resolved, &document, schema_engine, &observations)?;
+        #[cfg(feature = "contract")]
+        let document = Arc::new(OnceLock::new());
+        #[cfg(feature = "contract")]
+        let router = self.assemble_app(&resolved, schema_engine)?;
+        #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+        let router = self.assemble_app(&resolved, schema_engine)?;
+        #[cfg(not(feature = "contract-runtime"))]
+        let router = self.assemble_app(&resolved, schema_engine)?;
 
         Ok(Built {
             router,
             routes: resolved,
+            #[cfg(feature = "contract")]
             document,
+            #[cfg(feature = "contract-runtime")]
+            contract_openapi,
             merges: merge_ledger,
             diagnostics,
         })
     }
 
     fn serves_openapi(&self) -> bool {
-        #[cfg(feature = "swagger")]
-        let swagger = self.swagger_route.is_some();
-        #[cfg(not(feature = "swagger"))]
-        let swagger = false;
+        #[cfg(not(feature = "contract-runtime"))]
+        {
+            return false;
+        }
+        #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+        {
+            #[cfg(feature = "swagger")]
+            let swagger = self.swagger_route.is_some();
+            #[cfg(not(feature = "swagger"))]
+            let swagger = false;
+            self.contract_bundle.is_some()
+                && (self.openapi_route.is_some() || self.docs_route.is_some() || swagger)
+        }
+        #[cfg(feature = "contract")]
+        {
+            #[cfg(feature = "swagger")]
+            let swagger = self.swagger_route.is_some();
+            #[cfg(not(feature = "swagger"))]
+            let swagger = false;
 
-        self.info.is_some() || self.openapi_route.is_some() || self.docs_route.is_some() || swagger
+            self.info.is_some()
+                || self.openapi_route.is_some()
+                || self.docs_route.is_some()
+                || swagger
+        }
     }
 
     fn report_merges(
@@ -91,73 +229,75 @@ where
         Ok(())
     }
 
-    fn build_document(
-        &self,
-        resolved: &[ResolvedRoute],
-        diagnostics: &mut Vec<crate::build_error::Diagnostic>,
-    ) -> Result<(OpenApi, doc::build::Observations), BuildError> {
+    /// Build a contract from the app's own declarations.
+    ///
+    /// Tests and apps that do not pass an artifact still get the same strict contract checks,
+    /// but the runtime no longer assembles a separate document or schema engine.
+    #[cfg(feature = "contract")]
+    fn build_contract_bundle(
+        &mut self,
+    ) -> Result<(crate::ContractBundle, Vec<crate::build_error::Diagnostic>), BuildError> {
         let info = self
             .info
             .as_ref()
             .map(|info| info())
             .unwrap_or_else(|| Info::new("API", "0.1.0"));
-        let mut observations = doc::build::Observations::default();
-        let result = doc::build::build_with_observations(
-            info.into_utoipa(),
-            resolved,
-            self.document_rejections == DocumentRejections::Auto,
-            self.strict,
-            &mut observations,
-        );
-        diagnostics.append(&mut observations.diagnostics);
-        let mut built_document = result?;
+        let mut contract = crate::Contract::<S>::new(info);
+        for root in &self.roots {
+            contract = contract.include(root);
+        }
+        contract = contract.servers(std::mem::take(&mut self.servers));
+        for hook in std::mem::take(&mut self.document_hooks) {
+            contract = contract.document(move |document| hook(document));
+        }
+        for doc in std::mem::take(&mut self.global_layer_docs) {
+            contract = contract.layer_doc(doc);
+        }
+        contract = contract.document_rejections(self.document_rejections);
+        contract = if self.strict {
+            contract.strict()
+        } else {
+            contract.permissive()
+        };
 
+        let built = contract.build()?;
+        let diagnostics = built.diagnostics().to_vec();
+        let mut openapi: serde_json::Value =
+            serde_json::from_str(&built.openapi_json()).map_err(|error| {
+                BuildError::InvalidDocument {
+                    message: error.to_string(),
+                }
+            })?;
         if !self.merges.is_empty() {
-            let extensions = utoipa::openapi::extensions::ExtensionsBuilder::new()
-                .add("x-roundhouse-merged", true)
-                .build();
-            match &mut built_document.extensions {
-                Some(existing) => existing.merge(extensions),
-                None => built_document.extensions = Some(extensions),
-            }
+            openapi["x-roundhouse-merged"] = serde_json::json!(true);
         }
-
-        let mut document = OpenApi::from(built_document);
-        if !self.servers.is_empty() {
-            document
-                .as_utoipa_mut()
-                .servers
-                .get_or_insert_with(Vec::new)
-                .extend(self.servers.iter().cloned());
-        }
-        for hook in &self.document_hooks {
-            hook(&mut document);
-        }
-        // The hook is part of the document too: re-run the structural checks so it cannot
-        // publish a path that contradicts its own parameters.
-        doc::validate_document(document.as_utoipa())
-            .map_err(|message| BuildError::InvalidDocument { message })?;
-        Ok((document, observations))
+        let openapi = serde_json::to_string_pretty(&openapi)
+            .expect("the assembled OpenAPI document serializes");
+        let contract_json =
+            built
+                .contract_json()
+                .map_err(|error| BuildError::SchemaCompilation {
+                    message: error.to_string(),
+                })?;
+        Ok((
+            crate::ContractBundle::new(
+                Box::leak(contract_json.into_boxed_str()),
+                Box::leak(openapi.into_boxed_str()),
+            ),
+            diagnostics,
+        ))
     }
 
-    fn compile_schema_engine(
+    #[cfg(feature = "contract-runtime")]
+    fn compile_contract_schema_engine(
         &self,
-        document: &OpenApi,
-        observations: &mut doc::build::Observations,
+        bundle: crate::ContractBundle,
     ) -> Result<Option<Arc<roundhouse_schema::engine::SchemaEngine>>, BuildError> {
         if self.validation != crate::extract::Validation::Schema {
             return Ok(None);
         }
-        let components = document.as_utoipa().components.clone().unwrap_or_default();
-        let bodies = std::mem::take(&mut observations.bodies);
-        let parts = std::mem::take(&mut observations.parts);
-        let engine = roundhouse_schema::engine::SchemaEngine::from_components_bodies_and_parts(
-            &components,
-            std::iter::empty::<(TypeId, String)>(),
-            bodies,
-            parts,
-        )
-        .map_err(|error| BuildError::SchemaCompilation {
+        let engine = roundhouse_schema::engine::SchemaEngine::from_contract_json(bundle.contract)
+            .map_err(|error| BuildError::SchemaCompilation {
             message: error.to_string(),
         })?;
         Ok(Some(Arc::new(engine)))
@@ -173,29 +313,34 @@ where
             .collect()
     }
 
+    #[cfg(feature = "contract")]
     fn assemble_app(
         self,
         resolved: &[ResolvedRoute],
-        document: &Arc<OpenApi>,
         schema_engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
-        observations: &doc::build::Observations,
     ) -> Result<Router<()>, BuildError> {
         let serve_openapi = self.serves_openapi();
-        let mut router =
-            self.assemble(resolved, schema_engine.as_ref(), &observations.route_bodies)?;
+        let mut router = self.assemble(resolved, schema_engine.as_ref())?;
 
         for merged in &self.merges {
             router = merge_router(router, merged.router.clone(), merged.source)?;
         }
 
-        if serve_openapi && let Some(path) = self.openapi_route {
-            let for_route = document.clone();
+        if serve_openapi
+            && let Some(path) = self.openapi_route
+            && let Some(bundle) = self.contract_bundle
+        {
+            let body = bundle.openapi;
             router = add_get_route(
                 router,
                 path,
-                move || {
-                    let document = for_route.clone();
-                    async move { axum::Json((*document).clone()) }
+                move || async move {
+                    let mut response = axum::response::Response::new(axum::body::Body::from(body));
+                    response.headers_mut().insert(
+                        axum::http::header::CONTENT_TYPE,
+                        axum::http::HeaderValue::from_static("application/json"),
+                    );
+                    response
                 },
                 crate::build_error::Source::new("App::openapi_route", "<app>", 0),
             )?;
@@ -257,32 +402,145 @@ where
             router = router.layer(axum::extract::DefaultBodyLimit::max(max));
         }
 
-        if self.validate_responses {
-            #[cfg(not(feature = "schema-engine"))]
+        self.finish(router, schema_engine)
+    }
+
+    #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+    fn assemble_app(
+        self,
+        resolved: &[ResolvedRoute],
+        schema_engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
+    ) -> Result<Router<()>, BuildError> {
+        let mut router = self.assemble(resolved, schema_engine.as_ref())?;
+
+        for merged in &self.merges {
+            router = merge_router(router, merged.router.clone(), merged.source)?;
+        }
+
+        if let Some(path) = self.openapi_route
+            && let Some(bundle) = self.contract_bundle
+        {
+            let body = bundle.openapi;
+            router = add_get_route(
+                router,
+                path,
+                move || async move {
+                    let mut response = axum::response::Response::new(axum::body::Body::from(body));
+                    response.headers_mut().insert(
+                        axum::http::header::CONTENT_TYPE,
+                        axum::http::HeaderValue::from_static("application/json"),
+                    );
+                    response
+                },
+                crate::build_error::Source::new("App::openapi_route", "<app>", 0),
+            )?;
+        }
+
+        if let Some(docs_path) = self.docs_route {
+            let spec_path = self.openapi_route.unwrap_or("/openapi.json");
+            #[cfg(feature = "swagger")]
             {
-                return Err(BuildError::SchemaCompilation {
-                    message: "response validation requires the `schema-engine` feature".to_string(),
-                });
-            }
-            #[cfg(feature = "schema-engine")]
-            {
-                let validator = Arc::new(
-                    doc::response::ResponseValidator::new(document.as_utoipa()).map_err(
-                        |error| BuildError::SchemaCompilation {
-                            message: error.to_string(),
+                if !self.docs_cdn {
+                    router = add_swagger_routes(router, spec_path, docs_path)?;
+                } else {
+                    let html = docs_html(spec_path);
+                    router = add_get_route(
+                        router,
+                        docs_path,
+                        move || {
+                            let html = html.clone();
+                            async move { axum::response::Html(html) }
                         },
-                    )?,
-                );
-                let layer = axum::middleware::from_fn_with_state::<
-                    _,
-                    _,
-                    (
-                        axum::extract::State<Arc<doc::response::ResponseValidator>>,
-                        axum::extract::Request,
-                    ),
-                >(validator, doc::response::validate_response);
-                router = router.layer(layer);
+                        crate::build_error::Source::new("App::docs_route", "<app>", 0),
+                    )?;
+                }
             }
+            #[cfg(not(feature = "swagger"))]
+            {
+                let _ = self.docs_cdn;
+                let html = docs_html(spec_path);
+                router = add_get_route(
+                    router,
+                    docs_path,
+                    move || {
+                        let html = html.clone();
+                        async move { axum::response::Html(html) }
+                    },
+                    crate::build_error::Source::new("App::docs_route", "<app>", 0),
+                )?;
+            }
+        }
+
+        #[cfg(feature = "swagger")]
+        if let Some(swagger_path) = self.swagger_route {
+            let spec_path = self.openapi_route.unwrap_or("/openapi.json");
+            router = add_swagger_routes(router, spec_path, swagger_path)?;
+        }
+
+        router = router.method_not_allowed_fallback(|| async {
+            Problem::new(
+                axum::http::StatusCode::METHOD_NOT_ALLOWED,
+                "Method Not Allowed",
+            )
+            .detail("this path does not accept the request method")
+        });
+
+        if let Some(max) = self.max_body {
+            router = router.layer(axum::extract::DefaultBodyLimit::max(max));
+        }
+
+        self.finish(router, schema_engine)
+    }
+
+    #[cfg(not(feature = "contract-runtime"))]
+    fn assemble_app(
+        self,
+        resolved: &[ResolvedRoute],
+        schema_engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
+    ) -> Result<Router<()>, BuildError> {
+        let mut router = self.assemble(resolved, schema_engine.as_ref())?;
+
+        for merged in &self.merges {
+            router = merge_router(router, merged.router.clone(), merged.source)?;
+        }
+
+        // A served response is part of the contract: a method mismatch uses the same Problem
+        // shape as the 404 fallback instead of axum's empty default body.
+        router = router.method_not_allowed_fallback(|| async {
+            Problem::new(
+                axum::http::StatusCode::METHOD_NOT_ALLOWED,
+                "Method Not Allowed",
+            )
+            .detail("this path does not accept the request method")
+        });
+
+        if let Some(max) = self.max_body {
+            router = router.layer(axum::extract::DefaultBodyLimit::max(max));
+        }
+
+        self.finish(router, schema_engine)
+    }
+
+    fn finish(
+        self,
+        mut router: Router<()>,
+        schema_engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
+    ) -> Result<Router<()>, BuildError> {
+        #[cfg(feature = "contract-runtime")]
+        if let Some(bundle) = self.contract_bundle
+            && (self.verify_responses || std::env::var_os("ROUNDHOUSE_VERIFY").is_some())
+        {
+            let validator = Arc::new(
+                crate::ContractResponseValidator::from_contract_json(bundle.contract).map_err(
+                    |error| BuildError::SchemaCompilation {
+                        message: error.to_string(),
+                    },
+                )?,
+            );
+            router = router.layer(axum::middleware::from_fn_with_state(
+                validator,
+                crate::contract_response::validate_response,
+            ));
         }
 
         if let Some(fallback) = self.fallback {
@@ -351,6 +609,7 @@ where
         serve_listener(listener, built.router, shutdown).await
     }
 
+    #[cfg(feature = "contract-runtime")]
     fn check_reserved_paths(
         &self,
         serve_openapi: bool,
@@ -368,40 +627,43 @@ where
                 crate::build_error::Source::new("App::openapi_route", "<app>", 0),
             ));
         }
-        if let Some(path) = self.docs_route {
-            let docs = prefix::join("", path);
-            reserved.push((
-                docs.clone(),
-                "the documentation UI",
-                crate::build_error::Source::new("App::docs_route", "<app>", 0),
-            ));
+        #[cfg(feature = "contract-runtime")]
+        {
+            if let Some(path) = self.docs_route {
+                let docs = prefix::join("", path);
+                reserved.push((
+                    docs.clone(),
+                    "the documentation UI",
+                    crate::build_error::Source::new("App::docs_route", "<app>", 0),
+                ));
+                #[cfg(feature = "swagger")]
+                if !self.docs_cdn {
+                    let asset_root = prefix::join(&docs, "assets");
+                    for asset in super::assemble::SWAGGER_ASSETS {
+                        reserved.push((
+                            prefix::join(&asset_root, asset.name),
+                            "a documentation UI asset",
+                            crate::build_error::Source::new("App::docs_route", "<app>", 0),
+                        ));
+                    }
+                }
+            }
             #[cfg(feature = "swagger")]
-            if !self.docs_cdn {
-                let asset_root = prefix::join(&docs, "assets");
+            if let Some(path) = self.swagger_route {
+                let swagger = prefix::join("", path);
+                reserved.push((
+                    swagger.clone(),
+                    "the self-hosted Swagger UI",
+                    crate::build_error::Source::new("App::swagger_route", "<app>", 0),
+                ));
+                let asset_root = prefix::join(&swagger, "assets");
                 for asset in super::assemble::SWAGGER_ASSETS {
                     reserved.push((
                         prefix::join(&asset_root, asset.name),
-                        "a documentation UI asset",
-                        crate::build_error::Source::new("App::docs_route", "<app>", 0),
+                        "a self-hosted Swagger UI asset",
+                        crate::build_error::Source::new("App::swagger_route", "<app>", 0),
                     ));
                 }
-            }
-        }
-        #[cfg(feature = "swagger")]
-        if let Some(path) = self.swagger_route {
-            let swagger = prefix::join("", path);
-            reserved.push((
-                swagger.clone(),
-                "the self-hosted Swagger UI",
-                crate::build_error::Source::new("App::swagger_route", "<app>", 0),
-            ));
-            let asset_root = prefix::join(&swagger, "assets");
-            for asset in super::assemble::SWAGGER_ASSETS {
-                reserved.push((
-                    prefix::join(&asset_root, asset.name),
-                    "a self-hosted Swagger UI asset",
-                    crate::build_error::Source::new("App::swagger_route", "<app>", 0),
-                ));
             }
         }
 
@@ -437,14 +699,27 @@ where
         Ok(())
     }
 
+    #[cfg(not(feature = "contract-runtime"))]
+    fn check_reserved_paths(
+        &self,
+        _serve_openapi: bool,
+        _resolved: &[ResolvedRoute],
+    ) -> Result<(), BuildError> {
+        Ok(())
+    }
+
     fn resolve(
         &self,
         diagnostics: &mut Vec<crate::build_error::Diagnostic>,
     ) -> Result<Vec<ResolvedRoute>, BuildError> {
+        #[cfg(feature = "contract")]
+        let global_layer_docs = &self.global_layer_docs[..];
+        #[cfg(not(feature = "contract"))]
+        let global_layer_docs = &[][..];
         resolve_tree(
             &self.roots,
             self.strict,
-            &self.global_layer_docs,
+            global_layer_docs,
             Some(TypeId::of::<S>()),
             std::any::type_name::<S>(),
             self.merges.len(),
@@ -456,14 +731,13 @@ where
         &self,
         resolved: &[ResolvedRoute],
         engine: Option<&Arc<roundhouse_schema::engine::SchemaEngine>>,
-        route_bodies: &BTreeMap<String, (TypeId, String)>,
     ) -> Result<Router<()>, BuildError> {
         let mut by_record: HashMap<*const RouteRecord, (String, MethodRouter<()>)> = HashMap::new();
         let mut absolute: Vec<(String, MethodRouter<()>)> = Vec::new();
 
         for route in resolved {
             let method_router =
-                build_method_router::<S>(route, &self.state, engine, self.max_body, route_bodies)?;
+                build_method_router::<S>(route, &self.state, engine, self.max_body)?;
             if route.record.absolute {
                 absolute.push((route.path.clone(), method_router));
             } else {

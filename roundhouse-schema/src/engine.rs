@@ -4,14 +4,11 @@
 //! `#[derive(ApiSchema)]`, this module compiles one validator per type and maps the engine's
 //! `instance_path` back onto the `ValidationError` shape clients already parse.
 
-use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
-use utoipa::openapi::schema::Components;
 
-use crate::schema::ApiSchema;
 use crate::validate::{ValidationError, ValidationErrors};
 
 /// A compile failure: the document this crate emits is itself not a valid schema.
@@ -36,117 +33,145 @@ impl From<serde_json::Error> for SchemaError {
     }
 }
 
-/// One compiled validator per documented type, keyed by `TypeId`.
+/// The contract-backed validator.
 ///
-/// Bodies and parts are separate maps: the same Rust type can be a JSON body in one operation and
-/// a query struct in another, where the two schemas differ.
+/// Every plan is keyed by the stable names `contract.json` recorded at build time: operation id
+/// for request bodies and Rust type name for body/parts plans. No `TypeId` map is needed.
 #[derive(Default)]
 pub struct SchemaEngine {
-    bodies: HashMap<TypeId, Arc<jsonschema::Validator>>,
-    parts: HashMap<TypeId, Arc<jsonschema::Validator>>,
+    /// Build-time contract plans keyed by operation id.
+    contract_bodies: HashMap<String, Arc<jsonschema::Validator>>,
+    /// Content types for contract body plans, used to decide whether to install raw body
+    /// validation without the startup document observations.
+    contract_body_content_types: HashMap<String, String>,
+    /// Build-time contract plans for body types that enforce themselves (`Strict<Json<T>>`).
+    contract_types: HashMap<String, Arc<jsonschema::Validator>>,
+    /// Build-time contract plans for path/query/form types, keyed by stable type name.
+    contract_parts: HashMap<String, Arc<jsonschema::Validator>>,
+    /// Whether this engine was compiled from a contract artifact.
+    contract_backed: bool,
 }
 
 impl SchemaEngine {
-    /// Compile every `(TypeId, component name)` pair that has a component in the document.
-    pub fn from_components(
-        components: &Components,
-        types: impl IntoIterator<Item = (TypeId, String)>,
-    ) -> Result<Self, SchemaError> {
-        Self::from_components_and_bodies(components, types, std::iter::empty())
-    }
-
-    /// Compile named components and inline body schemas in one pass.
+    /// Compile the request validation plans from a build-time `contract.json`.
     ///
-    /// Composite bodies (`Vec<T>`, `Option<T>` and maps) have no component of their own; the
-    /// document knows their inline schema, so schema mode compiles that instead of skipping them.
-    pub fn from_components_and_bodies(
-        components: &Components,
-        types: impl IntoIterator<Item = (TypeId, String)>,
-        bodies: impl IntoIterator<
-            Item = (
-                TypeId,
-                utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-            ),
-        >,
-    ) -> Result<Self, SchemaError> {
-        Self::from_components_bodies_and_parts(components, types, bodies, std::iter::empty())
-    }
+    /// The contract stores one schema table plus body plans keyed by operation id and type name,
+    /// and parts plans keyed by type name. The schema table and both plan families share one
+    /// compiled `$defs` map.
+    pub fn from_contract_json(contract: &str) -> Result<Self, SchemaError> {
+        let contract: Value = serde_json::from_str(contract)?;
+        let validation = contract.get("validation").ok_or_else(|| SchemaError {
+            message: "contract has no validation section; run `cargo roundhouse prepare`"
+                .to_string(),
+        })?;
+        let defs = defs_from_schemas(
+            validation
+                .get("defs")
+                .cloned()
+                .unwrap_or_else(|| Value::Object(Map::new())),
+        )?;
 
-    /// Compile named components, inline body schemas and parts schemas in one pass.
-    pub fn from_components_bodies_and_parts(
-        components: &Components,
-        types: impl IntoIterator<Item = (TypeId, String)>,
-        bodies: impl IntoIterator<
-            Item = (
-                TypeId,
-                utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-            ),
-        >,
-        parts: impl IntoIterator<
-            Item = (
-                TypeId,
-                utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-            ),
-        >,
-    ) -> Result<Self, SchemaError> {
-        let defs = defs_from_components(components)?;
-        let mut engine = Self::default();
-        for (type_id, name) in types {
-            if !defs.contains_key(&name) {
-                continue;
+        let mut engine = Self {
+            contract_backed: true,
+            ..Self::default()
+        };
+        if let Some(operations) = validation.pointer("/bodies/ops").and_then(Value::as_object) {
+            for (operation_id, plan) in operations {
+                if let Some(schema) = plan.get("schema") {
+                    let validator = compile_schema(schema.clone(), &defs)?;
+                    engine
+                        .contract_bodies
+                        .insert(operation_id.clone(), Arc::new(validator));
+                }
+                if let Some(content_type) = plan.get("content_type").and_then(Value::as_str) {
+                    engine
+                        .contract_body_content_types
+                        .insert(operation_id.clone(), content_type.to_string());
+                }
             }
-            let validator = compile_ref(&defs, &name)?;
-            engine.bodies.insert(type_id, Arc::new(validator));
         }
-        for (type_id, schema) in bodies {
-            let value = serde_json::to_value(&schema)?;
-            let validator = compile_schema(value, &defs)?;
-            engine.bodies.insert(type_id, Arc::new(validator));
+        if let Some(types) = validation
+            .pointer("/bodies/types")
+            .and_then(Value::as_object)
+        {
+            for (name, schema) in types {
+                let validator = compile_schema(schema.clone(), &defs)?;
+                engine
+                    .contract_types
+                    .insert(name.clone(), Arc::new(validator));
+            }
         }
-        for (type_id, schema) in parts {
-            let value = serde_json::to_value(&schema)?;
-            let validator = compile_schema(value, &defs)?;
-            engine.parts.insert(type_id, Arc::new(validator));
+        if let Some(types) = validation
+            .pointer("/parts/types")
+            .and_then(Value::as_object)
+        {
+            for (name, schema) in types {
+                let validator = compile_schema(schema.clone(), &defs)?;
+                engine
+                    .contract_parts
+                    .insert(name.clone(), Arc::new(validator));
+            }
         }
         Ok(engine)
     }
 
-    /// Validate a body against its compiled type. `None` means the type was not documented.
-    pub fn validate<T: 'static>(&self, value: &Value) -> Option<Result<(), ValidationErrors>> {
-        self.bodies
-            .get(&TypeId::of::<T>())
+    /// Whether this engine was compiled from a contract artifact.
+    pub fn is_contract_backed(&self) -> bool {
+        self.contract_backed
+    }
+
+    /// The content type of a contract body plan for `operation_id`, if one exists.
+    pub fn contract_body_content_type(&self, operation_id: &str) -> Option<&str> {
+        self.contract_body_content_types
+            .get(operation_id)
+            .map(String::as_str)
+    }
+
+    /// Validate a request body against the contract plan for `operation_id`.
+    pub fn validate_contract_body(
+        &self,
+        operation_id: &str,
+        value: &Value,
+    ) -> Option<Result<(), ValidationErrors>> {
+        self.contract_bodies
+            .get(operation_id)
             .map(|validator| validate_with(validator, value))
     }
 
-    /// Validate a value against a type identified at runtime. Used by the request layer, which
-    /// sees the document's `TypeId` rather than a generic parameter.
-    pub fn validate_type(
+    /// Validate a body value that enforces its own schema during extraction, by stable type name.
+    pub fn validate_contract_type(
         &self,
-        type_id: TypeId,
+        type_name: &str,
         value: &Value,
     ) -> Option<Result<(), ValidationErrors>> {
-        self.bodies
-            .get(&type_id)
+        self.contract_types
+            .get(type_name)
             .map(|validator| validate_with(validator, value))
     }
 
-    pub fn validate_parts<T: 'static>(
+    /// Validate path/query/form parts by stable type name.
+    pub fn validate_contract_parts(
         &self,
+        type_name: &str,
         value: &Value,
     ) -> Option<Result<(), ValidationErrors>> {
-        self.parts
-            .get(&TypeId::of::<T>())
+        self.contract_parts
+            .get(type_name)
             .map(|validator| validate_with(validator, value))
     }
 
     pub fn is_empty(&self) -> bool {
-        self.bodies.is_empty() && self.parts.is_empty()
+        self.contract_bodies.is_empty()
+            && self.contract_types.is_empty()
+            && self.contract_parts.is_empty()
+            && self.contract_body_content_types.is_empty()
     }
 }
 
 /// Compile one type's schema. Useful for tests and the conformance harness.
-pub fn compile<T: ApiSchema>() -> Result<jsonschema::Validator, SchemaError> {
-    let mut components = Components::new();
+#[cfg(feature = "contract")]
+pub fn compile<T: crate::schema::ApiSchema>() -> Result<jsonschema::Validator, SchemaError> {
+    let mut components = utoipa::openapi::schema::Components::new();
     T::register(&mut components);
     let defs = defs_from_components(&components)?;
     let schema = serde_json::to_value(T::schema())?;
@@ -160,21 +185,20 @@ pub fn compile_value(schema: &Value, defs: &Value) -> Result<jsonschema::Validat
 }
 
 /// The component table as `$defs`, with references rewritten.
-pub fn defs_from_components(components: &Components) -> Result<Map<String, Value>, SchemaError> {
-    let mut value = serde_json::to_value(&components.schemas)?;
-    rewrite_refs(&mut value);
-    match value {
+#[cfg(feature = "contract")]
+pub fn defs_from_components(
+    components: &utoipa::openapi::schema::Components,
+) -> Result<Map<String, Value>, SchemaError> {
+    defs_from_schemas(serde_json::to_value(&components.schemas)?)
+}
+
+/// A serialized component table as `$defs`, with references rewritten.
+fn defs_from_schemas(mut schemas: Value) -> Result<Map<String, Value>, SchemaError> {
+    rewrite_refs(&mut schemas);
+    match schemas {
         Value::Object(defs) => Ok(defs),
         _ => Ok(Map::new()),
     }
-}
-
-fn compile_ref(
-    defs: &Map<String, Value>,
-    name: &str,
-) -> Result<jsonschema::Validator, SchemaError> {
-    let schema = serde_json::json!({ "$ref": format!("#/$defs/{name}") });
-    compile_schema(schema, defs)
 }
 
 fn compile_schema(
@@ -370,5 +394,79 @@ pub fn rewrite_refs(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn contract_engine_validates_operation_type_and_parts_plans() {
+        let contract = serde_json::to_string(&json!({
+            "validation": {
+                "defs": {
+                    "T": {
+                        "type": "object",
+                        "required": ["x"],
+                        "properties": { "x": { "type": "integer" } }
+                    }
+                },
+                "bodies": {
+                    "ops": {
+                        "op": {
+                            "content_type": "application/json",
+                            "schema": { "$ref": "#/components/schemas/T" }
+                        }
+                    },
+                    "types": {
+                        "T": { "$ref": "#/components/schemas/T" }
+                    }
+                },
+                "parts": {
+                    "types": {
+                        "P": {
+                            "type": "object",
+                            "required": ["q"],
+                            "properties": { "q": { "type": "string" } }
+                        }
+                    }
+                }
+            }
+        }))
+        .expect("contract serializes");
+
+        let engine = SchemaEngine::from_contract_json(&contract).expect("contract compiles");
+        assert!(engine.is_contract_backed());
+        assert_eq!(
+            engine.contract_body_content_type("op"),
+            Some("application/json")
+        );
+
+        assert!(
+            engine
+                .validate_contract_body("op", &json!({}))
+                .expect("operation plan")
+                .is_err()
+        );
+        assert!(
+            engine
+                .validate_contract_body("op", &json!({ "x": 1 }))
+                .expect("operation plan")
+                .is_ok()
+        );
+        assert!(
+            engine
+                .validate_contract_type("T", &json!({ "x": "bad" }))
+                .expect("type plan")
+                .is_err()
+        );
+        assert!(
+            engine
+                .validate_contract_parts("P", &json!({}))
+                .expect("parts plan")
+                .is_err()
+        );
     }
 }

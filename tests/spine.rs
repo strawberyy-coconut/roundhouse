@@ -49,13 +49,6 @@ pub struct NoteId {
     pub id: i64,
 }
 
-#[derive(Debug, thiserror::Error, ApiError)]
-pub enum AppError {
-    #[error("note not found")]
-    #[status(404, problem = "NoteNotFound")]
-    NoteNotFound,
-}
-
 mod notes {
     use super::*;
 
@@ -78,17 +71,20 @@ mod notes {
     pub async fn create(
         State(state): State<TestState>,
         Strict(axum::Json(body)): Strict<axum::Json<NewNote>>,
-    ) -> Result<Json<Note>, AppError> {
-        Ok(Json(state.create(body.title)))
+    ) -> Json<Note> {
+        Json(state.create(body.title))
     }
 
     /// @summary: Read a note
-    #[handler]
+    #[handler(response(200, Note), response(404, Problem))]
     pub async fn show(
         State(state): State<TestState>,
         Path(NoteId { id }): Path<NoteId>,
-    ) -> Result<Json<Note>, AppError> {
-        state.get(id).map(Json).ok_or(AppError::NoteNotFound)
+    ) -> Response {
+        match state.get(id) {
+            Some(note) => (StatusCode::OK, Json(note)).into_response(),
+            None => Problem::not_found("Note not found").into_response(),
+        }
     }
 }
 
@@ -187,7 +183,7 @@ async fn document_matches_the_router() {
     assert!(json["components"]["schemas"]["Note"].is_object());
     assert!(json["components"]["schemas"]["NewNote"].is_object());
     assert_eq!(
-        json["paths"]["/notes"]["post"]["responses"]["404"]["content"]["application/problem+json"]
+        json["paths"]["/notes/{id}"]["get"]["responses"]["404"]["content"]["application/problem+json"]
             ["schema"]["type"],
         "object"
     );

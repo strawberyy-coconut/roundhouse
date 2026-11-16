@@ -8,10 +8,14 @@
 use axum::body::Body;
 use axum::response::{IntoResponse, Response};
 use http::{StatusCode, header};
-use roundhouse_schema::{ValidationError, ValidationErrors, schema};
+#[cfg(feature = "contract")]
+use roundhouse_schema::schema;
+use roundhouse_schema::{ValidationError, ValidationErrors};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+#[cfg(feature = "contract")]
 use utoipa::openapi::RefOr;
+#[cfg(feature = "contract")]
 use utoipa::openapi::schema::{ArrayBuilder, ObjectBuilder, Schema, SchemaFormat, Type};
 
 /// The one error body the framework produces.
@@ -87,12 +91,40 @@ impl Problem {
         Self::new(status, title).detail(detail)
     }
 
+    pub fn bad_request(detail: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, "Bad Request").detail(detail)
+    }
+
+    pub fn unauthorized(detail: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNAUTHORIZED, "Unauthorized").detail(detail)
+    }
+
+    pub fn forbidden(detail: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, "Forbidden").detail(detail)
+    }
+
     pub fn not_found(detail: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_FOUND, "Not Found").detail(detail)
     }
 
+    pub fn conflict(detail: impl Into<String>) -> Self {
+        Self::new(StatusCode::CONFLICT, "Conflict").detail(detail)
+    }
+
+    pub fn unprocessable_entity(detail: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNPROCESSABLE_ENTITY, "Unprocessable Entity").detail(detail)
+    }
+
+    pub fn too_many_requests(detail: impl Into<String>) -> Self {
+        Self::new(StatusCode::TOO_MANY_REQUESTS, "Too Many Requests").detail(detail)
+    }
+
     pub fn internal(detail: impl Into<String>) -> Self {
         Self::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error").detail(detail)
+    }
+
+    pub fn service_unavailable(detail: impl Into<String>) -> Self {
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable").detail(detail)
     }
 
     pub fn status(&self) -> StatusCode {
@@ -109,7 +141,18 @@ impl std::fmt::Display for Problem {
     }
 }
 
-impl std::error::Error for Problem {}
+// `Problem` deliberately does not implement `std::error::Error`: that keeps the blanket
+// `From<E>` below from conflicting with the reflexive `From<Problem> for Problem`. This is the
+// same trade `anyhow::Error` makes, and it is what lets `?` turn any infrastructure error into a
+// 500 `Problem` without a crate-wide error enum.
+impl<E> From<E> for Problem
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    fn from(error: E) -> Self {
+        Self::internal(error.to_string())
+    }
+}
 
 impl IntoResponse for Problem {
     fn into_response(self) -> Response {
@@ -125,13 +168,8 @@ impl IntoResponse for Problem {
     }
 }
 
-impl From<ValidationErrors> for Problem {
-    fn from(value: ValidationErrors) -> Self {
-        Self::from_validation(value)
-    }
-}
-
 /// The Problem body as an OpenAPI schema, for the document builder.
+#[cfg(feature = "contract")]
 pub fn problem_schema_ref() -> RefOr<Schema> {
     let error = ObjectBuilder::new()
         .schema_type(Type::Object)
@@ -171,10 +209,69 @@ pub fn problem_schema_ref() -> RefOr<Schema> {
 ///
 /// It is the serialized [`problem_schema_ref`], so the document and the standalone schema cannot
 /// drift apart.
+#[cfg(feature = "contract")]
 pub fn problem_schema() -> Value {
     serde_json::to_value(problem_schema_ref()).expect("the Problem schema serializes")
 }
 
 pub fn problem_value(status: u16, title: &str) -> Value {
     serde_json::json!({ "status": status, "title": title })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_constructors_set_their_status() {
+        assert_eq!(
+            Problem::bad_request("bad").status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            Problem::unauthorized("auth").status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(Problem::forbidden("no").status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            Problem::not_found("missing").status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(Problem::conflict("conflict").status(), StatusCode::CONFLICT);
+        assert_eq!(
+            Problem::unprocessable_entity("invalid").status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
+            Problem::too_many_requests("slow down").status(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        assert_eq!(
+            Problem::internal("boom").status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            Problem::service_unavailable("later").status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    #[allow(clippy::result_large_err)]
+    fn question_mark_turns_any_error_into_a_500_problem() {
+        fn fail() -> Result<(), Problem> {
+            Err(std::io::Error::other("storage failed"))?;
+            Ok(())
+        }
+
+        let problem = fail().expect_err("the error converts");
+        assert_eq!(problem.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(problem.title, "Internal Server Error");
+        assert!(
+            problem
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("storage failed"))
+        );
+    }
 }

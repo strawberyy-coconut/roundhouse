@@ -13,14 +13,19 @@ pub mod engine;
 #[cfg(not(feature = "schema-engine"))]
 #[path = "engine_disabled.rs"]
 pub mod engine;
+pub mod params;
+#[cfg(feature = "contract")]
 pub mod schema;
 pub mod validate;
 
 #[cfg(feature = "schema-engine")]
 pub use jsonschema;
-pub use schema::{ApiSchema, Claim, Components, Params, PartsDoc, RefOr, Schema, SchemaContext};
+pub use params::{Params, ValidateHook};
+#[cfg(feature = "contract")]
+pub use schema::{ApiSchema, Claim, Components, ParamsDoc, PartsDoc, RefOr, Schema, SchemaContext};
 
 /// OpenAPI parameter serialization style.
+#[cfg(feature = "contract")]
 pub type ParamStyle = schema::ParameterStyle;
 pub use validate::{ValidationError, ValidationErrors, pointer};
 
@@ -45,6 +50,7 @@ impl ParamIn {
 }
 
 /// One documented request parameter.
+#[cfg(feature = "contract")]
 #[derive(Clone)]
 pub struct Param {
     pub name: String,
@@ -58,6 +64,7 @@ pub struct Param {
     pub explode: Option<bool>,
 }
 
+#[cfg(feature = "contract")]
 impl Param {
     pub fn new(
         name: impl Into<String>,

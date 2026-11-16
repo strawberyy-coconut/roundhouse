@@ -44,27 +44,17 @@ mod things {
     }
 
     /// @summary: Create a thing.
-    #[handler]
-    pub async fn create() -> CreatedOrMissing {
-        CreatedOrMissing::Created(Json(Thing { id: 1 }))
+    /// @response 201: The thing was created.
+    /// @response 404: The thing was missing.
+    #[handler(response(404))]
+    pub async fn create() -> Created<Thing> {
+        Created(Thing { id: 1 })
     }
 
     /// @summary: Delete a thing.
     #[handler(response(204))]
     pub async fn destroy() -> axum::http::StatusCode {
         axum::http::StatusCode::NO_CONTENT
-    }
-
-    #[allow(dead_code)]
-    #[derive(ApiResponse)]
-    pub enum CreatedOrMissing {
-        /// @description: The thing was created.
-        #[status(201)]
-        Created(Json<Thing>),
-
-        /// @description: The thing was missing.
-        #[status(404)]
-        Missing,
     }
 
     routes! {
@@ -346,19 +336,10 @@ mod described {
         pub id: u64,
     }
 
-    #[allow(dead_code)]
-    #[derive(ApiResponse)]
-    pub enum Outcome {
-        #[status(200)]
-        Found(Json<SchemaThing>),
-        #[status(404)]
-        Missing,
-    }
-
     /// @summary: Use the schema description.
-    #[handler]
-    pub async fn found() -> Outcome {
-        Outcome::Found(Json(SchemaThing { id: 1 }))
+    #[handler(response(404))]
+    pub async fn found() -> Json<SchemaThing> {
+        Json(SchemaThing { id: 1 })
     }
 
     #[handler(response_description(200, "A route-specific description."))]
@@ -383,7 +364,7 @@ fn collection_responses_inherit_the_element_description() {
 }
 
 #[test]
-fn an_api_response_variant_inherits_the_body_type_description() {
+fn a_json_response_inherits_the_body_type_description() {
     let document = document(&described::MODULE);
     assert_eq!(
         document["paths"]["/described/found"]["get"]["responses"]["200"]["description"],

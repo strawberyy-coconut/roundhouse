@@ -59,18 +59,20 @@ impl DocumentBuild<'_> {
             builder = builder.tags(Some(tags));
         }
         for part in &docs.parts {
-            self.parts.push(((part.type_id)(), (part.schema)(context)));
+            let schema = (part.schema)(context);
+            self.parts_named
+                .insert((part.type_name)().to_string(), schema);
         }
         if let Some(body) = docs.body {
             if route.record.validation.validates_body()
-                && let Some(body_type) = docs.body_type
+                && let Some(body_type_name) = docs.body_type_name
             {
-                let type_id = body_type();
-                self.route_bodies.insert(
+                let name = (body_type_name)().to_string();
+                self.route_body_names.insert(
                     route.operation_id.clone(),
-                    (type_id, body.content_type.clone()),
+                    (name.clone(), body.content_type.clone()),
                 );
-                self.bodies.push((type_id, body.schema.clone()));
+                self.bodies_named.insert(name, body.schema.clone());
             }
             builder = builder.request_body(Some(build_body(body)));
         }
@@ -298,6 +300,19 @@ impl DocumentBuild<'_> {
         route: &ResolvedRoute,
         docs: &mut OperationDoc,
     ) -> Result<(BTreeMap<u16, ResponseDoc>, bool), BuildError> {
+        // An unknown outcome is a conservative `default Problem`; it is only acceptable when the
+        // author acknowledged it explicitly.
+        let unknown = docs.has_unknown_response();
+        let unknown_acknowledged = route.record.unverified.is_some()
+            || docs
+                .declared_responses
+                .iter()
+                .any(|response| response.status == 0)
+            || docs
+                .response_descriptions
+                .iter()
+                .any(|(status, _)| *status == 0);
+
         let mut responses: BTreeMap<u16, ResponseDoc> = BTreeMap::new();
         let failures = if self.include_rejections {
             std::mem::take(&mut docs.failures)
@@ -326,7 +341,7 @@ impl DocumentBuild<'_> {
             // A bare status (`response(200)`) declares the status as a success response. When the
             // handler already inferred a response for that status, keep the inferred shape: the
             // declaration is an assertion, not a replacement. This is what lets a `Result` alias
-            // keep the compile-time success guarantee without repeating the body type.
+            // keep the declared success without repeating the body type.
             let bare = response.schema.is_none() && response.content_type.is_none();
             if bare && responses.contains_key(&response.status) {
                 continue;
@@ -393,9 +408,50 @@ impl DocumentBuild<'_> {
             }
         }
 
-        if !responses
-            .keys()
-            .any(|status| *status == 0 || (200..400).contains(status))
+        for (status, response) in responses.iter_mut() {
+            if let Some(default) = self.response_defaults.get(status) {
+                let canonical = if *status == 0 {
+                    "Default Response"
+                } else {
+                    crate::doc::canonical_reason(*status)
+                };
+                if response.description == canonical {
+                    response.description = default.clone();
+                }
+            }
+        }
+
+        if unknown && !unknown_acknowledged {
+            if self.strict {
+                return Err(BuildError::UnknownResponse {
+                    operation_id: route.operation_id.clone(),
+                    source: route.record.source_ref(),
+                });
+            }
+            self.diagnostics.push(Diagnostic::new(
+                route.record.source_ref(),
+                format!(
+                    "operation `{}` has an outcome inference could not classify; add \
+                     `@response default: ...` or acknowledge it with `unverified = \"reason\"`",
+                    route.operation_id
+                ),
+            ));
+        }
+
+        if self.allow_undeclared_success
+            && !responses
+                .keys()
+                .any(|status| *status == 0 || (200..400).contains(status))
+        {
+            // Discovery needs a document-shaped placeholder; the strict pass replaces it with
+            // the inferred success before validation.
+            responses.insert(0, ResponseDoc::default_response());
+        }
+
+        if !self.allow_undeclared_success
+            && !responses
+                .keys()
+                .any(|status| *status == 0 || (200..400).contains(status))
         {
             return Err(BuildError::UndeclaredSuccess {
                 operation_id: route.operation_id.clone(),

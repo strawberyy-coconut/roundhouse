@@ -37,8 +37,8 @@ exists to keep that path honest.
 | `roundhouse-macros` | `roundhouse-macros-core`, `proc-macro2` | no |
 | `roundhouse-macros-core` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate`, path | no |
 | `roundhouse-path` | `matchit` | no |
-| `roundhouse-schema` | serde, utoipa, jsonschema (optional) | no |
-| `roundhouse-problem` | axum (no default features), http, schema, utoipa | yes |
+| `roundhouse-schema` | serde, jsonschema (optional), utoipa (contract feature only) | no |
+| `roundhouse-problem` | axum (no default features), http, schema, utoipa (contract feature only) | yes |
 | `roundhouse-multipart` | axum (multipart only), problem, schema | yes |
 
 The arrows only point one way: `schema` → `problem` → `multipart` → `roundhouse`, and
@@ -69,9 +69,9 @@ part that travels; the rest is axum-shaped on purpose.
 `roundhouse-macros` is a normal dependency, not an optional feature. Runtime capabilities are
 feature-gated; the authoring model is not.
 
-A `--no-default-features` build still exposes `routes!`, `#[handler]`, the derives and the
-document builder. What it loses is the schema engine and the server runtime. There is no
-supported macro-free way to declare a route: `Module::from_spec`/`RouteRecord::from_spec` and
+A `--no-default-features` build still exposes `routes!`, `#[handler]` and the runtime derives.
+What it loses is the schema engine, the server runtime and the document builder (the `contract`
+feature). There is no supported macro-free way to declare a route: `Module::from_spec`/`RouteRecord::from_spec` and
 their `ModuleSpec`/`RouteSpec` inputs are public only because macro expansions in other crates
 need to call them.
 
@@ -86,29 +86,32 @@ extractor types are policy helpers that compose axum rather than replace it:
 - `Strict<T>` — enforces the operation's schema during extraction.
 
 `Created<T>` and `NoContent` are response wrappers, not a second response model: they implement
-axum's `IntoResponse` and roundhouse's `ApiResponse`. `ApiSchema::description` is a defaulted trait
-method, so adding it does not break downstream implementors, and no new crate or dependency is
-introduced.
+axum's `IntoResponse`, and with `contract` they also feed the internal response documentation.
+`ApiSchema::description` is a defaulted trait method, so adding it does not break downstream
+implementors, and no new crate or dependency is introduced.
 
 A handler can therefore use `axum::extract::Path` directly and still be documented and
 validated.
 
 ### utoipa is an implementation detail
 
-Application code writes `#[roundhouse::schema]` and `#[roundhouse(..)]`. The facade still depends
-on utoipa for schema derivation, but the supported integration surface is `roundhouse::interop`;
-`ToSchema`, `PartialSchema`, `Components` and the `utoipa` crate are re-exported there explicitly.
+Application code writes `#[roundhouse::schema]` and `#[roundhouse(..)]`. Schema derivation and
+the document builder are gated behind the `contract` feature, so a production build has no utoipa
+in its dependency graph. The supported integration surface for projects that share utoipa types is
+`roundhouse::interop`, available whenever `contract` is on; `ToSchema`, `PartialSchema`,
+`Components` and the `utoipa` crate are re-exported there explicitly.
 
-One mechanical exception exists: utoipa's derive expands to bare `utoipa::` paths. To make
-`#[roundhouse::schema]` work without forcing every application to depend on utoipa, the prelude
-keeps `#[doc(hidden)]` re-exports of `utoipa`, `ToSchema` and `PartialSchema`. They are plumbing,
-not API, and are deliberately absent from the generated documentation. If utoipa gains a
-crate-path attribute (or the shape derivation moves in-house), the hidden re-exports and the
-`__private::utoipa` path in generated code can be removed together.
+The generated schema impls are wrapped in `__roundhouse_contract_code!`, and the injected
+`ToSchema` derive is emitted through `__roundhouse_schema_item!`. Without `contract` both expand
+to nothing (or to the runtime-only `ApiSchema`/`ValidateHook` impl), so the derive tokens are
+never resolved against a missing utoipa. The hidden `__private::utoipa` re-export is therefore
+contract-only, not a permanent part of the runtime surface.
 
 ## Feature policy
 
-The default feature set is `schema-engine` + `serve` + `swagger`.
+The default feature set is `schema-engine` + `serve` + `swagger`. `contract` is opt-in for
+applications that build a document; the generated `target/roundhouse` harness enables it for the
+contract build.
 
 | Feature | Enables | Why it is optional |
 |---|---|---|
@@ -117,6 +120,8 @@ The default feature set is `schema-engine` + `serve` + `swagger`.
 | `multipart` | `Multipart<F>`, `FilePart`, and axum's multipart support | Pulls in `roundhouse-multipart` and `multer` |
 | `multipart-tempfile` | `TempFile` (implies `multipart`) | Pulls in `tempfile` |
 | `swagger` | Vendored Swagger UI assets for local `App::docs()` and `App::swagger()` (default) | Adds ~1.6 MB of embedded assets to the binary; disable it to use the unpkg UI |
+| `contract-runtime` | `ContractBundle`, `include_contract!`, `App::contract`, `contract.json` request plans and verbatim `openapi.json` serving (`openapi_route`) | Pulls in the schema engine; no utoipa |
+| `contract` | Schema derivation, the document builder and `App::docs`/`App::openapi` (implies `contract-runtime`) | Pulls in utoipa and the doc build; only the contract harness or a docs build needs it |
 | `uuid`, `chrono`, `time`, `jiff`, `decimal` | Schema support for those types | Forwarded to `roundhouse-schema` and utoipa |
 
 Two details are consequences of axum's own feature layout:
@@ -131,14 +136,16 @@ The result is the intended dependency shape:
 
 ```text
 cargo tree -p roundhouse --no-default-features
-  axum, axum-core, utoipa, roundhouse-path, matchit
+  axum, axum-core, roundhouse-path, matchit
 
 cargo tree -p roundhouse --no-default-features --features serve
   axum, hyper, hyper-util, tokio, tracing, roundhouse-path, matchit
 ```
 
-The no-default build must not pull in tokio, hyper, tracing, `jsonschema` or `regex`. CI checks
-this through the feature matrix in `.github/workflows/ci.yml`.
+The no-default build must not pull in tokio, hyper, tracing, `jsonschema`, `regex` or `utoipa`.
+`tests/fixtures/production` is a real app compiled without `contract`; CI asserts that
+`cargo tree -p production-fixture` contains no utoipa, and the feature matrix in
+`.github/workflows/ci.yml` exercises the optional capability surface.
 
 ## Decisions
 

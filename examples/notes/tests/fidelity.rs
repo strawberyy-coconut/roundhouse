@@ -156,7 +156,10 @@ async fn outcomes_and_infrastructure_are_documented_separately() {
         responses["404"]["description"],
         "The requested note does not exist."
     );
-    assert!(responses["500"].is_object());
+    assert!(
+        responses.get("500").is_none(),
+        "the in-memory read path has no infrastructure failure: {responses}"
+    );
     assert!(
         responses.get("422").is_none(),
         "the read endpoint cannot produce a 422: {responses}"

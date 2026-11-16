@@ -1,0 +1,63 @@
+{
+  "info": {
+    "title": "Layers API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/entry/ok": {
+      "get": {
+        "operationId": "get_layers_example_routes_entry_ok",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain; charset=utf-8": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "A route with its own entry layer"
+      }
+    },
+    "/full/ok": {
+      "get": {
+        "operationId": "get_layers_example_routes_full_ok",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain; charset=utf-8": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "A route under a full module layer"
+      }
+    },
+    "/route-layer/ok": {
+      "get": {
+        "operationId": "get_layers_example_routes_route_layer_ok",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain; charset=utf-8": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "A route under a route_layer module"
+      }
+    }
+  }
+}

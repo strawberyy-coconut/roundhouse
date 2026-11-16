@@ -90,7 +90,7 @@ pub(super) fn merge_response(
             }
             if response.status >= 400 {
                 // Two shapes for one status is a lie; collapse to Problem, which is what every
-                // extractor and ApiError produce.
+                // extractor and the error response produce.
                 responses.insert(
                     response.status,
                     ResponseDoc::problem(

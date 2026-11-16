@@ -50,7 +50,29 @@ jobs:
       - run: cargo check -p roundhouse --no-default-features --features schema-engine
       - run: cargo check -p roundhouse --no-default-features --features serve
       - run: cargo check -p roundhouse --no-default-features --features multipart
+      - run: cargo check -p roundhouse --no-default-features --features contract-runtime
+      - run: cargo check -p roundhouse --no-default-features --features contract
       - run: cargo check -p roundhouse-multipart
+      # The committed contract bins and artifacts must match the handlers. This is the CI gate the
+      # build-time workflow is designed around.
+      - run: cargo build -p roundhouse-cli --bin cargo-roundhouse
+      - run: |
+          export PATH="$PWD/target/debug:$PATH"
+          for example in notes layers uploads auth quickstart; do
+            (cd "examples/$example" && cargo roundhouse check)
+          done
+      # The production fixture is built without the contract feature: its graph must not contain
+      # utoipa, and the runtime must still compile routes and handlers.
+      - run: "! cargo tree -p production-fixture -e normal | grep -i utoipa"
+      # The examples consume committed contracts through `contract-runtime`; only their dev
+      # builds enable the document builder.
+      - run: |
+          for package in notes-example layers-example uploads-example auth-example quickstart-example; do
+            if cargo tree -p "$package" -e normal | grep -i utoipa; then
+              echo "$package pulls utoipa into its production build" >&2
+              exit 1
+            fi
+          done
       - run: cargo test --workspace --all-features
       - run: cargo doc --workspace --no-deps
         env:

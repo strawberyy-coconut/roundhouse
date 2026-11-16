@@ -5,9 +5,13 @@
 //! a client needs exactly one parser. A `Result<_, Problem>` therefore documents a `default`
 //! response instead of only its success status.
 
-pub use roundhouse_problem::{Problem, problem_schema, problem_schema_ref, problem_value};
+pub use roundhouse_problem::Problem;
+pub use roundhouse_problem::problem_value;
+#[cfg(feature = "contract")]
+pub use roundhouse_problem::{problem_schema, problem_schema_ref};
 
-impl crate::doc::ApiResponse for Problem {
+#[cfg(feature = "contract")]
+impl crate::doc::ResponseDocSource for Problem {
     const SUCCESS: &'static [u16] = &[];
 
     /// `Problem` is the framework's default error type, so it contributes a `default` response

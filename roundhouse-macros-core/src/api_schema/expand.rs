@@ -67,51 +67,55 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
     };
 
     Ok(quote! {
-        impl #impl_generics #krate::doc::ApiSchema for #ident #ty_generics #where_clause {
-            fn schema() -> #krate::__private::utoipa::openapi::RefOr<
-                #krate::__private::utoipa::openapi::schema::Schema,
-            > {
-                #krate::doc::schema::r#ref(
-                    <Self as #krate::__private::utoipa::ToSchema>::name().into_owned(),
-                )
-            }
-
-            fn description() -> ::core::option::Option<&'static str> {
-                #description
-            }
-
-            fn register(
-                context: &mut dyn #krate::doc::SchemaContext,
-            ) {
-                let name = <Self as #krate::__private::utoipa::ToSchema>::name().into_owned();
-                match context.claim(&name, ::core::any::type_name::<Self>()) {
-                    #krate::doc::Claim::Already
-                    | #krate::doc::Claim::Collision => return,
-                    #krate::doc::Claim::Claimed
-                    | #krate::doc::Claim::Inactive => {}
-                }
-                if context.components().schemas.contains_key(&name) {
-                    return;
-                }
-                // Break recursive registration: a field that points back at this type sees the
-                // placeholder and stops before the real schema is inserted below.
-                context.components().schemas.insert(
-                    name.clone(),
-                    #krate::doc::schema::any_value(),
-                );
-                #(#register_calls)*
-                let mut schema = <Self as #krate::__private::utoipa::PartialSchema>::schema();
-                #container_description
-                #(#patches)*
-                context.components().schemas.insert(name, schema);
-            }
-
+        impl #impl_generics #krate::doc::ValidateHook for #ident #ty_generics #where_clause {
             fn validate_at(
                 &self,
                 pointer: &str,
                 errors: &mut #krate::validate::ValidationErrors,
             ) {
                 #validate_body
+            }
+        }
+
+        #krate::__roundhouse_contract_code! {
+            impl #impl_generics #krate::doc::ApiSchema for #ident #ty_generics #where_clause {
+                fn schema() -> #krate::__private::utoipa::openapi::RefOr<
+                    #krate::__private::utoipa::openapi::schema::Schema,
+                > {
+                    #krate::doc::schema::r#ref(
+                        <Self as #krate::__private::utoipa::ToSchema>::name().into_owned(),
+                    )
+                }
+
+                fn description() -> ::core::option::Option<&'static str> {
+                    #description
+                }
+
+                fn register(
+                    context: &mut dyn #krate::doc::SchemaContext,
+                ) {
+                    let name = <Self as #krate::__private::utoipa::ToSchema>::name().into_owned();
+                    match context.claim(&name, ::core::any::type_name::<Self>()) {
+                        #krate::doc::Claim::Already
+                        | #krate::doc::Claim::Collision => return,
+                        #krate::doc::Claim::Claimed
+                        | #krate::doc::Claim::Inactive => {}
+                    }
+                    if context.components().schemas.contains_key(&name) {
+                        return;
+                    }
+                    // Break recursive registration: a field that points back at this type sees the
+                    // placeholder and stops before the real schema is inserted below.
+                    context.components().schemas.insert(
+                        name.clone(),
+                        #krate::doc::schema::any_value(),
+                    );
+                    #(#register_calls)*
+                    let mut schema = <Self as #krate::__private::utoipa::PartialSchema>::schema();
+                    #container_description
+                    #(#patches)*
+                    context.components().schemas.insert(name, schema);
+                }
             }
         }
     })

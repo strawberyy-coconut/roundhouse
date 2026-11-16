@@ -12,18 +12,12 @@ pub struct Thing {
     pub id: u64,
 }
 
-#[derive(Debug, thiserror::Error, ApiError)]
-pub enum NoteError {
-    #[error("not found")]
-    #[status(404)]
-    NotFound,
-}
-
-type ApiResult<T> = Result<T, NoteError>;
+type ApiResult<T> = Result<T, Problem>;
 mod aliased {
     use super::*;
 
-    #[handler(response(200))]
+    #[allow(clippy::result_large_err)]
+    #[handler(response(404))]
     pub async fn show() -> ApiResult<Json<Thing>> {
         Ok(Json(Thing { id: 1 }))
     }

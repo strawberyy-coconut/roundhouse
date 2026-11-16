@@ -336,20 +336,24 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
                 ::core::result::Result::Ok(Self { #(#constructor_fields),* })
             }
 
-            fn schema(
-                context: &mut dyn #krate::doc::SchemaContext,
-            ) -> #krate::__private::utoipa::openapi::RefOr<
-                #krate::__private::utoipa::openapi::schema::Schema,
-            > {
-                #(#registers)*
-                let mut builder = #krate::multipart::schema_object();
-                #(#properties)*
-                #(#required)*
-                builder.into()
-            }
-
             fn deny_unknown() -> bool {
                 #deny_unknown
+            }
+        }
+
+        #krate::__roundhouse_contract_code! {
+            impl #krate::multipart::MultipartDoc for #ident {
+                fn schema(
+                    context: &mut dyn #krate::doc::SchemaContext,
+                ) -> #krate::__private::utoipa::openapi::RefOr<
+                    #krate::__private::utoipa::openapi::schema::Schema,
+                > {
+                    #(#registers)*
+                    let mut builder = #krate::multipart::schema_object();
+                    #(#properties)*
+                    #(#required)*
+                    builder.into()
+                }
             }
         }
     })

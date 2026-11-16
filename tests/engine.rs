@@ -232,7 +232,7 @@ async fn response_validation_uses_the_engine_keywords() {
     let app = App::new(State)
         .include(&lying::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Engine", "0.1.0"))
-        .validate_responses()
+        .verify_responses()
         .build();
     let response = app.oneshot_get("/lying/x").await;
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -245,7 +245,7 @@ async fn response_validation_uses_the_engine_keywords() {
         value["detail"]
             .as_str()
             .unwrap()
-            .contains("response validation failed")
+            .contains("response verification failed")
     );
 }
 
@@ -254,7 +254,7 @@ async fn response_validation_checks_an_openapi_default_response() {
     let app = App::new(State)
         .include(&dynamic_lying::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Engine", "0.1.0"))
-        .validate_responses()
+        .verify_responses()
         .build();
     let response = app.oneshot_get("/dynamic-lying/x").await;
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -275,7 +275,7 @@ fn validate_with_is_published_and_runs_after_the_schema() {
     let checked = Checked {
         value: "not ok".to_string(),
     };
-    assert!(checked.validate().is_err());
+    assert!(roundhouse::doc::ValidateHook::validate(&checked).is_err());
 }
 
 #[test]

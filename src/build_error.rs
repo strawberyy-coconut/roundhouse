@@ -152,6 +152,15 @@ pub enum BuildError {
     InvalidDocument { message: String },
     /// The emitted document could not be compiled into a validator.
     SchemaCompilation { message: String },
+    /// Inference found a return path whose status/body it could not classify.
+    UnknownResponse {
+        operation_id: String,
+        source: Source,
+    },
+    /// Request validation is enabled but the build has no contract artifact.
+    MissingContract,
+    /// The embedded contract artifact is unreadable or uses an unsupported layout version.
+    InvalidContract { message: String },
     /// `App::strict()` promoted a warning into an error.
     Diagnostic { message: String, source: Source },
 }
@@ -304,6 +313,27 @@ impl fmt::Display for BuildError {
                  hint: declare the crate-wide state once with `roundhouse::app_state!(Type)` at the \
                  crate root, or set `state = ...` on the `routes!` table that declares this route. \
                  `state = infer` restores per-handler inference"
+            ),
+            BuildError::UnknownResponse {
+                operation_id,
+                source,
+            } => write!(
+                f,
+                "error: operation `{operation_id}` has an outcome inference could not classify\n  \
+                 {source}\n\
+                 hint: add `/// @response default: ...` (or a typed `response(default, ..)`), or \
+                 acknowledge it with `unverified = \"reason\"` on the route"
+            ),
+            BuildError::MissingContract => write!(
+                f,
+                "error: request validation is enabled but no contract is available\n\
+                 hint: run `cargo roundhouse prepare`, commit `.roundhouse/`, and build with \
+                 `.contract(roundhouse::include_contract!())`; or disable validation with \
+                 `App::validation(Validation::Off)`"
+            ),
+            BuildError::InvalidContract { message } => write!(
+                f,
+                "error: the embedded contract cannot be used\n  {message}"
             ),
             BuildError::EmptyApp => write!(
                 f,

@@ -1,0 +1,1323 @@
+{
+  "contract_version": 1,
+  "diagnostics": [],
+  "generator_version": "0.4.0",
+  "kind": "roundhouse.contract",
+  "openapi": "openapi.json",
+  "operations": [
+    {
+      "deprecated": false,
+      "handler": "admin",
+      "hidden": false,
+      "method": "GET",
+      "module": "auth_example::routes",
+      "operation_id": "get_auth_example_routes_admin",
+      "path": "/admin",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Unauthorized",
+          "provenance": "declared",
+          "status": 401
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Forbidden",
+          "provenance": "declared",
+          "status": 403
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Error",
+          "provenance": "declared",
+          "status": 0
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/auth/src/routes/mod.rs",
+        "line": 30,
+        "module": "auth_example::routes"
+      },
+      "tags": [
+        "auth"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "whoami",
+      "hidden": false,
+      "method": "GET",
+      "module": "auth_example::routes",
+      "operation_id": "get_auth_example_routes_whoami",
+      "path": "/guarded/whoami",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Unauthorized",
+          "provenance": "declared",
+          "status": 401
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Forbidden",
+          "provenance": "declared",
+          "status": 403
+        }
+      ],
+      "security": [
+        "bearer"
+      ],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/auth/src/routes/mod.rs",
+        "line": 39,
+        "module": "auth_example::routes"
+      },
+      "tags": [
+        "auth"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "optional",
+      "hidden": false,
+      "method": "GET",
+      "module": "auth_example::routes",
+      "operation_id": "get_auth_example_routes_optional",
+      "path": "/optional",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/auth/src/routes/mod.rs",
+        "line": 26,
+        "module": "auth_example::routes"
+      },
+      "tags": [
+        "auth"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "private",
+      "hidden": false,
+      "method": "GET",
+      "module": "auth_example::routes",
+      "operation_id": "get_auth_example_routes_private",
+      "path": "/private",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Unauthorized",
+          "provenance": "declared",
+          "status": 401
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Forbidden",
+          "provenance": "declared",
+          "status": 403
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/auth/src/routes/mod.rs",
+        "line": 14,
+        "module": "auth_example::routes"
+      },
+      "tags": [
+        "auth"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "project",
+      "hidden": false,
+      "method": "GET",
+      "module": "auth_example::routes",
+      "operation_id": "get_auth_example_routes_project",
+      "path": "/projects/{project_id}",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Bad Request",
+          "provenance": "declared",
+          "status": 400
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Unauthorized",
+          "provenance": "declared",
+          "status": 401
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Forbidden",
+          "provenance": "declared",
+          "status": 403
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Error",
+          "provenance": "declared",
+          "status": 0
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/auth/src/routes/mod.rs",
+        "line": 34,
+        "module": "auth_example::routes"
+      },
+      "tags": [
+        "auth"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "public",
+      "hidden": false,
+      "method": "GET",
+      "module": "auth_example::routes",
+      "operation_id": "get_auth_example_routes_public",
+      "path": "/public",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/auth/src/routes/mod.rs",
+        "line": 10,
+        "module": "auth_example::routes"
+      },
+      "tags": [
+        "auth"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "scoped",
+      "hidden": false,
+      "method": "GET",
+      "module": "auth_example::routes",
+      "operation_id": "get_auth_example_routes_scoped",
+      "path": "/scoped",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Unauthorized",
+          "provenance": "declared",
+          "status": 401
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Forbidden",
+          "provenance": "declared",
+          "status": 403
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/auth/src/routes/mod.rs",
+        "line": 18,
+        "module": "auth_example::routes"
+      },
+      "tags": [
+        "auth"
+      ],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "write",
+      "hidden": false,
+      "method": "GET",
+      "module": "auth_example::routes",
+      "operation_id": "get_auth_example_routes_write",
+      "path": "/write",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Message"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Unauthorized",
+          "provenance": "declared",
+          "status": 401
+        },
+        {
+          "content": {
+            "application/problem+json": {
+              "schema": {
+                "properties": {
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "errors": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "limit": {},
+                        "message": {
+                          "type": "string"
+                        },
+                        "pointer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pointer",
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "instance": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "maximum": 599,
+                    "minimum": 100,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "Forbidden",
+          "provenance": "declared",
+          "status": 403
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/auth/src/routes/mod.rs",
+        "line": 22,
+        "module": "auth_example::routes"
+      },
+      "tags": [
+        "auth"
+      ],
+      "validation": "schema"
+    }
+  ],
+  "validation": {
+    "bodies": {
+      "ops": {},
+      "types": {}
+    },
+    "defs": {
+      "Message": {
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      }
+    },
+    "parts": {
+      "types": {
+        "auth_example::routes::protected::ProjectPath": {
+          "properties": {
+            "project_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "project_id"
+          ],
+          "type": "object"
+        }
+      }
+    }
+  }
+}

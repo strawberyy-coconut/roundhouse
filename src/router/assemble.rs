@@ -1,8 +1,8 @@
-use std::any::TypeId;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Router;
+#[cfg(feature = "contract-runtime")]
 use axum::handler::Handler;
 use axum::response::{IntoResponse, Response};
 use axum::routing::MethodRouter;
@@ -13,6 +13,13 @@ use crate::registry::{Module, RouteRecord, ValidationPolicy};
 
 use super::app::ValidationDefaults;
 use super::built::ResolvedRoute;
+
+/// The raw-body middleware state: engine, operation id and the request body limit.
+type JsonBodyState = (
+    Arc<roundhouse_schema::engine::SchemaEngine>,
+    String,
+    Option<usize>,
+);
 
 pub(super) fn merge_router(
     router: Router<()>,
@@ -33,6 +40,7 @@ pub(super) fn merge_router(
     }
 }
 
+#[cfg(feature = "contract-runtime")]
 pub(super) fn add_get_route<H, T>(
     router: Router<()>,
     path: &str,
@@ -69,6 +77,7 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     }
 }
 
+#[cfg(feature = "contract-runtime")]
 pub(super) fn docs_html(spec_path: &str) -> String {
     format!(
         r##"<!doctype html>
@@ -102,7 +111,7 @@ pub(super) struct SwaggerAsset {
     pub(super) content_type: &'static str,
 }
 
-#[cfg(feature = "swagger")]
+#[cfg(all(feature = "swagger", feature = "contract-runtime"))]
 pub(super) const SWAGGER_ASSETS: &[SwaggerAsset] = &[
     SwaggerAsset {
         name: "swagger-ui.css",
@@ -160,7 +169,7 @@ pub(super) fn swagger_html(spec_path: &str, swagger_path: &str) -> String {
 }
 
 /// Register the vendored Swagger UI page and its assets.
-#[cfg(feature = "swagger")]
+#[cfg(all(feature = "swagger", feature = "contract-runtime"))]
 pub(super) fn add_swagger_routes(
     router: Router<()>,
     spec_path: &str,
@@ -233,7 +242,6 @@ pub(super) fn build_method_router<S>(
     state: &S,
     engine: Option<&Arc<roundhouse_schema::engine::SchemaEngine>>,
     max_body: Option<usize>,
-    route_bodies: &BTreeMap<String, (TypeId, String)>,
 ) -> Result<MethodRouter<()>, BuildError>
 where
     S: Clone + Send + Sync + 'static,
@@ -284,17 +292,17 @@ where
     }
     if record.validation.validates_body()
         && let Some(engine) = engine
-        && let Some(type_id) = route_bodies
-            .get(&route.operation_id)
-            .filter(|(_, content_type)| {
-                content_type == "application/json" || content_type.ends_with("+json")
-            })
-            .map(|(type_id, _)| *type_id)
     {
-        method_router = method_router.layer(axum::middleware::from_fn_with_state(
-            (engine.clone(), type_id, max_body),
-            validate_json_body,
-        ));
+        // The contract plan names the required content type for each operation.
+        let content_type = engine.contract_body_content_type(&route.operation_id);
+        if content_type.is_some_and(|content_type| {
+            content_type == "application/json" || content_type.ends_with("+json")
+        }) {
+            method_router = method_router.layer(axum::middleware::from_fn_with_state(
+                (engine.clone(), route.operation_id.clone(), max_body),
+                validate_json_body,
+            ));
+        }
     }
     if let Some(layer) = record.layer {
         method_router = layer(method_router);
@@ -318,11 +326,7 @@ where
 /// the same bytes the client sent, and the request is rebuilt for the extractor. Malformed JSON is
 /// also turned into a `Problem` here, so the body rejection stays one shape.
 async fn validate_json_body(
-    axum::extract::State((engine, type_id, max_body)): axum::extract::State<(
-        Arc<roundhouse_schema::engine::SchemaEngine>,
-        TypeId,
-        Option<usize>,
-    )>,
+    axum::extract::State((engine, operation_id, max_body)): axum::extract::State<JsonBodyState>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
@@ -370,7 +374,7 @@ async fn validate_json_body(
             .into_response();
         }
     };
-    if let Some(Err(errors)) = engine.validate_type(type_id, &value) {
+    if let Some(Err(errors)) = engine.validate_contract_body(&operation_id, &value) {
         return Problem::from_validation_with_status(errors, state.status).into_response();
     }
 

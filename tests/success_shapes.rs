@@ -41,15 +41,9 @@ mod shapes {
         "/redirect" => { get(redirect, operation_id = "shape_redirect") },
     }
 
-    #[derive(ApiResponse)]
-    pub enum Redirect {
-        #[status(304)]
-        NotModified,
-    }
-
-    #[handler]
-    pub async fn redirect() -> Redirect {
-        Redirect::NotModified
+    #[handler(response(304))]
+    pub async fn redirect() -> StatusCode {
+        StatusCode::NOT_MODIFIED
     }
 
     #[handler]
@@ -104,7 +98,7 @@ mod shapes {
         }))
     }
 
-    /// Compiles as `IntoResponse`, but roundhouse has no `ApiResponse` impl for it, so the build
+    /// Compiles as `IntoResponse`, but roundhouse has no built-in response doc for it, so the build
     /// must require a declaration instead of guessing a status.
     pub mod parts_tuple {
         use super::*;
@@ -131,7 +125,6 @@ fn app() -> roundhouse::Built {
 
 #[test]
 fn redirect_statuses_count_as_success() {
-    assert_eq!(shapes::Redirect::SUCCESS, &[304]);
     let document = serde_json::to_value(app().document()).unwrap();
     assert!(document["paths"]["/shapes/redirect"]["get"]["responses"]["304"].is_object());
 }

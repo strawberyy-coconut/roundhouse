@@ -161,7 +161,7 @@ tagged module is usually a mistake.
 5. The fallback is a JSON `404 Problem`, and `method_not_allowed_fallback` answers `405` with
    the same shape instead of axum's empty body.
 6. `App::merge` routers and the document/docs/Swagger routes are added; the `405` fallback,
-   `App::max_body`, `App::validate_responses`, the validation-config middleware and global
+   `App::max_body`, `App::verify_responses`, the validation-config middleware and global
    layers are applied.
 
 The resulting layer order, from outermost to innermost, is:
@@ -169,7 +169,7 @@ The resulting layer order, from outermost to innermost, is:
 ```text
 App global layers
   validation config (sets ValidationState + engine)
-    response validation (opt-in)
+    response verification (opt-in)
       module layers (outer module → inner module)
         auth guard
           entry layer

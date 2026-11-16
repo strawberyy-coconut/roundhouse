@@ -1,0 +1,200 @@
+# The build-time contract
+
+**Status: implemented for 0.4.** This note describes the contract compiler as it exists in the
+tree. `MIGRATING-0.4.md` is the user-facing guide; the rework plan records the design history.
+
+## Shape
+
+```text
+routes! + #[handler] + #[roundhouse::schema]
+        │
+        ├─ target/roundhouse/harness              generated per prepare/check
+        │     calls <crate>::__roundhouse_contract() from api!
+        │
+        ├─ cargo roundhouse prepare
+        │     discovery build → source inference → strict build
+        │
+        ▼
+  .roundhouse/contract.json      runtime: operations, request plans, response table, $defs
+  .roundhouse/openapi.json       docs: OpenAPI 3.1 projection
+        │
+        ▼
+  contract-runtime               ContractBundle, request validation, verify, verbatim serving
+```
+
+`contract.json` is the runtime artifact. `openapi.json` is the documentation artifact. They are
+siblings written by one `prepare` run and committed together.
+
+## Features
+
+| Feature | Adds | utoipa |
+|---|---|---|
+| `contract-runtime` | `ContractBundle`, `include_contract!`, `App::contract`, `contract.json` request validation, `App::verify_responses`, static docs/`openapi.json` serving | no |
+| `contract` | Schema derivation, the document builder, `App::openapi`, `App::document` hooks, `roundhouse::openapi`/`interop` (implies `contract-runtime`) | yes |
+
+The harness depends on the application crate and on `roundhouse` with the `contract` feature.
+Feature unification makes the application's `api!` block visible for that build only, and its
+target directory is `target/roundhouse`. Nothing outside `target/` and `.roundhouse/` is written,
+so there is no generated bin, no generated feature and no `Cargo.toml` edit. A production
+application depends on `roundhouse` with `contract-runtime` only.
+
+## Authoring surface
+
+```rust
+roundhouse::api! {
+    state = AppState,
+    title = "Notes API",
+    version = env!("CARGO_PKG_VERSION"),
+    root = routes::MODULE,
+    servers = ["https://api.example.com"],
+    register = [PrivateResponseBody],
+    response_defaults = {
+        401 => "Authentication is required.",
+        500 => "An unexpected server error occurred.",
+    },
+}
+```
+
+`api!` is a proc macro. It validates the option names and generates
+`__roundhouse_contract() -> Contract<State>`; without `contract` the function is compiled out.
+`register` covers inferred response bodies the analyzer can name but the contract harness cannot
+construct; `response_defaults` supplies shared prose.
+
+Handlers stay plain axum:
+
+```rust
+#[handler]
+pub async fn show(
+    State(app): State<AppState>,
+    Path(NoteId { id }): Path<NoteId>,
+) -> impl IntoResponse {
+    match app.get(id) {
+        Some(note) => Json(note).into_response(),
+        None => Problem::not_found("Note not found").into_response(),
+    }
+}
+```
+
+The analyzer derives `200 application/json` and `404 application/problem+json`. A `?` adds a
+conservative `500 Problem`.
+
+## Inference
+
+`roundhouse-cli/src/infer.rs` is the expression analyzer and `roundhouse-cli/src/semantic.rs` is
+its local semantic index. It reads each handler body and records statuses, content types and body
+component names:
+
+- `return`, tail expressions, `match`, `if`/`else`, blocks.
+- `Json`, `Created`, `NoContent`, `Html`, `Bytes`, `Body`, `Redirect`, `Sse` and `Problem`
+  constructors.
+- `StatusCode` constants, numeric statuses, and `Response::builder().status(..)` chains.
+- Tuples such as `(StatusCode::CREATED, Json(note))`.
+- Text/byte literals and fluent builders (`Problem::not_found(..).detail(..)`).
+- Local helpers, helper return types, typed locals and `?`.
+- Inherent method and associated-function return types, including through `State`/`Json`/`Path`/
+  `Query` handler arguments (`Json(app.load(id))` gets `load`'s body type).
+- Struct field types and simple type aliases.
+- `Option`/`Result` chains: `.map(Json).ok_or_else(|| Problem::not_found(..))` yields both the
+  success and error response.
+- Custom `IntoResponse` implementations: a returned type's `into_response` body is analyzed.
+- `?` error paths through the enclosing function's error type and its `IntoResponse` impl.
+
+Anything else becomes an explicit `unknown` response: a `default Problem` with
+`provenance: "unknown"`. A strict build rejects it unless the handler has `@response default:`,
+a typed `response(default, ..)`, or the route has `unverified = "reason"`. The analyzer never
+guesses, and `prepare` prints a source-located warning for each operation it cannot classify.
+
+An inferred body component is attached only when the document already contains it, either from
+another declaration or from `api! register = [Type, ...]`. Otherwise the status and content type
+are still documented and the body stays unverified; this is what keeps a private or foreign body
+type from producing a dangling `$ref`.
+
+The index is intentionally local rather than a rust-analyzer session: it has no compiler or
+workspace-loading cost, and it covers the response-relevant subset of the language. It can grow
+without changing the contract format or runtime.
+
+## Contract versioning
+
+`contract.json` starts with `kind`, `contract_version` and `generator_version`.
+`contract_version` is the compatibility contract: this runtime accepts only version `1` and fails
+`App::build` with `BuildError::InvalidContract` otherwise. A breaking layout change bumps the
+version and requires rerunning `cargo roundhouse prepare`. `generator_version` is informational.
+
+## Prose
+
+`/// @response 200: text` and `@summary`/`@description` tags are read by `#[handler]`. Precedence:
+
+1. Handler `@response`.
+2. `api! response_defaults` (only when the response still has its canonical description).
+3. Body type description.
+4. Literal `Problem` title.
+5. Canonical HTTP reason.
+
+`@response default:` targets OpenAPI's `default` response.
+
+## Runtime
+
+```rust
+const CONTRACT: roundhouse::ContractBundle = roundhouse::include_contract!();
+
+roundhouse::app!(AppState, routes)
+    .contract(CONTRACT)
+    .openapi_route("/openapi.json")
+    .serve("0.0.0.0:3000")
+    .await?;
+```
+
+- `contract.json` compiles one `$defs` table and per-operation request plans. The raw JSON body
+  middleware and the extractor shim use operation id / stable type name, never `TypeId`.
+- `openapi_route` serves the committed string verbatim. `App::docs`/`App::swagger` install the
+  static UI over that route.
+- `Validation::Schema` without a contract fails the build with `MissingContract`; use
+  `App::validation(Validation::Off)` for a router-only build.
+- `Built::document()` parses the artifact lazily, so a production build does not pay for a typed
+  view it never reads.
+
+## Verification
+
+```rust
+let built = roundhouse::app!(AppState, routes)
+    .contract(roundhouse::include_contract!())
+    .verify_responses()
+    .build();
+```
+
+`verify_responses` checks actual status, content type and JSON body against the response table
+keyed by `(method, matched path)`. `cargo roundhouse verify` runs `cargo test` with
+`ROUNDHOUSE_VERIFY=1`, which enables the same middleware without a code change. A mismatch is a
+`500 Problem` naming the operation and the violated schema.
+
+## CLI
+
+```sh
+cargo roundhouse init [--ephemeral]   # generated bin or target-only harness
+cargo roundhouse prepare              # discovery → inference → strict build
+cargo roundhouse check                # CI: artifacts are current
+cargo roundhouse explain "GET /v1/notes/{id}"
+cargo roundhouse verify [-- args…]    # cargo test with response verification
+cargo roundhouse diff [--against <contract.json>] [--check]
+```
+
+`explain` prints each response with status, content type, schema ref, provenance
+(`inferred`/`declared`/`unknown`) and the handler source location.
+
+## Trait split
+
+- Runtime: `ExtractArg`, `ValidateHook`, `Params`, `MultipartForm`.
+- Contract-only: `ExtractDoc`, `ParamsDoc`, `MultipartDoc`, `ApiSchema`, `DocSource`, schema
+  probes.
+- `ApiResponse`/`ApiError` and their derives are removed. Built-in response shapes use the hidden
+  `ResponseDocSource` trait; custom responses use `#[handler(response(..))]` and `doc = |docs|`.
+
+## Implementation notes
+
+- `App::build` without a bundle builds a contract in-process under `contract`; there is no
+  separate runtime document assembly and no `TypeId` body/parts map. The schema engine is always
+  contract-backed.
+- `DocSource` and the typed-response probes still exist under `contract` so a discovery build can
+  describe built-in response types and read their prose. They are compiled out of production.
+- The semantic analyzer, `diff` and the OpenAPI 3.0 projection are implemented. Client generation
+  is not part of 0.4.

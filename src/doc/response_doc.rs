@@ -122,10 +122,13 @@ pub fn bytes_response(status: u16) -> ResponseDoc {
     }
 }
 
-/// Implemented by `#[derive(ApiResponse)]` and `#[derive(ApiError)]`, and by [`Problem`].
+/// The internal response-documentation contract for built-in response types.
 ///
-/// [`Problem`]: crate::Problem
-pub trait ApiResponse {
+/// This is macro plumbing, not an extension point. It is hidden from docs and removed from the
+/// public prelude; application code returns plain `impl IntoResponse` or declares a typed
+/// response with `#[handler(response(..))]`.
+#[doc(hidden)]
+pub trait ResponseDocSource {
     /// The success statuses this response guarantees. An empty slice means the type is known but
     /// produces no success response; `&[0]` means the status is chosen at runtime and documented
     /// as OpenAPI's `default` response.
@@ -134,48 +137,43 @@ pub trait ApiResponse {
     fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc>;
 }
 
-/// Error-shaped response enum. Automatic once the type is an error, `IntoResponse` and `ApiResponse`.
-pub trait ApiError: std::error::Error + axum::response::IntoResponse + ApiResponse {}
-
-impl<T> ApiError for T where T: std::error::Error + axum::response::IntoResponse + ApiResponse {}
-
-impl<T: ApiSchema> ApiResponse for axum::Json<T> {
+impl<T: ApiSchema> ResponseDocSource for axum::Json<T> {
     fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         json_response::<T>(components, 200)
     }
 }
 
-impl ApiResponse for String {
+impl ResponseDocSource for String {
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![plain_text_response(200)]
     }
 }
 
-impl ApiResponse for &'static str {
+impl ResponseDocSource for &'static str {
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![plain_text_response(200)]
     }
 }
 
-impl ApiResponse for bytes::Bytes {
+impl ResponseDocSource for bytes::Bytes {
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![bytes_response(200)]
     }
 }
 
-impl ApiResponse for axum::body::Body {
+impl ResponseDocSource for axum::body::Body {
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![bytes_response(200)]
     }
 }
 
-impl<T: ApiSchema> ApiResponse for Vec<T> {
+impl<T: ApiSchema> ResponseDocSource for Vec<T> {
     fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         json_response::<Vec<T>>(components, 200)
     }
 }
 
-impl ApiResponse for axum::http::StatusCode {
+impl ResponseDocSource for axum::http::StatusCode {
     const SUCCESS: &'static [u16] = &[0];
 
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
@@ -183,7 +181,7 @@ impl ApiResponse for axum::http::StatusCode {
     }
 }
 
-impl ApiResponse for () {
+impl ResponseDocSource for () {
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![ResponseDoc::new(200, "OK")]
     }
@@ -191,7 +189,7 @@ impl ApiResponse for () {
 
 /// An `Option<T>` does not itself promise a response shape, so the macro cannot claim a success
 /// status. Return a concrete response type or declare the statuses with `response(..)`.
-impl<T: ApiResponse> ApiResponse for Option<T> {
+impl<T: ResponseDocSource> ResponseDocSource for Option<T> {
     const SUCCESS: &'static [u16] = &[];
 
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
@@ -199,7 +197,7 @@ impl<T: ApiResponse> ApiResponse for Option<T> {
     }
 }
 
-impl ApiResponse for std::convert::Infallible {
+impl ResponseDocSource for std::convert::Infallible {
     const SUCCESS: &'static [u16] = &[];
 
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
@@ -207,7 +205,7 @@ impl ApiResponse for std::convert::Infallible {
     }
 }
 
-impl<T: ApiResponse, E: ApiResponse> ApiResponse for Result<T, E> {
+impl<T: ResponseDocSource, E: ResponseDocSource> ResponseDocSource for Result<T, E> {
     const SUCCESS: &'static [u16] = T::SUCCESS;
 
     fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
@@ -217,7 +215,7 @@ impl<T: ApiResponse, E: ApiResponse> ApiResponse for Result<T, E> {
     }
 }
 
-impl<T: ApiResponse> ApiResponse for (axum::http::StatusCode, T) {
+impl<T: ResponseDocSource> ResponseDocSource for (axum::http::StatusCode, T) {
     const SUCCESS: &'static [u16] = &[0];
 
     fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
@@ -232,25 +230,25 @@ impl<T: ApiResponse> ApiResponse for (axum::http::StatusCode, T) {
     }
 }
 
-impl<T: ApiSchema> ApiResponse for axum::response::Html<T> {
+impl<T: ApiSchema> ResponseDocSource for axum::response::Html<T> {
     fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![text_response::<T>(components, 200, "text/html")]
     }
 }
 
-impl<T: crate::attachment::AttachmentType> ApiResponse for crate::attachment::Attachment<T> {
+impl<T: crate::attachment::AttachmentType> ResponseDocSource for crate::attachment::Attachment<T> {
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![crate::attachment::attachment_response::<T>(200)]
     }
 }
 
-impl ApiResponse for crate::attachment::File {
+impl ResponseDocSource for crate::attachment::File {
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![crate::attachment::file_response(200)]
     }
 }
 
-impl<E> ApiResponse for axum::response::sse::Sse<E> {
+impl<E> ResponseDocSource for axum::response::sse::Sse<E> {
     fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![crate::attachment::sse_response(200)]
     }

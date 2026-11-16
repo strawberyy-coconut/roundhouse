@@ -1,7 +1,7 @@
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::Schema;
 
-use super::{ApiSchema, Params, SchemaContext};
+use super::{ApiSchema, ParamsDoc, SchemaContext};
 
 /// `Params` for scalar path params.
 ///
@@ -10,13 +10,9 @@ use super::{ApiSchema, Params, SchemaContext};
 macro_rules! scalar_params {
     ($($ty:ty),* $(,)?) => {
         $(
-            impl Params for $ty {
+            impl ParamsDoc for $ty {
                 fn scalar_schema() -> Option<RefOr<Schema>> {
                     Some(<$ty as ApiSchema>::schema())
-                }
-
-                fn parts_value(&self) -> serde_json::Value {
-                    serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
                 }
             }
         )*
@@ -52,9 +48,7 @@ scalar_params!(
 #[cfg(feature = "decimal")]
 scalar_params!(rust_decimal::Decimal);
 
-impl<T: Params> Params for Option<T> {
-    const NAMES: &'static [&'static str] = T::NAMES;
-
+impl<T: ParamsDoc> ParamsDoc for Option<T> {
     fn register(context: &mut dyn SchemaContext) {
         T::register(context);
     }
@@ -73,19 +67,6 @@ impl<T: Params> Params for Option<T> {
 
     fn parts_schema(context: &mut dyn SchemaContext) -> RefOr<Schema> {
         T::parts_schema(context)
-    }
-
-    fn parts_value(&self) -> serde_json::Value {
-        match self {
-            Some(value) => value.parts_value(),
-            None => serde_json::Value::Null,
-        }
-    }
-
-    fn validate_at(&self, pointer: &str, errors: &mut crate::validate::ValidationErrors) {
-        if let Some(value) = self {
-            value.validate_at(pointer, errors);
-        }
     }
 
     fn parts_doc() -> Option<crate::schema::PartsDoc> {

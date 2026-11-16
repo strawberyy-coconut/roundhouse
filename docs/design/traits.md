@@ -1,3 +1,8 @@
+> **0.4:** the runtime/documentation split has landed: `ExtractArg`/`ValidateHook`/`Params` are
+> runtime; `ExtractDoc`/`ParamsDoc`/`SchemaContext` and the schema derives are behind `contract`.
+> `ApiResponse`/`ApiError` and their derives were removed; built-in response documentation uses
+> the internal `ResponseDocSource` trait. See [`contract.md`](contract.md).
+
 # Traits and internal API
 
 **Status: implemented.** Phases 2–9 are in the tree: private machinery, `DocContext`, the
@@ -9,7 +14,7 @@ starting point, not the current tree.
 This note is a target map for roundhouse's trait system. It exists because the current public
 surface mixes three different kinds of trait:
 
-1. **Domain specs** — what a type *is* (`ApiSchema`, `ApiResponse`, `AttachmentType`).
+1. **Domain specs** — what a type *is* (`ApiSchema`, `Params`, `AttachmentType`).
 2. **Macro probes** — “does this unseen type have capability X?” (`ProbeSchemaFor`, `ProbeArg`,
    `ProbeResponses`, …).
 3. **Type-system workarounds** — `ShimPolicy`, `ShimPolicyFor`, `SubstateOf`.
@@ -57,8 +62,7 @@ disposition proposed by this note.
 | `PathNames` | Capture names, scalar schema, params | `PathParams` derive | `routes!`, document builder, shim | compile, build, request | domain facet | fold into `Params` |
 | `QueryParams` | Query parameter table and hooks | `QueryParams` derive | document builder, shim | build, request | domain facet | fold into `Params` |
 | `ExtractArg` | One handler argument's docs and validation | extractor author | handler macro, shim, builder | build, request | domain | keep, return `ArgDoc` |
-| `ApiResponse` | A return type's documented outcomes | derive, manual, built-ins | handler macro, builder | build | domain | keep |
-| `ApiError` | An error-shaped response marker | `ApiError` derive + blanket impl | `ApiError` derive, document builder | compile, build | marker | keep as a marker; not an extension point |
+| `ResponseDocSource` | A built-in return type's documented outcomes | framework | handler macro, builder | build | internal | `#[doc(hidden)]`; not an extension point |
 | `HandlerMeta` | Handler state, path names, auth, success, docs | `#[handler]` | `routes!`, builder | compile, build | domain | split into `HandlerSpec` + `DocSource` |
 | `AuthScheme` | Scheme metadata | app author | builder, guard, shim | build | domain | keep |
 | `Authenticate` | Credential check | app author | `Auth` extractor, shim | request | domain | keep |
@@ -74,7 +78,7 @@ disposition proposed by this note.
 | `ProbeToSchemaJsonResponse` | Inferred `ToSchema` JSON response | framework | handler macro | build | probe | collapse into `ProbeSchemaResponse` |
 | `ProbeJsonResponseDoc` | Explicit typed response declaration | framework | handler macro | build | probe | collapse into `ProbeSchemaResponse` |
 | `ProbeTextResponse` | Non-JSON response | framework | handler macro | build | probe | collapse into `ProbeSchemaResponse` |
-| `ProbeResponses` | Whether a type implements `ApiResponse` | framework | handler macro | build | probe | collapse into `ProbeApiResponse` |
+| `ProbeResponses` | Whether a type implements `ResponseDocSource` | framework | handler macro | build | probe | keep internal |
 | `ProbeArg<T>` | Whether an argument implements `ExtractArg` | framework | handler macro | build, request | probe | keep as `ProbeArg`, but private |
 | `SubstateOf<S>` | `FromRef<S>` alias with a diagnostic | blanket | `routes!` shim bounds | compile | plumbing | move to `__private` |
 | `ShimPolicy` | State/auth types for the generated shim | framework | `routes!` | compile, build | plumbing | move to `__private` |
@@ -91,23 +95,18 @@ Two consequences are visible in the table:
 
 ## Target public surface
 
-Six role traits — `ApiSchema`, `Params`, `ApiResponse`, `ExtractArg`, `HandlerSpec` and
-`DocSource` — plus the three auth traits and three narrow contracts that already have a clear
-subject.
+Five role traits — `ApiSchema`, `Params`, `ExtractArg`, `HandlerSpec` and `DocSource` — plus the
+three auth traits and three narrow contracts that already have a clear subject.
 
 | Trait | One sentence | Must not do |
 |---|---|---|
 | `ApiSchema` | Describe a body/response type's JSON shape and custom hooks. | Know about axum, routes or HTTP responses. |
 | `Params` | Describe, convert and validate a path/query/form type. | Install extractors or know the route path. |
-| `ApiResponse` | Enumerate a return type's documented outcomes. | Perform I/O or inspect the request. |
 | `ExtractArg` | Contribute one argument's documentation and validate its extracted value. | Mutate global state or know the operation. |
 | `HandlerSpec` | Expose a handler's static facts: state, captures, auth, success. | Build a router or document an operation. |
 | `DocSource` | Produce an operation's documentation. | Know how the document is assembled. |
 | `AuthScheme` / `Authenticate` / `Scopes<A>` | Metadata / credential check / authorization decision. | Apply router layers or publish the operation. |
 | `AttachmentType`, `MultipartForm`, `Rejection` | Narrow body/field/rejection contracts. | Grow into general routing or document seams. |
-
-`ApiError` remains a marker for error-shaped derives. It is not an extension point; the blanket
-impl means users do not implement it directly.
 
 ### `ApiSchema`
 
@@ -156,16 +155,11 @@ The `PathParams` and `QueryParams` derives still exist separately; they emit dif
 `Path<T>` uses `Params::NAMES` and `scalar_schema`; `Query<T>` and `RepeatedQuery<T>` use
 `Params::params` and `value`.
 
-### `ApiResponse`
+### Removed: `ApiResponse`
 
-Unchanged in role; the context parameter is the only mechanical adjustment.
-
-```rust
-pub trait ApiResponse {
-    const SUCCESS: &'static [u16] = &[200];
-    fn responses(cx: &mut dyn SchemaContext) -> Vec<ResponseDoc>;
-}
-```
+Removed in 0.4. Built-in response types are documented through the internal
+`ResponseDocSource` trait; custom responses use `#[handler(response(..))]` and a `doc = |docs|`
+hook.
 
 ### `ExtractArg`
 
@@ -200,8 +194,6 @@ pub trait HandlerSpec: Send + Sync + 'static {
     const HAS_STATE: bool;
     const PATH_NAMES: &'static [&'static str] = &[];
     const REQUIRED_AUTH: &'static [&'static str] = &[];
-    const INFERRED_SUCCESS: Option<&'static [u16]> = None;
-    const DECLARED_SUCCESS: Option<&'static [u16]> = None;
 }
 
 pub trait DocSource {
@@ -347,7 +339,7 @@ until a phase explicitly changes behaviour.
    `tests/ui` only if a diagnostic path changes.
 3. **Introduce `DocContext`.** *(done)* Replace the thread-local `LEDGER` and `&mut Components` parameters
    with `DocContext` / `SchemaContext`. This touches `ApiSchema::register`,
-   `ExtractArg::document`, `ApiResponse::responses`, `MultipartForm::schema` and every derive
+   `ExtractArg::document`, `MultipartForm::schema` and every derive
    expansion. `MultipartForm` takes `&mut dyn SchemaContext` rather than `DocContext`, because
    `roundhouse-multipart` must not depend on the facade. Phase 3 is the largest mechanical
    change; doing it before the trait folds avoids rewriting the same signatures twice.
@@ -393,16 +385,15 @@ until a phase explicitly changes behaviour.
 
 - **Three kinds of trait must not share one namespace.** Domain specs are public; probes and shim
   plumbing are `__private`; internal helpers are `pub(crate)`.
-- **Six roles, not thirty traits.** `ApiSchema`, `Params`, `ApiResponse`, `ExtractArg`,
+- **Five roles, not thirty traits.** `ApiSchema`, `Params`, `ExtractArg`,
   `HandlerSpec`/`DocSource`, and the auth triple are the extension surface. Narrow traits such as
   `AttachmentType`, `MultipartForm` and `Rejection` stay because they have one clear subject.
 - **Traits return data; the builder owns merge rules.** No trait receives `&mut OperationDoc`.
 - **Policy is a value, not booleans.** `ValidationPolicy` replaces independent flags on
   `RouteRecord`; the acknowledgement stays separate because it covers body, response and extractor
   markers.
-- **Renaming is separate from reshaping.** `ApiSchema`, `ApiResponse` and `ExtractArg` can keep
-  their names through this refactor. The role names in this note are working names, not a
-  commitment to rename.
+- **Renaming is separate from reshaping.** `ApiSchema` and `ExtractArg` keep their names; the
+  response-documentation trait is internal.
 - **A clean break is better than compatibility traits.** A deprecated trait cannot preserve
   method-based impls without overlap tricks. Put the mapping in `MIGRATING-*.md`.
 
@@ -420,8 +411,6 @@ until a phase explicitly changes behaviour.
 4. **Should the `doc = |docs|` hook move to builder methods?** *(done)* `OperationDoc` fields are
    crate-private, and hooks mutate through `set_*`/`push_*`/`extend_*` methods. This protects the
    merge invariants; the read accessors keep `ResolvedRoute::docs()` inspectable.
-5. **Should `ApiError` remain a marker?** It lets the derive enforce a 4xx/5xx-only contract. If
-   that contract moves into `ApiResponse::SUCCESS` validation, the marker can go.
 
 ## Future work elsewhere
 
@@ -435,8 +424,9 @@ The three follow-ups this map depends on belong to the notes that own those area
 
 ## Summary
 
-Today the trait surface is three layers interleaved: domain specs, macro probes and type-system
-plumbing. The target separates them, reduces the params cluster from five traits to one, reduces
-the probe cluster from nine to four (or one), moves the shim traits to `__private`, and replaces
-`OperationDoc` mutation with `ArgDoc` / `OperationDoc` data. The resulting public surface is six
+The refactor is landed: domain specs, macro probes and type-system plumbing are separated; the
+params cluster is one `Params` trait (plus the derive-specific parameters); the probe cluster is
+internal; and `ExtractArg` contributes an `ArgDoc`. `ApiResponse`/`ApiError` were removed in 0.4;
+response documentation for built-in shapes is an internal, `#[doc(hidden)]` contract. The public
+surface is five
 role groups plus a few narrow contracts — each with a clear subject, implementor and consumer.

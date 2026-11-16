@@ -1,57 +1,90 @@
 //! The documentation half: schema derivation, parameter tables and response declarations.
 //!
 //! Most applications use this module through the derives re-exported at the crate root:
-//! `#[derive(ApiSchema)]` for documented bodies and responses (with `ToSchema` for the shape),
-//! plus `#[derive(QueryParams)]`, `#[derive(PathParams)]`, `#[derive(ApiResponse)]` and
-//! `#[derive(ApiError)]` (and `#[derive(Multipart)]` with the `multipart` feature).
+//! `#[derive(ApiSchema)]` for documented bodies (with `ToSchema` for the shape), plus
+//! `#[derive(QueryParams)]`, `#[derive(PathParams)]` (and `#[derive(Multipart)]` with the
+//! `multipart` feature).
 //!
 //! The traits here are the extension points the macros use:
 //!
-//! - [`ExtractArg`] — how an axum extractor contributes parameters, a body, auth or failures, and
-//!   what route-level validation it needs. Implement it for a custom extractor; no macro change is
-//!   required.
-//! - [`ApiSchema`] — the schema a documented body or response requires. It adds a named component
+//! - `ExtractDoc` — how an axum extractor contributes parameters, a body, auth or failures.
+//!   Route-level validation lives on [`ExtractArg`](crate::ExtractArg); implement both for a
+//!   custom extractor and no macro change is required.
+//! - `ApiSchema` — the schema a documented body or response requires. It adds a named component
 //!   and roundhouse-only patches and hooks on top of `utoipa::ToSchema`.
-//! - [`ApiResponse`] — the documented responses a return type produces, plus its compile-time
-//!   `SUCCESS` statuses; `ApiError` is re-exported from the macros.
-//! - [`ResponseDoc`] and [`layer`] — hand-written responses and documented layer guarantees.
-//! - [`validate_document`] — the structural check every build runs over the finished document.
+//! - `ResponseDoc` and `layer` — hand-written responses and documented layer guarantees.
+//! - `validate_document` — the structural check every build runs over the finished document.
 //!
 //! `axum::Json<T>`, `Form<T>` and JSON responses require `T: ApiSchema` for automatic
 //! documentation. A plain `ToSchema` type remains available through an explicit
 //! typed `response(status, Type)` declaration. Component names follow utoipa: unique names stay
 //! simple, and a collision is disambiguated with `#[schema(as = module::Type)]`.
 
+#[cfg(feature = "contract")]
 pub mod build;
+#[cfg(feature = "contract")]
 pub mod downgrade;
-#[cfg(feature = "schema-engine")]
-pub mod response;
+#[cfg(feature = "contract")]
+pub mod inference;
+#[cfg(feature = "contract")]
 pub mod validity;
+#[cfg(all(feature = "contract", feature = "schema-engine"))]
+pub use crate::contract_response::ContractResponseValidator;
+#[cfg(feature = "contract")]
 pub use build::{build, build_with_options};
+#[cfg(feature = "contract")]
+pub use inference::{Inference, InferredResponse};
+#[cfg(feature = "contract")]
 pub use validity::validate_document;
+#[cfg(feature = "contract")]
 pub mod layer;
+#[cfg(not(feature = "contract"))]
+pub mod layer {
+    //! Documentation-only layer metadata (compiled out without `contract`).
+
+    /// A documented layer guarantee.
+    #[derive(Clone, Debug, Default)]
+    pub struct LayerDoc;
+}
 
 /// Schema derivation and constraint helpers, re-exported from `roundhouse-schema`.
+#[cfg(feature = "contract")]
 pub use roundhouse_schema::schema;
 
-pub use roundhouse_schema::{ApiSchema, Claim, Param, ParamIn, Params, PartsDoc, SchemaContext};
+#[cfg(feature = "contract")]
+pub use roundhouse_schema::{ApiSchema, Claim, Param, ParamsDoc, PartsDoc, SchemaContext};
+pub use roundhouse_schema::{ParamIn, Params, ValidateHook};
 use std::any::TypeId;
 
+#[cfg(feature = "contract")]
 mod arg;
+#[cfg(feature = "contract")]
 mod body;
+#[cfg(feature = "contract")]
 mod context;
+#[cfg(feature = "contract")]
 mod model;
+#[cfg(feature = "contract")]
 mod params;
+#[cfg(feature = "contract")]
 pub(crate) mod probe;
+#[cfg(feature = "contract")]
 #[doc(hidden)]
 pub mod registration;
+#[cfg(feature = "contract")]
 pub(crate) mod response_doc;
 
+#[cfg(feature = "contract")]
 pub use arg::*;
+#[cfg(feature = "contract")]
 pub use body::*;
+#[cfg(feature = "contract")]
 pub use context::*;
+#[cfg(feature = "contract")]
 pub use model::*;
+#[cfg(feature = "contract")]
 pub use params::*;
+#[cfg(feature = "contract")]
 pub use response_doc::*;
 
 /// Split public prose into an operation summary and description.
@@ -78,6 +111,7 @@ pub fn split_prose(text: &'static str) -> (Option<&'static str>, Option<&'static
 ///
 /// Keeping these together means a caller cannot accidentally treat "the body was verified" and
 /// "the body is unverified" as independent facts; the builder owns the transitions.
+#[cfg(feature = "contract")]
 #[derive(Clone, Debug, Default)]
 pub struct Verification {
     body: bool,
@@ -88,6 +122,7 @@ pub struct Verification {
     unbounded_file_fields: Vec<&'static str>,
 }
 
+#[cfg(feature = "contract")]
 impl Verification {
     /// A body extractor the framework cannot verify at runtime.
     pub fn body(&self) -> bool {
@@ -158,6 +193,7 @@ impl Verification {
 /// builder methods below, so the operation's invariants do not depend on a caller remembering
 /// which fields may be written together. Read accessors back
 /// [`ResolvedRoute::docs`](crate::ResolvedRoute::docs).
+#[cfg(feature = "contract")]
 #[derive(Clone, Default)]
 pub struct OperationDoc {
     /// Operation summary from the handler's `@summary:` tag, unless the route entry overrides it.
@@ -184,14 +220,16 @@ pub struct OperationDoc {
     pub(crate) schemes: Vec<crate::auth::SchemeDoc>,
     /// Honesty markers: what this operation could not verify or describe.
     pub verification: Verification,
+    /// Whether inference found a return path it could not classify.
+    pub(crate) unknown_response: bool,
     /// The schema of a scalar `Path<T>`; the parameter's name comes from the template.
     pub(crate) path_schema:
         Option<fn() -> Option<utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>>>,
-    /// The Rust type of the request body, so schema mode can compile the body's own schema even
-    /// when it is composite (`Vec<T>`, `Option<T>` or a map).
-    pub(crate) body_type: Option<fn() -> std::any::TypeId>,
+    /// Stable key for the contract's body plan.
+    pub(crate) body_type_name: Option<fn() -> &'static str>,
 }
 
+#[cfg(feature = "contract")]
 impl OperationDoc {
     /// Set the operation summary. A `doc` hook can use this to override the handler's tag.
     pub fn set_summary(&mut self, summary: impl Into<String>) {
@@ -242,9 +280,9 @@ impl OperationDoc {
         self.body = Some(body);
     }
 
-    /// Set the body's Rust type so schema mode can compile a composite body.
-    pub fn set_body_type(&mut self, body_type: fn() -> std::any::TypeId) {
-        self.body_type = Some(body_type);
+    /// Set the stable contract key for the body's validation plan.
+    pub fn set_body_type_name(&mut self, body_type_name: fn() -> &'static str) {
+        self.body_type_name = Some(body_type_name);
     }
 
     /// Set the schema of a scalar `Path<T>`.
@@ -275,6 +313,16 @@ impl OperationDoc {
         self.responses.extend(responses);
     }
 
+    /// Record that inference found an outcome it could not classify.
+    pub fn mark_unknown_response(&mut self) {
+        self.unknown_response = true;
+    }
+
+    /// Whether inference found an outcome it could not classify.
+    pub fn has_unknown_response(&self) -> bool {
+        self.unknown_response
+    }
+
     /// Mutate the inferred response with `status`, if there is one.
     ///
     /// A `doc` hook uses this to adjust prose without reaching into the response vector.
@@ -292,6 +340,13 @@ impl OperationDoc {
     /// Add several typed response declarations.
     pub fn extend_declared_responses(&mut self, responses: impl IntoIterator<Item = ResponseDoc>) {
         self.declared_responses.extend(responses);
+    }
+
+    /// Mutate a typed response declaration by status.
+    pub fn declared_response_mut(&mut self, status: u16) -> Option<&mut ResponseDoc> {
+        self.declared_responses
+            .iter_mut()
+            .find(|response| response.status == status)
     }
 
     /// Allow typed declarations to replace an inferred response.
@@ -412,9 +467,9 @@ impl OperationDoc {
         self.path_schema
     }
 
-    /// The body's Rust type, if schema mode should compile it.
-    pub fn body_type(&self) -> Option<fn() -> std::any::TypeId> {
-        self.body_type
+    /// The body's stable contract key, if one was inferred.
+    pub fn body_type_name(&self) -> Option<fn() -> &'static str> {
+        self.body_type_name
     }
 }
 
@@ -450,29 +505,45 @@ pub trait HandlerSpec: Send + Sync + 'static {
     /// A module-level guard for the same scheme is skipped: the extractor already performs the
     /// check during extraction, so the request must not be authenticated twice.
     const REQUIRED_AUTH: &'static [&'static str] = &[];
-
-    /// The success statuses the return type guarantees, or `None` when the macro cannot classify
-    /// it (a custom `ApiResponse`). `Some(&[])` means the macro knows there is no success
-    /// response, so a route entry must declare one.
-    const INFERRED_SUCCESS: Option<&'static [u16]> = None;
-
-    /// Success statuses declared by the handler's typed response metadata.
-    ///
-    /// The route-table compile-time check uses this when the return type cannot prove success.
-    const DECLARED_SUCCESS: Option<&'static [u16]> = None;
 }
 
 /// The operation documentation a `#[handler]` marker produces.
+#[cfg(feature = "contract")]
 pub trait DocSource {
     fn operation(context: &mut DocContext<'_>) -> OperationDoc;
 }
+
+/// Runtime placeholders for the document types macros name in their generated route records.
+///
+/// Without `contract`, no operation is ever described, but `routes!` still constructs a
+/// `RouteSpec`. These stubs keep that record's shape identical while every doc-building body is
+/// compiled out.
+#[cfg(not(feature = "contract"))]
+#[derive(Clone, Copy)]
+pub struct DocContext<'a>(std::marker::PhantomData<&'a ()>);
+
+#[cfg(not(feature = "contract"))]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OperationDoc;
+
+#[cfg(not(feature = "contract"))]
+pub trait DocSource {
+    fn operation(_context: &mut DocContext<'_>) -> OperationDoc {
+        OperationDoc
+    }
+}
+
+#[cfg(not(feature = "contract"))]
+impl<T: ?Sized> DocSource for T {}
 
 /// Marker for a type that is both a handler spec and a documentation source.
 ///
 /// The blank implementation means `#[handler]` only emits [`HandlerSpec`] and [`DocSource`];
 /// downstream bounds can still name the combined marker.
+#[cfg(feature = "contract")]
 pub trait HandlerMeta: HandlerSpec + DocSource {}
 
+#[cfg(feature = "contract")]
 impl<T: HandlerSpec + DocSource> HandlerMeta for T {}
 
 pub fn handler_state<M: HandlerSpec>() -> Option<TypeId> {

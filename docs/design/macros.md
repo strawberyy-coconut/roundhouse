@@ -1,3 +1,6 @@
+> **0.4:** schema/doc impls are wrapped so a production build resolves no utoipa paths. See
+> [`contract.md`](contract.md).
+
 # Macros
 
 The macro is the product. `routes!` plus `#[handler]` are why roundhouse exists: they make the
@@ -13,8 +16,6 @@ be a runtime-checked copy with fewer guarantees, so it is not on the roadmap.
 | `ApiSchema` | derive | Register a documented body/response and its patches |
 | `QueryParams` | derive | Query parameter table, parts schema, hooks |
 | `PathParams` | derive | Path capture names, parts schema, hooks |
-| `ApiResponse` | derive | `IntoResponse` plus documented responses for an enum (generic enums supported) |
-| `ApiError` | derive | `ApiResponse` with a 4xx/5xx-only error contract (generic enums supported) |
 | `Multipart` | derive | Multipart field table, extraction and body schema |
 
 `Multipart` is compiled only with the `multipart` feature; the rest are always present.
@@ -77,8 +78,8 @@ Untagged prose is ignored for OpenAPI. The 0.2 `@responses:`, `@response-descrip
 
 The attribute takes no arguments and leaves the function untouched. It emits:
 
-- a marker type implementing `HandlerSpec` (`State`, `PATH_NAMES`, `REQUIRED_AUTH`,
-  `INFERRED_SUCCESS`) and `DocSource` (`operation`);
+- a marker type implementing `HandlerSpec` (`State`, `PATH_NAMES`, `REQUIRED_AUTH`) and
+  `DocSource` (`operation`);
 - an associated `__roundhouse_shim::<P>` on the marker type, which extracts the handler's
   arguments plus a `ValidationContext` and the policy's auth extractor, validates, and calls
   the function.
@@ -108,8 +109,8 @@ One invocation can check its own tokens. These fail `cargo check`:
 | Unknown option, non-type security, removed attribute | `syn::Error` at the offending token |
 
 The two const assertions exist because a type-level error cannot format a useful message. A
-`const` block can call `prefix::path_names_match` or inspect `INFERRED_SUCCESS` and `panic!`
-with a string built from the entry's literals. The panic is evaluated during type checking, so
+`const` block can call `prefix::path_names_match` and `panic!` with a string built from the
+entry's literals. The panic is evaluated during type checking, so
 it is still a `cargo check` failure, not a runtime one.
 
 `tests/ui/*.rs` + `tests/ui/*.stderr` pin these messages with `trybuild`: duplicate routes,
@@ -172,9 +173,9 @@ The previous `macros` feature suggested a macro-free workflow, but the only publ
 constructors were macro internals. Removing the feature made the situation honest: runtime
 capabilities are optional, the authoring model is not.
 
-The trait refactor and the macro are complements, not alternatives. `ExtractArg`, `ApiSchema`
-and `ApiResponse` moved semantics out of the expansion, so the macro is now mostly parsing,
-validation and wiring. That is the part that benefits from a separate library crate.
+The trait refactor and the macro are complements, not alternatives. `ExtractArg` and `ApiSchema`
+moved semantics out of the expansion, so the macro is now mostly parsing, validation and wiring.
+That is the part that benefits from a separate library crate.
 
 ## Future
 

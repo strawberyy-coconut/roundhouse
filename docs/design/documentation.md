@@ -1,3 +1,7 @@
+> **0.4:** document generation is build-time. See [`contract.md`](contract.md) and
+> [`MIGRATING-0.4.md`](../MIGRATING-0.4.md). The `DocSource`/probe pipeline below is the
+> contract builder's internal path; production consumes `.roundhouse/openapi.json`.
+
 # Documentation
 
 The document and the router come from the same declarations. There is no side-car annotation
@@ -41,8 +45,6 @@ marker implements `roundhouse::doc::HandlerSpec` and `roundhouse::doc::DocSource
 | `State` / `HAS_STATE` | `State<T>` in the signature, or `()` |
 | `PATH_NAMES` | `Path<T>` where `T: Params` |
 | `REQUIRED_AUTH` | `Auth<A>` (not `Option<Auth<A>>`) |
-| `INFERRED_SUCCESS` | A small return-type classification, or `None` when unknown |
-| `DECLARED_SUCCESS` | Success statuses declared by `#[handler(response(..))]` |
 | `operation(context)` | Doc tags, one statement per argument plus the response statements |
 | `verification.body_verified()` | Whether every body argument enforces its own schema during extraction |
 
@@ -108,96 +110,41 @@ The builder clears `OperationDoc::verification`'s body marker when the route val
 marker reports `body_verified()`; an unverified body keeps it, so the document carries
 `x-roundhouse-unverified-body`.
 
-## Responses: `ApiResponse`
+## Responses
 
-A return type documents itself through `ApiResponse`:
+Built-in return shapes are documented by an internal, `#[doc(hidden)]` `ResponseDocSource`
+trait; application code does not implement it:
 
-```rust
-pub trait ApiResponse {
-    const SUCCESS: &'static [u16] = &[200];
-    fn responses(context: &mut dyn SchemaContext) -> Vec<ResponseDoc>;
-}
-```
-
-`SUCCESS` declares the success statuses the type can produce. The macro classifies the return type
-once (`ReturnShape` in `roundhouse-macros-core`) and derives both
-`HandlerSpec::INFERRED_SUCCESS` and the document statements from that value, so the compile-time
-check and the published response cannot disagree. `&[]` means "known, but no success"
-(`Option<T>`, `Infallible`, a bare `impl Trait`); `&[0]` means "status chosen at runtime" and is
-documented as OpenAPI's `default` response.
-
-| Return type | Inferred status |
+| Return type | Documented status |
 |---|---|
 | no `->`, `()` | `200` |
 | `Json<T>`, `Html<T>`, `String`, `&str`, `Vec<u8>`, `Bytes`, `Body`, `Attachment<T>`, `File`, `Sse` | `200` |
 | `Created<T>` | `201` |
 | `NoContent` | `204` |
-| `StatusCode`, `(StatusCode, T)` | `0` (`default`) |
+| `StatusCode`, `(StatusCode, T)` | `default` |
 | `Option<T>`, `Infallible`, bare `impl Trait` | none |
-| `Result<T, E>` | `T`'s statuses |
-| other tuples, custom `ApiResponse` | unknown (probe or declaration) |
+| `Result<T, E>` | `T`'s responses plus `E`'s |
 
-The macro still special-cases three shapes:
+The macro classifies the return type once (`ReturnShape`) and derives the document statements
+from it. The contract build owns the success-response check.
 
-- **`Result<T, E>`** — the success and error types are documented independently, so an
-  undocumented `E` becomes a diagnostic (`verification.undocumented_error()`) rather than a
-  missing success.
-- **`Vec<u8>`** — bytes on the wire, not a JSON array of integers; documented as
-  `application/octet-stream`.
-- **`impl Trait`** — cannot be named in a turbofish. `Sse<impl Stream>` and `File` keep their
-  fixed shapes; every other hidden type declares its responses in `routes!`.
+Anything else contributes no documented response. Use `#[handler(response(..))]` for an explicit
+status/body, or a `doc = |docs|` route hook for a custom content type, schema or headers. The
+strict build rejects an operation with no acknowledged success.
 
-Everything else goes through `ResponseProbe<T>`, which uses the same autoref trick: a type
-implementing `ApiResponse` contributes its responses; a type that only implements
-`IntoResponse` contributes none. A known shape whose probe finds no `ApiResponse` (an `Html` or
-`Created` body without `ApiSchema`, for example) is published with its bare status and
-`x-roundhouse-unverified-response`; the strict build rejects it. An unknown shape reaches the
-undeclared-success check.
+`Result<_, Problem>` documents a `default` problem response. For other error types, return
+`Problem` directly or declare the error responses explicitly.
 
-`Result<_, Problem>` documents a `default` problem response. `ApiError`/`ApiResponse` derives
-register the responses of an error enum, so `Result<Json<T>, NoteError>` documents both sides.
+Response prose precedence:
 
-### Choosing the error shape
+1. Handler `@response <status>: text`.
+2. `api! response_defaults`.
+3. Body type `ApiSchema::description()`.
+4. Typed `response_description(status, ..)`.
+5. Canonical HTTP reason.
 
-`Result<T, E>` documents `T` and `E` independently, which makes the split matter:
-
-- **Outcome enum on the `Ok` side.** `enum ShowNote { Found(Json<Note>), NotFound { id } }`
-  describes exactly the statuses the endpoint can return. Endpoint-specific failures belong here,
-  not in the error side.
-- **One crate-wide infrastructure error on the `Err` side.** `enum InternalError { Storage(#[from]
-  std::io::Error) }` gives every fallible handler the shared `500` without repeating
-  infrastructure variants.
-- **Do not use a shared domain error enum on every handler.** The operation would document every
-  domain failure whether or not that route can produce it.
-- **Do not create a per-endpoint error enum just to narrow the document.** That is what the
-  outcome enum is for; keep the error side for infrastructure.
-- **No `Outcome<T>` helper.** A wrapper that hides the variants would hide which statuses the
-  endpoint can produce, which is the reason to write the enum. Derive `ApiResponse` and let the
-  body type's description fill the prose.
-
-A `Result` type alias is visible through the same blanket `ApiResponse for Result<T, E>` impl as
-long as both sides implement `ApiResponse`; the macro's compile-time success check remains
-syntactic and is skipped for aliases, so the build-time check is authoritative.
-
-Response descriptions are resolved in this order: the variant's
-`#[status(description = "…")]`, the variant's `@description:` tag, the body type's
-`ApiSchema::description()`, then the canonical HTTP reason phrase. A typed
-`response_description(status, ..)` is applied after the response table is merged and wins over
-those; the body type description also feeds a direct `Json<T>` or `Vec<T>` response. `ApiError` uses the
-resolved text as the `Problem` title as well; `problem_type = "…"` only sets the RFC 9457 `type`
-URI (`https://roundhouse.rs/problems/…`).
-
-Every field in a response variant must declare its destination: `#[body]`, `#[header("name")]`,
-`#[location]`, `#[from]`, `#[source]`, or `#[response(ignore)]`. The derive rejects an unannotated
-field instead of silently dropping it. A variant that returns a problem can use a `Problem` body:
-`NotFound(Problem)`. `#[response(ignore)]` is the explicit way to keep data on the variant without
-publishing it.
-
-Generic `ApiResponse`/`ApiError` enums copy their generics and `where` clause into each impl and add
-only the bounds a field shape needs: `Json<T>` needs `T: ApiSchema` for docs and `Json<T>:
-IntoResponse` at runtime, a bare body needs `T: IntoResponse` and `T: ApiSchema`, and a header or
-location needs `T: TryInto<HeaderValue>` and the schema bound. The built-in `Created<T>` and
-`NoContent` wrappers cover the common created/no-content cases without a derive.
+`ApiResponse`, `ApiError` and their derives were removed in 0.4. `Json<T>` still needs
+`T: ApiSchema` to publish a body schema; custom response types use declarations and hooks.
 
 ## `ApiSchema` vs `ToSchema`
 
@@ -225,7 +172,7 @@ interop surface:
 - for generated types, `roundhouse::interop::impl_from_utoipa!(Type);` implements the adapter. It inserts
   the type's own component and registers everything reachable through `ToSchema::schemas()`.
 
-What it cannot do is be inferred from `Json<T>` automatically. `Json<T>: ApiResponse` requires
+What it cannot do is be inferred from `Json<T>` automatically. `Json<T>`'s response doc requires
 `T: ApiSchema`, so a plain `ToSchema` return type lands on the unverified fallback and the strict
 build rejects it. That is intentional: the document would otherwise promise the unpatched shape. A
 blanket `impl<T: ToSchema> ApiSchema for T` is impossible because it overlaps the derive and the

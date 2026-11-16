@@ -14,11 +14,13 @@
 //! ```
 //!
 //! [`Components`](crate::interop::Components) is the component table passed to low-level
-//! `ApiSchema`/`ApiResponse`
+//! `ApiSchema`
 //! implementations. It is re-exported from utoipa so hand-written schema code uses the same
 //! model.
 
 use serde::{Deserialize, Serialize};
+
+pub use crate::contract_bundle::ContractBundle;
 
 /// API metadata, the `info` object of an OpenAPI document.
 #[derive(Clone, Default, PartialEq, Eq)]

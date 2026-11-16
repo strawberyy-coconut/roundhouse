@@ -1,3 +1,7 @@
+> **0.4:** production request validation reads `.roundhouse/contract.json`. The document builder
+> under the `contract` feature derives that artifact; the runtime compiles its plans and never
+> assembles a document. See [`contract.md`](contract.md).
+
 # Validation
 
 roundhouse publishes one schema and executes it. The document emitter and the request enforcer
@@ -260,17 +264,18 @@ so document consumers can still see that the body was not verified.
 the strict build. The `x-roundhouse-unverified-body` marker remains because the body genuinely was not
 checked.
 
-## Response validation
+## Response verification
 
-`App::validate_responses()` is an opt-in debug/test layer. It compiles each documented JSON
-response schema once and checks the actual response body and content type:
+`App::verify_responses()` is an opt-in test layer driven by the contract response table. It
+checks the actual status, content type and JSON body against `.roundhouse/contract.json`:
 
-- a mismatch is a `500 Problem` naming the expected content type or the failing pointer;
-- non-JSON documented responses are left alone;
+- a mismatch is a `500 Problem` naming the operation and the failing constraint;
+- operations with no documented response are left alone;
 - the body is buffered up to 32 MiB.
 
-It requires `schema-engine`; without the feature `try_build` returns
-`BuildError::SchemaCompilation`. It is not intended for production traffic.
+`cargo roundhouse verify` runs `cargo test` with `ROUNDHOUSE_VERIFY=1`, which installs the same
+middleware without a code change. It requires `contract-runtime` + `schema-engine` and is not
+intended for production traffic.
 
 ## Limits
 

@@ -1,4 +1,5 @@
-use std::sync::Arc;
+#[cfg(feature = "contract")]
+use std::sync::{Arc, OnceLock};
 
 use axum::Router;
 use axum::body::Body;
@@ -7,7 +8,9 @@ use axum::response::Response;
 use tower::ServiceExt;
 
 use crate::auth::AuthGuard;
+#[cfg(feature = "contract")]
 use crate::doc::{self, OperationDoc};
+#[cfg(feature = "contract")]
 use crate::openapi::OpenApi;
 use crate::registry::{Method, RouteRecord};
 
@@ -34,6 +37,7 @@ pub struct ResolvedRoute {
 }
 
 impl ResolvedRoute {
+    #[cfg(feature = "contract")]
     pub fn docs(&self) -> OperationDoc {
         let mut components = utoipa::openapi::schema::Components::new();
         let mut context = crate::doc::DocContext::new(&mut components);
@@ -46,7 +50,12 @@ impl ResolvedRoute {
 pub struct Built {
     pub(crate) router: Router<()>,
     pub(crate) routes: Vec<ResolvedRoute>,
-    pub(crate) document: Arc<OpenApi>,
+    #[cfg(feature = "contract")]
+    pub(crate) document: Arc<OnceLock<OpenApi>>,
+    /// The verbatim `openapi.json` from the contract bundle, for a runtime-only build.
+    #[cfg(feature = "contract-runtime")]
+    #[allow(dead_code)]
+    pub(crate) contract_openapi: Option<&'static str>,
     pub(crate) merges: Vec<MergeRecord>,
     pub(crate) diagnostics: Vec<crate::build_error::Diagnostic>,
 }
@@ -62,10 +71,19 @@ impl Built {
         &self.routes
     }
 
-    /// The generated document. It is always built; `App::openapi(..)` controls whether it is
-    /// also served at a route.
+    /// The generated document.
+    ///
+    /// In contract mode this parses the committed `openapi.json` on first use, so a runtime
+    /// application does not pay for a view it never reads.
+    #[cfg(feature = "contract")]
     pub fn document(&self) -> &OpenApi {
-        &self.document
+        self.document.get_or_init(|| {
+            let text = self
+                .contract_openapi
+                .expect("contract mode has an embedded openapi.json");
+            serde_json::from_str(text)
+                .unwrap_or_else(|error| panic!("the embedded openapi.json is invalid: {error}"))
+        })
     }
 
     /// Hand-written routers merged into this app, with the `App::merge` call site.
@@ -80,17 +98,25 @@ impl Built {
         &self.diagnostics
     }
 
+    #[cfg(feature = "contract")]
+    #[cfg(feature = "contract")]
     pub fn openapi_json(&self) -> String {
-        self.document
-            .to_pretty_json()
-            .expect("OpenAPI document serializes")
+        self.contract_openapi.unwrap_or_default().to_string()
+    }
+
+    /// The committed `openapi.json`, verbatim.
+    #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+    pub fn openapi_json(&self) -> String {
+        self.contract_openapi.unwrap_or_default().to_string()
     }
 
     /// A 3.0.3-shaped JSON document.
+    #[cfg(feature = "contract")]
     pub fn openapi_30(&self) -> serde_json::Value {
-        doc::downgrade::to_openapi_30(self.document.as_utoipa())
+        doc::downgrade::to_openapi_30(self.document().as_utoipa())
     }
 
+    #[cfg(feature = "contract")]
     pub fn openapi_30_json(&self) -> String {
         serde_json::to_string_pretty(&self.openapi_30()).expect("JSON serializes")
     }

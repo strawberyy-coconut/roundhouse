@@ -12,7 +12,7 @@ use crate::doc_tags::AllowedTags;
 use crate::util::{outer_ident, single_generic};
 
 pub(crate) use self::args::HandlerArgs;
-use self::response::{classify_return, inferred_successes, response_statements};
+use self::response::{classify_return, response_statements};
 use self::signature::{
     ExtractorKind, auth_types, classify, is_explicit_strict, is_parts_arg, is_wrapper_type,
     result_ok_type, strip_wrappers,
@@ -61,24 +61,21 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
         Ok(tags) => tags,
         Err(error) => return error.to_compile_error(),
     };
-    let (declared_responses, declared_success) = match declared_response_statements(&args) {
+    let declared_responses = match declared_response_statements(&args) {
         Ok(statements) => statements,
         Err(error) => return error.to_compile_error(),
     };
-    let response_descriptions = match response_description_statements(&args) {
+    let mut response_descriptions = match response_description_statements(&args) {
         Ok(statements) => statements,
         Err(error) => return error.to_compile_error(),
     };
-    let declared_success = match declared_success {
-        Some(statuses) => {
-            let statuses = statuses
-                .iter()
-                .map(|status| proc_macro2::Literal::u16_suffixed(*status));
-            quote!(::core::option::Option::Some(&[#(#statuses),*]))
-        }
-        None => quote!(::core::option::Option::None),
-    };
-
+    for (status, text) in &tags.responses {
+        let status = proc_macro2::Literal::u16_suffixed(*status);
+        let text = syn::LitStr::new(text, item.sig.ident.span());
+        response_descriptions.push(quote! {
+            docs.push_response_description(#status, #text.to_string());
+        });
+    }
     let name = item.sig.ident.clone();
     let marker_type = format_ident!("{}_missing_roundhouse_handler_attribute", name);
     let vis = item.vis.clone();
@@ -129,8 +126,8 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
         // does not know.
         statements.push(quote! {
             {
-                use #krate::__private::ProbeArg as _;
-                docs.merge((&#krate::__private::ArgProbe::<#ty>::new()).document(context));
+                use #krate::__private::ProbeArgDoc as _;
+                docs.merge((&#krate::__private::ArgDocProbe::<#ty>::new()).document(context));
             }
         });
         verify_checks.push(quote! {
@@ -263,15 +260,6 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
     } else {
         quote!(#name(#(#shim_idents),*))
     };
-    let inferred_success = match inferred_successes(&return_shape) {
-        Some(statuses) => {
-            let statuses = statuses
-                .iter()
-                .map(|status| proc_macro2::Literal::u16_suffixed(*status));
-            quote!(::core::option::Option::Some(&[#(#statuses),*]))
-        }
-        None => quote!(::core::option::Option::None),
-    };
     // The shim is generic over the router state. `routes!` chooses `S` from the table's
     // `state = ...` option, or falls back to `HandlerSpec::State`. A handler's `State<T>`
     // arguments then use axum's `FromRef` contract through `SubstateOf`.
@@ -311,20 +299,20 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
             const HAS_STATE: bool = #has_state;
             const PATH_NAMES: &'static [&'static str] = #path_names;
             const REQUIRED_AUTH: &'static [&'static str] = &[#(#required_auth),*];
-            const INFERRED_SUCCESS: ::core::option::Option<&'static [u16]> = #inferred_success;
-            const DECLARED_SUCCESS: ::core::option::Option<&'static [u16]> = #declared_success;
         }
 
-        impl #krate::doc::DocSource for #marker_type {
-            fn operation(
-                context: &mut #krate::doc::DocContext<'_>,
-            ) -> #krate::doc::OperationDoc {
-                let mut docs = #krate::doc::OperationDoc::default();
-                #(#statements)*
-                let mut __rh_all_verified = true;
-                #(#verify_checks)*
-                docs.verification.set_body_verified(__rh_all_verified);
-                docs
+        #krate::__roundhouse_contract_code! {
+            impl #krate::doc::DocSource for #marker_type {
+                fn operation(
+                    context: &mut #krate::doc::DocContext<'_>,
+                ) -> #krate::doc::OperationDoc {
+                    let mut docs = #krate::doc::OperationDoc::default();
+                    #(#statements)*
+                    let mut __rh_all_verified = true;
+                    #(#verify_checks)*
+                    docs.verification.set_body_verified(__rh_all_verified);
+                    docs
+                }
             }
         }
     }
@@ -374,19 +362,16 @@ fn path_statements(args: &HandlerArgs) -> syn::Result<Vec<TokenStream>> {
 }
 
 /// Expand `#[handler(response(..))]` into declared-response statements.
-fn declared_response_statements(
-    args: &HandlerArgs,
-) -> syn::Result<(Vec<TokenStream>, Option<Vec<u16>>)> {
+fn declared_response_statements(args: &HandlerArgs) -> syn::Result<Vec<TokenStream>> {
     let krate = crate::util::krate();
     let declarations = args.responses.clone();
     let override_existing = args.override_existing;
 
     if declarations.is_empty() {
-        return Ok((Vec::new(), None));
+        return Ok(Vec::new());
     }
 
     let mut seen = std::collections::BTreeSet::new();
-    let mut success = Vec::new();
     let mut statements = Vec::new();
     if override_existing {
         statements.push(quote! {
@@ -401,9 +386,6 @@ fn declared_response_statements(
                 declaration.span,
                 format!("status {status_u16} is declared more than once"),
             ));
-        }
-        if status_u16 == 0 || (200..400).contains(&status_u16) {
-            success.push(status_u16);
         }
         let status = proc_macro2::Literal::u16_suffixed(status_u16);
 
@@ -430,7 +412,7 @@ fn declared_response_statements(
         });
     }
 
-    Ok((statements, Some(success)))
+    Ok(statements)
 }
 
 /// Expand `#[handler(response_description(..))]` into overrides.

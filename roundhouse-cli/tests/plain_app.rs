@@ -1,0 +1,212 @@
+//! End-to-end: a fresh app with plain `impl IntoResponse` handlers.
+//!
+//! This is the core 0.4 promise. The test writes a temporary crate, runs the real CLI, and checks
+//! that inference fills in the 200/201/404 responses without response enums or manual prose.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn cli() -> &'static str {
+    env!("CARGO_BIN_EXE_cargo-roundhouse")
+}
+
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the CLI lives inside the workspace")
+        .to_path_buf()
+}
+
+fn temp_project(label: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "roundhouse-{label}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("src")).expect("create src");
+    dir
+}
+
+fn run(dir: &Path, args: &[&str]) {
+    let status = Command::new(cli())
+        .args(args)
+        .current_dir(dir)
+        .env("CARGO_TARGET_DIR", dir.join("target"))
+        .status()
+        .expect("run cargo roundhouse");
+    assert!(status.success(), "`cargo roundhouse {args:?}` failed");
+}
+
+#[test]
+fn plain_handlers_are_inferred_end_to_end() {
+    let dir = temp_project("plain");
+    let root = workspace_root();
+    fs::write(
+        dir.join("Cargo.toml"),
+        format!(
+            r#"[package]
+name = "plain-app"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+roundhouse = {{ path = {root:?}, default-features = false, features = ["contract-runtime"] }}
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+"#,
+            root = root.display().to_string()
+        ),
+    )
+    .expect("write manifest");
+    fs::write(
+        dir.join("src/lib.rs"),
+        r#"use roundhouse::prelude::*;
+
+#[derive(Clone, Default)]
+pub struct AppState;
+
+impl AppState {
+    fn load(&self, id: u64) -> Note {
+        Note { id }
+    }
+}
+
+roundhouse::app_state!(AppState);
+
+roundhouse::api! {
+    state = AppState,
+    title = "Plain App",
+    version = "0.1.0",
+    root = routes::MODULE,
+    register = [Note],
+}
+
+#[roundhouse::schema]
+#[derive(serde::Serialize)]
+pub struct Note {
+    pub id: u64,
+}
+
+pub mod routes {
+    use super::*;
+
+    routes! {
+        "/plain" => { get(list), post(create) },
+        "/plain/{id}" => { get(show) },
+        "/plain/{id}/note" => { get(note) },
+    }
+
+    #[handler]
+    pub async fn list() -> Json<serde_json::Value> {
+        Json(serde_json::json!([]))
+    }
+
+    #[handler]
+    pub async fn create(Json(body): Json<serde_json::Value>) -> Created<serde_json::Value> {
+        Created(body)
+    }
+
+    #[handler]
+    pub async fn show(Path(id): Path<u64>) -> impl IntoResponse {
+        if id == 0 {
+            Problem::not_found("missing").into_response()
+        } else {
+            Json(serde_json::json!({ "id": id })).into_response()
+        }
+    }
+
+    #[handler]
+    pub async fn note(State(app): State<AppState>, Path(id): Path<u64>) -> impl IntoResponse {
+        Json(app.load(id)).into_response()
+    }
+}
+"#,
+    )
+    .expect("write lib");
+
+    let manifest_before = fs::read_to_string(dir.join("Cargo.toml")).expect("read manifest");
+    run(&dir, &["init"]);
+    assert_eq!(
+        fs::read_to_string(dir.join("Cargo.toml")).expect("read manifest"),
+        manifest_before,
+        "init must not edit Cargo.toml"
+    );
+    assert!(
+        !dir.join("src/bin").exists(),
+        "init must not create a source-tree bin"
+    );
+    assert!(
+        dir.join(".roundhouse").is_dir(),
+        "init creates the artifact directory"
+    );
+    run(&dir, &["prepare"]);
+    run(&dir, &["check"]);
+
+    let contract: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(dir.join(".roundhouse/contract.json")).expect("read contract"),
+    )
+    .expect("contract is JSON");
+    let operations = contract["operations"].as_array().expect("operations");
+
+    let responses = |method: &str, path: &str| {
+        operations
+            .iter()
+            .find(|operation| operation["method"] == method && operation["path"] == path)
+            .map(|operation| {
+                operation["responses"]
+                    .as_array()
+                    .expect("responses")
+                    .clone()
+            })
+            .unwrap_or_else(|| panic!("missing operation {method} {path}"))
+    };
+    let statuses = |method: &str, path: &str| {
+        responses(method, path)
+            .iter()
+            .filter_map(|response| response["status"].as_u64())
+            .collect::<Vec<_>>()
+    };
+    let provenance = |method: &str, path: &str, status: u64| {
+        responses(method, path)
+            .iter()
+            .find(|response| response["status"] == status)
+            .and_then(|response| response["provenance"].as_str())
+            .unwrap_or_else(|| panic!("missing response {status} for {method} {path}"))
+            .to_string()
+    };
+
+    assert!(statuses("GET", "/plain").contains(&200));
+    assert!(statuses("POST", "/plain").contains(&201));
+    assert!(statuses("GET", "/plain/{id}").contains(&200));
+    assert!(statuses("GET", "/plain/{id}").contains(&404));
+    assert_eq!(provenance("GET", "/plain", 200), "declared");
+    assert_eq!(provenance("GET", "/plain/{id}", 200), "inferred");
+    assert_eq!(provenance("GET", "/plain/{id}", 404), "inferred");
+    assert_eq!(provenance("GET", "/plain/{id}/note", 200), "inferred");
+    let note = responses("GET", "/plain/{id}/note")
+        .into_iter()
+        .find(|response| response["status"] == 200)
+        .expect("note response");
+    assert_eq!(
+        note["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/Note"
+    );
+
+    let explain = Command::new(cli())
+        .args(["explain", "GET /plain/{id}"])
+        .current_dir(&dir)
+        .output()
+        .expect("run explain");
+    let text = String::from_utf8_lossy(&explain.stdout);
+    assert!(text.contains("inferred"), "explain output: {text}");
+    assert!(text.contains("404"), "explain output: {text}");
+
+    fs::remove_dir_all(&dir).expect("clean the temporary project");
+}

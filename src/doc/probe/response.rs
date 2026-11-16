@@ -1,10 +1,10 @@
 //! The concrete-type response probe used by `#[handler]`.
 //!
-//! `ApiResponse` is the public contract; this probe is the autoref fallback that keeps a
+//! `ResponseDocSource` is the public contract; this probe is the autoref fallback that keeps a
 //! hand-written `IntoResponse` return type compiling and marks it undocumented. It is macro
 //! machinery, not an extension point.
 
-use crate::doc::{ApiResponse, ResponseDoc, SchemaContext};
+use crate::doc::{ResponseDoc, ResponseDocSource, SchemaContext};
 
 pub struct ResponseProbe<T: ?Sized>(std::marker::PhantomData<T>);
 
@@ -21,13 +21,13 @@ impl<T: ?Sized> Default for ResponseProbe<T> {
 }
 
 pub trait ProbeResponses {
-    /// `Some` when the type implements [`ApiResponse`], including a known type that documents no
+    /// `Some` when the type implements [`ResponseDocSource`], including a known type that documents no
     /// response (for example `Option<T>` or `Infallible`). `None` means the document cannot see
     /// the response type at all.
     fn probe_responses(self, components: &mut dyn SchemaContext) -> Option<Vec<ResponseDoc>>;
 }
 
-impl<T: ApiResponse + ?Sized> ProbeResponses for &ResponseProbe<T> {
+impl<T: ResponseDocSource + ?Sized> ProbeResponses for &ResponseProbe<T> {
     fn probe_responses(self, components: &mut dyn SchemaContext) -> Option<Vec<ResponseDoc>> {
         Some(T::responses(components))
     }

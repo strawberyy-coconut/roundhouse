@@ -1,0 +1,121 @@
+{
+  "contract_version": 1,
+  "diagnostics": [],
+  "generator_version": "0.4.0",
+  "kind": "roundhouse.contract",
+  "openapi": "openapi.json",
+  "operations": [
+    {
+      "deprecated": false,
+      "handler": "entry_ok",
+      "hidden": false,
+      "method": "GET",
+      "module": "layers_example::routes",
+      "operation_id": "get_layers_example_routes_entry_ok",
+      "path": "/entry/ok",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "text/plain; charset=utf-8": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/layers/src/routes/mod.rs",
+        "line": 39,
+        "module": "layers_example::routes"
+      },
+      "tags": [],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "full_ok",
+      "hidden": false,
+      "method": "GET",
+      "module": "layers_example::routes",
+      "operation_id": "get_layers_example_routes_full_ok",
+      "path": "/full/ok",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "text/plain; charset=utf-8": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/layers/src/routes/mod.rs",
+        "line": 24,
+        "module": "layers_example::routes"
+      },
+      "tags": [],
+      "validation": "schema"
+    },
+    {
+      "deprecated": false,
+      "handler": "route_layer_ok",
+      "hidden": false,
+      "method": "GET",
+      "module": "layers_example::routes",
+      "operation_id": "get_layers_example_routes_route_layer_ok",
+      "path": "/route-layer/ok",
+      "request": {
+        "body": null
+      },
+      "responses": [
+        {
+          "content": {
+            "text/plain; charset=utf-8": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "OK",
+          "provenance": "declared",
+          "status": 200
+        }
+      ],
+      "security": [],
+      "source": {
+        "file": "/workspaces/axum-roundhouse/examples/layers/src/routes/mod.rs",
+        "line": 33,
+        "module": "layers_example::routes"
+      },
+      "tags": [],
+      "validation": "schema"
+    }
+  ],
+  "validation": {
+    "bodies": {
+      "ops": {},
+      "types": {}
+    },
+    "defs": {},
+    "parts": {
+      "types": {}
+    }
+  }
+}

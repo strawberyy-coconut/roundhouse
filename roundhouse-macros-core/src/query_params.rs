@@ -47,7 +47,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             // Serde flattens the inner keys into this struct's own namespace. The inner
             // `QueryParams` impl owns both its parameter list and its validation pass.
             params.push(quote! {
-                params.extend(<#ty as #krate::doc::Params>::params(context));
+                params.extend(<#ty as #krate::doc::ParamsDoc>::params(context));
             });
             validations.push(flatten_validation(field_ident, ty));
             value_inserts.push(flatten_value(field_ident, ty));
@@ -108,37 +108,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
 
     let fn_name = quote::format_ident!("__roundhouse_query_params_{}", ident);
     Ok(quote! {
-        #[allow(non_snake_case)]
-        fn #fn_name(
-            context: &mut dyn #krate::doc::SchemaContext,
-        ) -> ::std::vec::Vec<#krate::doc::Param> {
-            #(#registrations)*
-            let mut params = ::std::vec::Vec::new();
-            #(#params)*
-            params
-        }
-
-        impl #krate::doc::Params for #ident {
-            fn params(
-                context: &mut dyn #krate::doc::SchemaContext,
-            ) -> ::std::vec::Vec<#krate::doc::Param> {
-                #fn_name(context)
-            }
-
-            fn parts_schema(
-                context: &mut dyn #krate::doc::SchemaContext,
-            ) -> #krate::__private::utoipa::openapi::RefOr<#krate::__private::utoipa::openapi::schema::Schema> {
-                #krate::doc::schema::object_from_params(
-                    <Self as #krate::doc::Params>::params(context),
-                )
-            }
-
-            fn parts_value(&self) -> #krate::serde_json::Value {
-                let mut map = #krate::serde_json::Map::new();
-                #(#value_inserts)*
-                #krate::serde_json::Value::Object(map)
-            }
-
+        impl #krate::doc::ValidateHook for #ident {
             fn validate_at(
                 &self,
                 pointer: &str,
@@ -146,9 +116,45 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             ) {
                 #(#validations)*
             }
+        }
 
-            fn parts_doc() -> ::core::option::Option<#krate::doc::PartsDoc> {
-                ::core::option::Option::Some(#krate::doc::PartsDoc::new::<Self>())
+        impl #krate::doc::Params for #ident {
+            fn parts_value(&self) -> #krate::serde_json::Value {
+                let mut map = #krate::serde_json::Map::new();
+                #(#value_inserts)*
+                #krate::serde_json::Value::Object(map)
+            }
+        }
+
+        #krate::__roundhouse_contract_code! {
+            #[allow(non_snake_case)]
+            fn #fn_name(
+                context: &mut dyn #krate::doc::SchemaContext,
+            ) -> ::std::vec::Vec<#krate::doc::Param> {
+                #(#registrations)*
+                let mut params = ::std::vec::Vec::new();
+                #(#params)*
+                params
+            }
+
+            impl #krate::doc::ParamsDoc for #ident {
+                fn params(
+                    context: &mut dyn #krate::doc::SchemaContext,
+                ) -> ::std::vec::Vec<#krate::doc::Param> {
+                    #fn_name(context)
+                }
+
+                fn parts_schema(
+                    context: &mut dyn #krate::doc::SchemaContext,
+                ) -> #krate::__private::utoipa::openapi::RefOr<#krate::__private::utoipa::openapi::schema::Schema> {
+                    #krate::doc::schema::object_from_params(
+                        <Self as #krate::doc::ParamsDoc>::params(context),
+                    )
+                }
+
+                fn parts_doc() -> ::core::option::Option<#krate::doc::PartsDoc> {
+                    ::core::option::Option::Some(#krate::doc::PartsDoc::new::<Self>())
+                }
             }
         }
 
@@ -183,12 +189,12 @@ fn flatten_validation(field_ident: &syn::Ident, ty: &syn::Type) -> TokenStream {
     if is_option(ty).is_some() {
         quote! {
             if let ::core::option::Option::Some(value) = &self.#field_ident {
-                #krate::doc::Params::validate_at(value, pointer, errors);
+                #krate::doc::ValidateHook::validate_at(value, pointer, errors);
             }
         }
     } else {
         quote! {
-            #krate::doc::Params::validate_at(&self.#field_ident, pointer, errors);
+            #krate::doc::ValidateHook::validate_at(&self.#field_ident, pointer, errors);
         }
     }
 }

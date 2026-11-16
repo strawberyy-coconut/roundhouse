@@ -18,7 +18,7 @@
 //!     State(app): State<AppState>,
 //!     RepeatedQuery(page): RepeatedQuery<Page>,
 //!     Json(input): Json<CreatePost>,
-//! ) -> Result<Json<Post>, ApiError> { .. }
+//! ) -> Result<Json<Post>, Problem> { .. }
 //! ```
 //!
 //! [`Validation`] selects the enforcer: the emitted JSON Schema, executed by the `schema-engine`
@@ -119,7 +119,7 @@ impl ValidationState {
 
 /// The request's validation state, plus the app's compiled engine.
 ///
-/// `#[handler]` passes this to [`ExtractArg::validate`](crate::doc::ExtractArg::validate). A
+/// `#[handler]` passes this to [`ExtractArg::validate`](crate::ExtractArg::validate). A
 /// custom extractor can use [`ValidationContext::enabled`], [`ValidationContext::engine`] and
 /// [`ValidationContext::status`] without reaching into the generated shim.
 #[derive(Clone)]
@@ -473,17 +473,6 @@ fn body_limit(parts: &Parts) -> usize {
         .unwrap_or(DEFAULT_MAX_BODY)
 }
 
-fn is_json(parts: &Parts) -> bool {
-    parts
-        .headers
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| {
-            let value = value.split(';').next().unwrap_or(value).trim();
-            value == "application/json" || value.ends_with("+json")
-        })
-}
-
 fn too_large(limit: usize) -> Problem {
     Problem::from_rejection(
         StatusCode::PAYLOAD_TOO_LARGE,
@@ -512,7 +501,7 @@ where
     if let Some(engine) = engine {
         let value =
             serde_json::to_value(value).map_err(|error| malformed_json(error.to_string()))?;
-        if let Some(result) = engine.validate::<T>(&value) {
+        if let Some(result) = engine.validate_contract_type(std::any::type_name::<T>(), &value) {
             result.map_err(|errors| validation_problem(errors, status))?;
         }
     }
@@ -531,7 +520,7 @@ where
 {
     if let Some(engine) = engine {
         let value = crate::doc::Params::parts_value(value);
-        if let Some(result) = engine.validate_parts::<T>(&value) {
+        if let Some(result) = engine.validate_contract_parts(std::any::type_name::<T>(), &value) {
             result.map_err(|errors| validation_problem(errors, status))?;
         }
     }
@@ -551,8 +540,6 @@ where
     S: Send + Sync,
 {
     let (parts, body) = request.into_parts();
-    let policy = Policy::read(&parts);
-    let engine = engine(&parts);
     let limit = body_limit(&parts);
     let bytes = axum::body::to_bytes(body, limit)
         .await
@@ -560,20 +547,6 @@ where
 
     if optional && bytes.is_empty() {
         return Ok(None);
-    }
-
-    // The router's raw layer may have run already; it marks the state when it did.
-    let already = policy.state.body_validated;
-    if !already
-        && policy.body_enabled()
-        && is_json(&parts)
-        && let Some(engine) = &engine
-    {
-        let value: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|error| malformed_json(error.to_string()))?;
-        if let Some(result) = engine.validate::<T>(&value) {
-            result.map_err(|errors| policy.problem(errors))?;
-        }
     }
 
     let request = axum::extract::Request::from_parts(parts, axum::body::Body::from(bytes));
@@ -631,7 +604,7 @@ where
 
 impl<T, S> FromRequestParts<S> for Strict<axum::extract::Path<T>>
 where
-    T: DeserializeOwned + crate::doc::Params + Send + 'static,
+    T: DeserializeOwned + crate::doc::Params + crate::doc::ValidateHook + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -642,7 +615,7 @@ where
         let policy = Policy::read(parts);
         if policy.enabled() {
             enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.status())?;
-            value.validate().map_err(|errors| policy.problem(errors))?;
+            crate::doc::ValidateHook::validate(&value).map_err(|errors| policy.problem(errors))?;
         }
         Ok(Strict(axum::extract::Path(value)))
     }
@@ -650,7 +623,7 @@ where
 
 impl<T, S> OptionalFromRequestParts<S> for Strict<axum::extract::Path<T>>
 where
-    T: DeserializeOwned + crate::doc::Params + Send + 'static,
+    T: DeserializeOwned + crate::doc::Params + crate::doc::ValidateHook + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -664,7 +637,7 @@ where
         let policy = Policy::read(parts);
         if policy.enabled() {
             enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.status())?;
-            value.validate().map_err(|errors| policy.problem(errors))?;
+            crate::doc::ValidateHook::validate(&value).map_err(|errors| policy.problem(errors))?;
         }
         Ok(Some(Strict(axum::extract::Path(value))))
     }
@@ -672,7 +645,7 @@ where
 
 impl<T, S> FromRequestParts<S> for Strict<axum::extract::Query<T>>
 where
-    T: DeserializeOwned + crate::doc::Params + Send + 'static,
+    T: DeserializeOwned + crate::doc::Params + crate::doc::ValidateHook + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -683,7 +656,7 @@ where
         let policy = Policy::read(parts);
         if policy.enabled() {
             enforce_parts_schema::<T>(&value, engine(parts).as_ref(), policy.status())?;
-            value.validate().map_err(|errors| policy.problem(errors))?;
+            crate::doc::ValidateHook::validate(&value).map_err(|errors| policy.problem(errors))?;
         }
         Ok(Strict(axum::extract::Query(value)))
     }
@@ -774,7 +747,7 @@ impl<T> DerefMut for RepeatedQuery<T> {
 
 impl<T, S> FromRequestParts<S> for RepeatedQuery<T>
 where
-    T: DeserializeOwned + crate::doc::Params + Send + 'static,
+    T: DeserializeOwned + crate::doc::Params + crate::doc::ValidateHook + Send + 'static,
     S: Send + Sync,
 {
     type Rejection = Problem;
@@ -793,13 +766,9 @@ where
             .map_err(|error| rejection_problem(StatusCode::BAD_REQUEST, error.to_string()))?;
         if !state.skip && state.mode != Validation::Off {
             if let Some(engine) = engine {
-                let value = crate::doc::Params::parts_value(&value);
-                if let Some(result) = engine.validate_parts::<T>(&value) {
-                    result.map_err(|errors| problem_from_validation(errors, state.status))?;
-                }
+                enforce_parts_schema(&value, Some(&engine), state.status)?;
             }
-            value
-                .validate()
+            crate::doc::ValidateHook::validate(&value)
                 .map_err(|errors| problem_from_validation(errors, state.status))?;
         }
         Ok(Self(value))

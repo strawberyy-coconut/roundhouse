@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote, quote_spanned};
+use quote::{format_ident, quote};
 use syn::{Ident, LitStr, Result};
 
 use crate::util::{auth_slice, last_segment, marker_type, string_slice};
@@ -127,14 +127,16 @@ pub(super) fn emit_module(
 
     let doc_fn = format_ident!("__roundhouse_module_doc_{module_id}");
     let doc_value = if options.doc.is_some() {
-        quote!(::core::option::Option::Some(#doc_fn))
+        quote!(#krate::__roundhouse_doc_value!(#doc_fn))
     } else {
         quote!(::core::option::Option::None)
     };
     if let Some(expr) = &options.doc {
         definitions.extend(quote! {
-            fn #doc_fn() -> #krate::doc::layer::LayerDoc {
-                #expr
+            #krate::__roundhouse_contract_code! {
+                fn #doc_fn() -> #krate::doc::layer::LayerDoc {
+                    #expr
+                }
             }
         });
     }
@@ -314,26 +316,6 @@ pub(super) fn expand_entry(
     let unverified = option_lit(&entry.unverified);
     let deprecated = entry.deprecated;
     let anonymous = entry.anonymous;
-    let no_success_message = LitStr::new(
-        &format!(
-            "roundhouse: `{} {}` has no success response; return a concrete response type or \
-             declare `#[handler(response(..))]`",
-            method_ident,
-            entry.path.value().replace('{', "{{").replace('}', "}}")
-        ),
-        entry.path.span(),
-    );
-    let success_assert = quote_spanned! { entry.path.span()=>
-        const _: () = {
-            if <#handler_alias as #krate::doc::HandlerSpec>::DECLARED_SUCCESS.is_none() {
-                if let ::core::option::Option::Some(__statuses) =
-                    <#handler_alias as #krate::doc::HandlerSpec>::INFERRED_SUCCESS
-                {
-                    assert!(!__statuses.is_empty(), #no_success_message);
-                }
-            }
-        };
-    };
     let line = entry.path.span().start().line as u32;
 
     let route_fn = format_ident!("__roundhouse_route_{index}");
@@ -357,7 +339,7 @@ pub(super) fn expand_entry(
         None => quote! {},
     };
     let doc_value = if entry.doc.is_some() || entry.prose.is_some() {
-        quote!(::core::option::Option::Some(#doc_fn))
+        quote!(#krate::__roundhouse_doc_value!(#doc_fn))
     } else {
         quote!(::core::option::Option::None)
     };
@@ -384,9 +366,11 @@ pub(super) fn expand_entry(
     });
     let doc = if entry.doc.is_some() || entry.prose.is_some() {
         quote! {
-            fn #doc_fn(docs: &mut #krate::doc::OperationDoc) {
-                #prose_call
-                #hook_call
+            #krate::__roundhouse_contract_code! {
+                fn #doc_fn(docs: &mut #krate::doc::OperationDoc) {
+                    #prose_call
+                    #hook_call
+                }
             }
         }
     } else {
@@ -401,8 +385,6 @@ pub(super) fn expand_entry(
         #(#attrs)*
         #[allow(non_upper_case_globals)]
         const _: () = {
-            #success_assert
-
             const _: () = {
                 assert!(
                     #krate::prefix::path_names_match(

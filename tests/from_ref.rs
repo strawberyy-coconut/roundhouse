@@ -5,7 +5,7 @@ use axum::body::Body;
 use axum::extract::{FromRef, FromRequestParts};
 use axum::http::request::Parts;
 use axum::http::{Request, StatusCode, header};
-use roundhouse::doc::{ArgDoc, DocContext, ExtractArg};
+use roundhouse::doc::{ArgDoc, DocContext, ExtractDoc};
 use roundhouse::prelude::*;
 use roundhouse::{App, BuildError};
 
@@ -73,7 +73,9 @@ impl FromRequestParts<AppState> for DbExtractor {
     }
 }
 
-impl ExtractArg for DbExtractor {
+impl roundhouse::ExtractArg for DbExtractor {}
+
+impl ExtractDoc for DbExtractor {
     fn document(_context: &mut DocContext<'_>) -> ArgDoc {
         ArgDoc::default()
     }

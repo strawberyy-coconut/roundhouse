@@ -5,12 +5,17 @@ pub struct AppState;
 
 roundhouse::app_state!(AppState);
 
-use roundhouse::openapi::Info;
+roundhouse::api! {
+    state = AppState,
+    title = "Uploads API",
+    version = env!("CARGO_PKG_VERSION"),
+    root = routes::MODULE,
+}
 
 pub fn app(state: AppState) -> roundhouse::App<AppState> {
     roundhouse::app!(state, routes)
         .max_body(2 * 1024 * 1024)
-        .openapi(|| Info::new("Uploads API", env!("CARGO_PKG_VERSION")))
+        .contract(roundhouse::include_contract!())
         .openapi_route("/spec.json")
         .docs_route("/reference")
 }

@@ -11,8 +11,16 @@ pub struct AppState;
 
 roundhouse::app_state!(AppState);
 
+roundhouse::api! {
+    state = AppState,
+    title = "Layers API",
+    version = env!("CARGO_PKG_VERSION"),
+    root = routes::MODULE,
+}
+
 pub fn app(state: AppState) -> roundhouse::App<AppState> {
     roundhouse::app!(state, routes)
+        .contract(roundhouse::include_contract!())
         .layer(middleware::from_fn(headers::global))
         .fallback(|| async { (StatusCode::IM_A_TEAPOT, "custom fallback") })
         .merge_undocumented(

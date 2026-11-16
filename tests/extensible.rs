@@ -4,9 +4,7 @@ use axum::extract::FromRequestParts;
 use axum::http::{StatusCode, request::Parts};
 use axum::response::{IntoResponse, Response};
 use roundhouse::App;
-use roundhouse::doc::{
-    ApiResponse, ArgDoc, DocContext, ExtractArg, Param, ParamIn, ResponseDoc, SchemaContext, schema,
-};
+use roundhouse::doc::{ArgDoc, DocContext, ExtractDoc, Param, ParamIn, ResponseDoc, schema};
 use roundhouse::prelude::*;
 
 #[derive(Clone, Default)]
@@ -31,7 +29,9 @@ where
     }
 }
 
-impl ExtractArg for Tenant {
+impl roundhouse::ExtractArg for Tenant {}
+
+impl ExtractDoc for Tenant {
     fn document(_context: &mut DocContext<'_>) -> ArgDoc {
         ArgDoc {
             params: vec![
@@ -42,7 +42,7 @@ impl ExtractArg for Tenant {
     }
 }
 
-/// A custom response type: implement `ApiResponse` and `routes!` documents it automatically.
+/// A custom response type: doc a declared response and fill in its content type with a hook.
 pub struct Csv;
 
 impl IntoResponse for Csv {
@@ -56,24 +56,20 @@ impl IntoResponse for Csv {
     }
 }
 
-impl ApiResponse for Csv {
-    const SUCCESS: &'static [u16] = &[200];
-
-    fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
-        vec![ResponseDoc {
-            status: 200,
-            description: "OK".to_string(),
-            content_type: Some("text/csv".to_string()),
-            schema: Some(schema::string()),
-            headers: Vec::new(),
-        }]
-    }
-}
-
 routes! {
     prefix = "/extensible",
     "/tenant" => { get(tenant, operation_id = "extensible_tenant") },
-    "/csv" => { get(csv, operation_id = "extensible_csv") },
+    "/csv" => {
+        get(csv, operation_id = "extensible_csv", doc = |docs| {
+            docs.push_response(ResponseDoc {
+                status: 200,
+                description: "OK".to_string(),
+                content_type: Some("text/csv".to_string()),
+                schema: Some(schema::string()),
+                headers: Vec::new(),
+            });
+        })
+    },
 }
 
 #[handler]

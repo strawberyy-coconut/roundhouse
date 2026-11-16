@@ -247,6 +247,15 @@ use proc_macro::TokenStream;
 ///     },
 /// }
 /// ```
+/// Declare the build-time contract configuration.
+///
+/// Call once at the crate root. It generates `__roundhouse_contract()`, which the generated
+/// `roundhouse-contract` bin calls.
+#[proc_macro]
+pub fn api(input: TokenStream) -> TokenStream {
+    roundhouse_macros_core::expand_api(input.into()).into()
+}
+
 #[proc_macro]
 pub fn routes(input: TokenStream) -> TokenStream {
     roundhouse_macros_core::expand_routes(input.into()).into()
@@ -298,8 +307,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
 ///
 /// # Responses
 ///
-/// The return type documents itself through `roundhouse::doc::ApiResponse`. The framework provides
-/// impls for the common axum shapes:
+/// The return type is documented from the common axum shapes:
 ///
 /// - no return type or `()` — `200 OK`;
 /// - `Json<T>` — `200` with an `application/json` schema for `T: ApiSchema`;
@@ -310,17 +318,16 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// - `StatusCode` — the OpenAPI `default` response, because the status is chosen at runtime;
 /// - `(StatusCode, Body)` — the `default` response. Other tuples are not classified; declare
 ///   them with `#[handler(response(..))]`;
-/// - `Result<T, E>` — `T`'s success response plus every response registered by the error type
-///   `E`. Derive `ApiError` / `ApiResponse` on `E`, or use `Problem`, so that `E` has documented
-///   responses; otherwise the build reports an undocumented error.
+/// - `Result<T, E>` — `T`'s success response plus whatever `E` documents. Use `Problem` (or
+///   declare the error responses with `#[handler(response(..))]`); otherwise the build reports an
+///   undocumented error.
 ///
 /// A known shape whose body type publishes no schema (for example `Created<T>` where `T` is only
 /// `Serialize`) is documented with its status and `x-roundhouse-unverified-response`; the strict build
 /// rejects it unless the entry acknowledges it with `unverified = "reason"`.
 ///
-/// A custom response type implements `ApiResponse` and its `SUCCESS` statuses. For any other
-/// `IntoResponse` type, declare the response on the handler with `#[handler(response(..))]`. An
-/// operation with no declared success response is a build error.
+/// For any other `IntoResponse` type, declare the response on the handler with
+/// `#[handler(response(..))]`. An operation with no declared success response is a build error.
 ///
 /// # Limitations
 ///
@@ -571,92 +578,4 @@ pub fn derive_path_params(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Multipart, attributes(multipart, file, serde))]
 pub fn derive_multipart(input: TokenStream) -> TokenStream {
     roundhouse_macros_core::expand_multipart(input.into()).into()
-}
-
-/// Derive `IntoResponse` plus documented responses for a response enum.
-///
-/// `ApiResponse` is for any enum whose variants are responses. Every variant must declare its
-/// status; a response the code can produce but the document cannot describe is treated as a
-/// bug.
-///
-/// ```ignore
-/// use roundhouse::prelude::*;
-///
-/// #[derive(ApiResponse)]
-/// pub enum CreateNote {
-///     #[status(201, description = "Created")]
-///     Created {
-///         #[body]
-///         body: Json<Note>,
-///         #[header("Location")]
-///         location: String,
-///     },
-///     #[status(409, problem = "NoteAlreadyExists")]
-///     Conflict,
-/// }
-/// ```
-///
-/// # Variant attributes
-///
-/// - `#[status(code)]` — required. `#[status(code, description = "..")]` overrides the canonical
-///   reason phrase and the variant's `@description:` doc tag. `#[status(code, problem = "slug")]`
-///   documents an error variant as an RFC 9457 problem with type
-///   `https://roundhouse.rs/problems/{slug}`. `#[response(status = code)]` is an equivalent
-///   spelling.
-///
-/// # Field attributes
-///
-/// - `#[body]` — serialize this field as the response body. A single unnamed field is the body
-///   implicitly when it has no other response attribute.
-/// - `#[header("Name")]` — copy this field into a response header. Add `, append` to use
-///   `HeaderMap::append` instead of `insert`.
-/// - `#[location]` — copy this field into the `Location` header, documented as a URI.
-/// - `#[from]` — accept a `ValidationErrors` field and turn it into a problem response with this
-///   variant's status.
-///
-/// A variant's `@description:` doc tag supplies the response description unless the status
-/// attribute provides one explicitly.
-///
-/// A variant without a body and a status below 400 produces an empty response with that status.
-/// A variant without a body and a status of 400 or above produces a `roundhouse::Problem`.
-///
-/// The derive is for enums only. Generic enums are supported: the derive copies the enum's
-/// generics and `where` clause, then adds only the bounds each documented field needs. A `Json<T>`
-/// body needs `T: ApiSchema` for documentation and `Json<T>: IntoResponse` at runtime; a bare body
-/// needs `T: ApiSchema + IntoResponse`; a header or `#[location]` needs `T: ApiSchema +
-/// TryInto<HeaderValue>`. `Created<T>` and `NoContent` cover the common created/no-content cases
-/// without a derive.
-#[proc_macro_derive(
-    ApiResponse,
-    attributes(status, response, body, header, location, from)
-)]
-pub fn derive_api_response(input: TokenStream) -> TokenStream {
-    roundhouse_macros_core::expand_api_response(input.into(), false).into()
-}
-
-/// Derive an error response enum: every `ApiResponse` behavior plus an error contract.
-///
-/// `ApiError` is the error-side counterpart of [`ApiResponse`](macro@ApiResponse). It accepts the
-/// same `#[status(..)]`, `#[body]`, `#[header(..)]`, `#[location]` and `#[from]` attributes, and
-/// additionally requires every status to be `4xx` or `5xx`.
-///
-/// The type must implement `std::error::Error`; the derive enforces that with a compile-time
-/// assertion. The error's `Display` output becomes the `detail` of a generated problem response.
-///
-/// ```ignore
-/// use roundhouse::prelude::*;
-///
-/// #[derive(Debug, thiserror::Error, ApiError)]
-/// pub enum NoteError {
-///     #[error("note {0} was not found")]
-///     #[status(404, problem = "NoteNotFound")]
-///     NotFound(i64),
-///     #[error("the note was invalid")]
-///     #[status(422)]
-///     Invalid(#[from] ValidationErrors),
-/// }
-/// ```
-#[proc_macro_derive(ApiError, attributes(status, response, body, header, location, from))]
-pub fn derive_api_error(input: TokenStream) -> TokenStream {
-    roundhouse_macros_core::expand_api_response(input.into(), true).into()
 }

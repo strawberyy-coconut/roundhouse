@@ -315,7 +315,24 @@ mod shapes {
         "/constrained-event" => { post(constrained_event) },
         "/even" => { post(even) },
         "/utoipa" => { get(from_utoipa) },
-        "/created" => { post(created) },
+        "/created" => {
+            post(created, doc = |docs| {
+                if let Some(response) = docs.declared_response_mut(201) {
+                    response.headers.push(roundhouse::doc::HeaderDoc {
+                        name: "X-Id".to_string(),
+                        schema: roundhouse::doc::schema::string(),
+                    });
+                    response.headers.push(roundhouse::doc::HeaderDoc {
+                        name: "Location".to_string(),
+                        schema: roundhouse::doc::schema::string_with_format(
+                            roundhouse::interop::utoipa::openapi::schema::SchemaFormat::Custom(
+                                "uri".to_string(),
+                            ),
+                        ),
+                    });
+                }
+            })
+        },
         "/contact" => { post(contact) },
         "/envelope" => { post(envelope) },
         "/unvalidated" => { post(unvalidated, validate = false) },
@@ -393,22 +410,6 @@ mod shapes {
         pub long_title: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub subtitle: Option<String>,
-    }
-
-    #[allow(dead_code)]
-    #[derive(ApiResponse)]
-    pub enum Created {
-        #[status(201, description = "Created")]
-        Created {
-            #[body]
-            body: Json<Note>,
-            #[header("X-Id")]
-            id: String,
-            #[location]
-            location: String,
-        },
-        #[status(409, problem = "AlreadyExists")]
-        Conflict,
     }
 
     #[derive(Debug, Serialize, Deserialize, ToSchema, ApiSchema)]
@@ -518,17 +519,28 @@ mod shapes {
             name: "external".to_string(),
         })
     }
-    #[handler]
-    pub async fn created() -> Created {
-        Created::Created {
-            body: Json(Note {
+    #[handler(
+        response(201, Note),
+        response(409, Problem),
+        response_description(201, "Created")
+    )]
+    pub async fn created() -> Response {
+        let mut response = (
+            StatusCode::CREATED,
+            Json(Note {
                 id: 1,
                 long_title: "hello".to_string(),
                 subtitle: None,
             }),
-            id: "1".to_string(),
-            location: "/shapes/1".to_string(),
-        }
+        )
+            .into_response();
+        response
+            .headers_mut()
+            .insert("x-id", HeaderValue::from_static("1"));
+        response
+            .headers_mut()
+            .insert(header::LOCATION, HeaderValue::from_static("/shapes/1"));
+        response
     }
 }
 
@@ -694,7 +706,7 @@ async fn schema_derives_cover_enums_and_serde_names() {
 }
 
 #[tokio::test]
-async fn api_response_enum_sets_status_body_and_headers() {
+async fn declared_response_sets_status_body_and_headers() {
     let app = app();
     let response = app
         .oneshot_json(http::Method::POST, "/shapes/created", "{}")
@@ -1064,7 +1076,7 @@ async fn response_validation_catches_a_document_that_lies() {
     let app = App::new(State)
         .fragment(__roundhouse_fragment())
         .openapi(|| Info::new("Surface", "0.1.0"))
-        .validate_responses()
+        .verify_responses()
         .permissive()
         .build();
 
@@ -1083,7 +1095,7 @@ async fn response_validation_catches_a_document_that_lies() {
         value["detail"]
             .as_str()
             .unwrap()
-            .contains("response validation failed")
+            .contains("response verification failed")
     );
 }
 

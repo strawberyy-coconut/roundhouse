@@ -771,8 +771,8 @@ async fn a_nested_module_keeps_the_ancestor_prefix() {
 
 #[cfg(feature = "schema-engine")]
 #[tokio::test]
-async fn validate_responses_matches_the_document_under_a_dynamic_module() {
-    let app = scoped(&validated::MODULE).validate_responses().build();
+async fn verify_responses_matches_the_document_under_a_dynamic_module() {
+    let app = scoped(&validated::MODULE).verify_responses().build();
     let response = app.oneshot_get("/9/reports/3").await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = http_body_util::BodyExt::collect(response.into_body())
@@ -789,7 +789,7 @@ async fn validate_responses_matches_the_document_under_a_dynamic_module() {
 async fn response_validation_actually_runs_under_a_dynamic_module() {
     // If `MatchedPath` were the leaf path, the validator would have no entry, skip the body, and
     // this deliberately invalid response would leak out as a 200.
-    let app = scoped(&validated::MODULE).validate_responses().build();
+    let app = scoped(&validated::MODULE).verify_responses().build();
     let response = app.oneshot_get("/9/reports/3/lying").await;
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let body = http_body_util::BodyExt::collect(response.into_body())
@@ -797,7 +797,10 @@ async fn response_validation_actually_runs_under_a_dynamic_module() {
         .unwrap()
         .to_bytes();
     let text = String::from_utf8_lossy(&body);
-    assert!(text.contains("response validation failed"), "body: {text}");
+    assert!(
+        text.contains("response verification failed"),
+        "body: {text}"
+    );
 }
 
 roundhouse::app_state!(State);

@@ -9,7 +9,7 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 | Need | Use |
 |---|---|
 | A custom axum extractor with parameters, a body or auth | `ExtractArg` |
-| A custom response type with a status, body or headers | `ApiResponse` |
+| A custom response type with a status, body or headers | `#[handler(response(..))]` plus a `doc = |docs|` hook |
 | A documented JSON body or response type | `ApiSchema` (or `#[roundhouse::schema]`) |
 | A query or path struct | `#[derive(QueryParams)]`, `#[derive(PathParams)]` |
 | A tower layer that terminates requests | `App::layer_documented` or a `doc = ..` hook |
@@ -109,59 +109,42 @@ The build emits a diagnostic, and the strict build rejects the operation. This i
 impl is not a compile error but is a contract gap CI can catch. The same mechanism keeps any
 unregistered extractor compiling.
 
-## Custom responses: `ApiResponse`
+## Custom responses: declarations and hooks
 
-A response type implements `IntoResponse` as usual, then `ApiResponse`:
+A response type implements `IntoResponse` as usual. That is enough to serve it, but it does not
+describe it: roundhouse only knows the built-in shapes (`Json`, text, bytes, `Html`, attachments,
+SSE, `StatusCode`, `Result`, `Created`/`NoContent` and `Problem`). For anything else, declare the
+outcome on the handler:
 
 ```rust
-use roundhouse::doc::{ApiResponse, ResponseDoc, schema};
-
-pub struct Csv;
-
-impl axum::response::IntoResponse for Csv {
-    fn into_response(self) -> axum::response::Response {
-        (
-            axum::http::StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "text/csv")],
-            "id,name\n",
-        )
-            .into_response()
-    }
-}
-
-impl ApiResponse for Csv {
-    const SUCCESS: &'static [u16] = &[200];
-
-    fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
-        vec![ResponseDoc {
-            status: 200,
-            description: "OK".to_string(),
-            content_type: Some("text/csv".to_string()),
-            schema: Some(schema::string()),
-            headers: Vec::new(),
-        }]
-    }
+#[handler(response(200))]
+pub async fn csv() -> Csv {
+    Csv
 }
 ```
 
-`const SUCCESS` declares the success statuses your type guarantees. Keep it accurate: it is the
-trait-level contract for the type, even though the route macro's compile-time check uses its own
-syntactic classification. Use `&[]` for a type that is known but never succeeds (like
-`Option<T>`), and `&[0]` for a status chosen at runtime.
+Add content type, schema or headers with a route-level `doc` hook:
 
-For an enum of responses, `#[derive(ApiResponse)]` / `#[derive(ApiError)]` generates both
-`IntoResponse` and `ApiResponse` from `#[status(..)]`, `#[body]`, `#[header(..)]`,
-`#[location]` and `#[from]` attributes. That is usually less code than a hand-written impl.
+```rust
+routes! {
+    "/csv" => {
+        get(csv, doc = |docs| {
+            if let Some(response) = docs.response_mut(200) {
+                response.content_type = Some("text/csv".to_string());
+                response.schema = Some(roundhouse::doc::schema::string());
+            }
+        })
+    },
+}
+```
 
-A type that only implements `IntoResponse` still compiles, but contributes no responses. The
-build reports it as undocumented, and the strict build rejects it. Use `#[handler(response(..))]` if
-you cannot change the type.
+`response(..)` gives the status (and optionally a typed body); the hook owns the rest. A typed
+declaration can be mutated with `docs.declared_response_mut(status)`.
 
-Generic enums are supported. The derive copies the enum's generics and `where` clause, then adds
-the bounds each field shape needs. `Json<T>` needs `T: ApiSchema` for documentation and
-`Json<T>: IntoResponse` at runtime; a bare body needs `T: ApiSchema + IntoResponse`; a header or
-location needs `T: ApiSchema + TryInto<HeaderValue>`. The built-in `Created<T>` and `NoContent`
-wrappers cover the common cases without a derive.
+`ApiResponse`/`ApiError` and their derives were removed in 0.4. The internal `ResponseDocSource`
+trait still describes built-in types for the document build, but it is `#[doc(hidden)]` and is not
+an extension point. A custom type with no declaration compiles and is marked unverified; the
+strict build rejects it.
 
 ## Schemas: `ApiSchema`
 
@@ -305,15 +288,14 @@ after the hook, so a hook cannot publish a path that contradicts its own paramet
 
 Hooks are metadata-only. The schema engine is compiled from the route declarations; changing a
 request or response validation schema in a hook would publish a document the runtime does not
-enforce. Use an `ApiSchema`/`ApiResponse` implementation or a `doc = |docs|` entry hook for schema
-changes.
+enforce. Use an `ApiSchema` implementation or a `doc = |docs|` entry hook for schema changes.
 
 ## Constraints
 
 - **No parallel extractor types.** `roundhouse::Json` is `axum::Json`. The traits go on axum's
   types; a custom type is an impl, not a conversion layer.
-- **No global registry.** `ExtractArg` and `ApiResponse` are resolved at the concrete type by
-  the generated code. The document build owns a `DocContext` and its component ledger; there is
+- **No global registry.** `ExtractArg` and the built-in response docs are resolved at the
+  concrete type by the generated code. The document build owns a `DocContext` and its component ledger; there is
   no process-wide map to register into.
 - **Forgetting a trait is not a compile error.** It is an unverified marker plus a diagnostic,
   promoted by the strict build. This keeps foreign types usable without forcing impls.

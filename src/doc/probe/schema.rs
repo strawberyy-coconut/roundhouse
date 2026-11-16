@@ -64,7 +64,8 @@ impl<T: ApiSchema + ?Sized> ProbeSchema<T> for &SchemaProbe<T> {
         pointer: &str,
         errors: &mut crate::validate::ValidationErrors,
     ) {
-        value.validate_at(pointer, errors);
+        use crate::probe::ProbeHook as _;
+        (&crate::probe::HookProbe::<T>::new()).probe_validate_at(value, pointer, errors);
     }
 }
 

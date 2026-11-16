@@ -280,7 +280,7 @@ async fn multipart_and_attachment_are_documented() {
     assert_eq!(
         document["paths"]["/files/events"]["get"]["responses"]["200"]["content"]["text/event-stream"]
             ["schema"]["type"],
-        serde_json::Value::Null
+        "string"
     );
 }
 
