@@ -28,9 +28,10 @@ A production application consumes a committed contract:
 roundhouse = { version = "0.4", features = ["contract-runtime"] }
 ```
 
-The build-time tooling does not require a feature or bin in your manifest. `cargo roundhouse`
-generates a harness under `target/roundhouse` that depends on your crate plus
-`roundhouse/contract`; `src/` and `Cargo.toml` stay untouched.
+The build-time tooling does not require a generated feature or bin. `cargo roundhouse init` adds
+`roundhouse-cli` as a build-dependency and generates a guarded `build.rs`; the build script and
+the CLI share the same library. Contract generation runs a harness under `target/roundhouse` and
+never writes `src/bin`.
 
 - `contract-runtime` — `ContractBundle`, `include_contract!`, `App::contract`,
   `contract.json` request validation, response verification, and verbatim `openapi.json`
@@ -160,8 +161,9 @@ For a type that only the builder can construct, implement `ApiSchema` manually o
 ## 6. Build and commit the artifacts
 
 ```sh
-cargo roundhouse init      # .roundhouse/ and the api! snippet
-cargo roundhouse prepare   # infer + write contract.json and openapi.json
+cargo roundhouse init      # .roundhouse/, build.rs and the api! snippet
+cargo build                # build.rs refreshes the contract automatically
+cargo roundhouse prepare   # explicit regeneration (also used by CI)
 cargo roundhouse check     # CI: artifacts are current
 cargo roundhouse explain "GET /v1/notes/{id}"
 cargo roundhouse verify    # run tests with response verification
@@ -169,7 +171,10 @@ cargo roundhouse diff --check   # fail CI on breaking contract changes
 ```
 
 `prepare` runs the harness twice under `target/roundhouse`: a discovery build, then source
-inference, then a strict build. Nothing is written outside `target/` and `.roundhouse/`. Commit `.roundhouse/contract.json` and `.roundhouse/openapi.json`.
+inference, then a strict build. Nothing is written outside `target/` and `.roundhouse/`. The
+generated `build.rs` calls the same library, so `cargo build` does this for you locally. It skips
+in CI by default so `cargo roundhouse check` still sees the committed artifact; set
+`ROUNDHOUSE_AUTO_CONTRACT=1` to force it, or `ROUNDHOUSE_AUTO_CONTRACT=0` to disable it locally. Commit `.roundhouse/contract.json` and `.roundhouse/openapi.json`.
 
 `contract.json` records `contract_version`; the runtime accepts only the layout it understands
 and fails `App::build` with `BuildError::InvalidContract` when the artifact is stale or from a
@@ -262,7 +267,8 @@ Keep:
 
 ## Migration checklist
 
-- [ ] Add `contract-runtime` to the runtime dependency (no generated feature or bin).
+- [ ] Add `contract-runtime` to the runtime dependency (no generated feature or bin), then run
+  `cargo roundhouse init` for the build-dependency and build script.
 - [ ] Add one `api!` block at the crate root.
 - [ ] Rewrite response/error enums as `impl IntoResponse` + `Problem`.
 - [ ] Move response prose to `@response` tags and `response_defaults`.

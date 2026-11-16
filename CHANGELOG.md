@@ -15,9 +15,9 @@
 - Runtime extractor validation moved to `ExtractArg` + `ValidateHook`. Documentation is a separate
   contract-only `ExtractDoc`; path/query derives implement `Params` + `ParamsDoc`, and multipart
   derives implement `MultipartForm` + `MultipartDoc`.
-- `cargo roundhouse init` no longer writes `src/bin/roundhouse-contract.rs` or modifies
-  `Cargo.toml`; the contract binary is generated under `target/roundhouse/`. `init --ephemeral`
-  was removed.
+- `cargo roundhouse init` no longer writes `src/bin/roundhouse-contract.rs`; the contract binary
+  is generated under `target/roundhouse/`. `init --ephemeral` was removed in favor of the
+  generated build script.
 - `ApiResponse` and `ApiError` traits and their derives were removed. Built-in response shapes are
   documented internally; custom responses use `#[handler(response(..))]` and a `doc = |docs|`
   hook. The examples no longer use response enums.
@@ -55,10 +55,10 @@
   startup cost.
 - Inference now reads response-builder `.status(..)` chains, `Redirect` constructors, numeric
   statuses, text/byte literals and an `if` without an `else` as a 200 empty response.
-- `cargo roundhouse` builds its contract binary under `target/roundhouse/`. `init` only creates
-  `.roundhouse/` and prints the `api!` snippet: no `src/bin/roundhouse-contract.rs`, no generated
-  feature and no `Cargo.toml` edits. `init --ephemeral` is removed because this is now the only
-  mode.
+- `cargo roundhouse` builds its contract binary under `target/roundhouse/`. `init` adds the
+  `roundhouse-cli` build-dependency and a guarded `build.rs`; `cargo build` and `cargo test`
+  refresh the contract before `include_contract!` expands. No `src/bin` file or generated feature
+  is written. `init --no-build-script` opts out; `init --ephemeral` is removed.
 - `cargo roundhouse diff [--against <contract.json>] [--check]` reports removed operations,
   responses, content types, request bodies and security changes as breaking; `--check` fails CI.
 - All five examples (`notes`, `layers`, `uploads`, `auth`, `quickstart`) now consume committed

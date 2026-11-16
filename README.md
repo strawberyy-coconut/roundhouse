@@ -56,21 +56,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Run `cargo roundhouse init` once and `cargo roundhouse prepare` after changing handlers. The
-generated `.roundhouse/openapi.json` documents `GET /v1/hello/world`, including the `name` path
-parameter that `Path<String>` cannot name by itself, and is served verbatim at
+Run `cargo roundhouse init` once. It adds the `roundhouse-cli` build-dependency and a guarded
+`build.rs`, so `cargo build` and `cargo test` refresh `.roundhouse/` automatically. `cargo
+roundhouse prepare` remains available for an explicit run, and `cargo roundhouse check` verifies
+the committed artifacts in CI. The contract binary itself lives under `target/roundhouse`; no
+`src/bin` file is generated.
+
+The generated `.roundhouse/openapi.json` documents `GET /v1/hello/world`, including the `name`
+path parameter that `Path<String>` cannot name by itself, and is served verbatim at
 `GET /openapi.json`. The contract also supplies request validation, so the runtime never builds a
-document of its own. The contract binary itself lives under `target/roundhouse`; `init` and
-`prepare` never write `src/bin` or edit `Cargo.toml`.
+document of its own.
 
 ## How it works
 
 1. **Declare.** A `routes!` table emits a module containing its prefix, tags, layers, security
    guards and routes, plus the child modules composed with `...module`. `#[handler]` reads the
    handler signature and produces the request, response and security documentation for it.
-2. **Compile.** `cargo roundhouse prepare` runs a contract harness under `target/roundhouse`,
-   infers responses from handler source, and writes `.roundhouse/contract.json` plus
-   `openapi.json`. `cargo roundhouse check` fails if they are stale.
+2. **Compile.** The generated `build.rs` calls `roundhouse_cli::prepare()` before rustc reads
+   `include_contract!`. It runs a contract harness under `target/roundhouse`, infers responses
+   from handler source, and writes `.roundhouse/contract.json` plus `openapi.json`. `cargo
+   roundhouse check` fails if they are stale.
 3. **Build and enforce.** `App::build()` walks the module tree and produces a `Built` with the
    `axum::Router`. The committed contract supplies `openapi.json` serving and request validation;
    declared security installs the matching guard. Rejections use the `Problem` body.

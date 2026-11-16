@@ -42,6 +42,16 @@ fn run(dir: &Path, args: &[&str]) {
     assert!(status.success(), "`cargo roundhouse {args:?}` failed");
 }
 
+fn cargo(dir: &Path, args: &[&str]) {
+    let status = Command::new("cargo")
+        .args(args)
+        .current_dir(dir)
+        .env("CARGO_TARGET_DIR", dir.join("target"))
+        .status()
+        .expect("run cargo");
+    assert!(status.success(), "`cargo {args:?}` failed");
+}
+
 #[test]
 fn plain_handlers_are_inferred_end_to_end() {
     let dir = temp_project("plain");
@@ -131,21 +141,32 @@ pub mod routes {
     )
     .expect("write lib");
 
-    let manifest_before = fs::read_to_string(dir.join("Cargo.toml")).expect("read manifest");
     run(&dir, &["init"]);
-    assert_eq!(
-        fs::read_to_string(dir.join("Cargo.toml")).expect("read manifest"),
-        manifest_before,
-        "init must not edit Cargo.toml"
+    let manifest = fs::read_to_string(dir.join("Cargo.toml")).expect("read manifest");
+    assert!(
+        manifest.contains("[build-dependencies]") && manifest.contains("roundhouse-cli"),
+        "init adds the build-dependency: {manifest}"
     );
     assert!(
         !dir.join("src/bin").exists(),
         "init must not create a source-tree bin"
     );
     assert!(
+        dir.join("build.rs").is_file(),
+        "init generates the automatic contract build script"
+    );
+    assert!(
         dir.join(".roundhouse").is_dir(),
         "init creates the artifact directory"
     );
+
+    // The generated build script must produce the contract on a normal build.
+    cargo(&dir, &["check"]);
+    assert!(
+        dir.join(".roundhouse/contract.json").is_file(),
+        "the build script generated the contract"
+    );
+
     run(&dir, &["prepare"]);
     run(&dir, &["check"]);
 
