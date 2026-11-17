@@ -71,6 +71,21 @@ impl ResponseDoc {
         Self::problem(0, "Error")
     }
 
+    /// Rewrite the status, updating the description when it was the old canonical reason.
+    ///
+    /// A `response(status, Type)` declaration owns the status; the type owns the body, content
+    /// type and headers. Keeping a description that was only "OK" or "Error" would be wrong
+    /// after the status changes.
+    pub fn with_status(mut self, status: u16) -> Self {
+        let was_canonical =
+            self.description == canonical_reason(self.status) || self.description == "Error";
+        self.status = status;
+        if was_canonical {
+            self.description = canonical_reason(status).to_string();
+        }
+        self
+    }
+
     /// A response whose status is chosen at runtime (`-> StatusCode`). The document says
     /// `default` with no body, which is the honest shape.
     pub fn default_response() -> Self {

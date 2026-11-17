@@ -7,6 +7,9 @@
 //!
 //! The traits here are the extension points the macros use:
 //!
+//! - `DocumentedResponse` — what a response type documents: status, content type, body schema and
+//!   headers. Built-ins implement it, and a custom response type can implement it exactly the same
+//!   way. There is no name-based fallback.
 //! - `ExtractDoc` — how an axum extractor contributes parameters, a body, auth or failures.
 //!   Route-level validation lives on [`ExtractArg`](crate::ExtractArg); implement both for a
 //!   custom extractor and no macro change is required.
@@ -335,6 +338,25 @@ impl OperationDoc {
     /// Add one typed response declaration.
     pub fn push_declared_response(&mut self, response: ResponseDoc) {
         self.declared_responses.push(response);
+    }
+
+    /// Add the responses a declared type documents, using the declaration's status.
+    ///
+    /// The type owns the body, content type and headers; the declaration owns the status. An
+    /// empty contribution becomes a status-only response.
+    pub fn push_declared_responses(
+        &mut self,
+        status: u16,
+        responses: impl IntoIterator<Item = ResponseDoc>,
+    ) {
+        let mut any = false;
+        for response in responses {
+            any = true;
+            self.declared_responses.push(response.with_status(status));
+        }
+        if !any {
+            self.push_declared_response(ResponseDoc::new(status, canonical_reason(status)));
+        }
     }
 
     /// Add several typed response declarations.

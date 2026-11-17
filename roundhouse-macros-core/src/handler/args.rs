@@ -9,10 +9,6 @@ use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::{Ident, LitInt, LitStr, Result, Token, Type};
 
-use crate::util::{outer_ident, single_generic};
-
-use super::ResponseBody;
-
 #[derive(Default)]
 pub(crate) struct HandlerArgs {
     pub(super) responses: Vec<DeclaredResponse>,
@@ -24,8 +20,15 @@ pub(crate) struct HandlerArgs {
 #[derive(Clone)]
 pub(super) struct DeclaredResponse {
     pub(super) status: u16,
-    pub(super) body: ResponseBody,
+    pub(super) body: DeclaredBody,
     pub(super) span: Span,
+}
+
+/// The optional body of a `response(status, Type)` declaration.
+#[derive(Clone)]
+pub(super) enum DeclaredBody {
+    Empty,
+    Type(Box<Type>),
 }
 
 #[derive(Clone)]
@@ -69,10 +72,9 @@ impl Parse for HandlerArgs {
                 }
                 "default_response" => {
                     let ty: Type = content.parse()?;
-                    let body = response_body_from_type(ty, key.span())?;
                     args.responses.push(DeclaredResponse {
                         status: 0,
-                        body,
+                        body: DeclaredBody::Type(Box::new(ty)),
                         span: key.span(),
                     });
                 }
@@ -119,15 +121,14 @@ impl Parse for HandlerArgs {
     }
 }
 
-fn parse_response(input: ParseStream<'_>) -> Result<(u16, ResponseBody)> {
+fn parse_response(input: ParseStream<'_>) -> Result<(u16, DeclaredBody)> {
     let status = parse_status(input)?;
     if input.is_empty() {
-        return Ok((status, ResponseBody::Empty));
+        return Ok((status, DeclaredBody::Empty));
     }
     input.parse::<Token![,]>()?;
     let ty: Type = input.parse()?;
-    let span = ty_span(&ty);
-    Ok((status, response_body_from_type(ty, span)?))
+    Ok((status, DeclaredBody::Type(Box::new(ty))))
 }
 
 fn parse_status(input: ParseStream<'_>) -> Result<u16> {
@@ -150,22 +151,4 @@ fn parse_status(input: ParseStream<'_>) -> Result<u16> {
         ident.span(),
         format!("expected an HTTP status or `default`, found `{ident}`"),
     ))
-}
-
-fn response_body_from_type(ty: Type, span: Span) -> Result<ResponseBody> {
-    Ok(match outer_ident(&ty).as_deref() {
-        Some("Problem" | "ValidationErrors") => ResponseBody::Problem,
-        Some("Json") => {
-            let inner = single_generic(&ty).ok_or_else(|| {
-                syn::Error::new(span, "`Json<T>` needs exactly one type argument")
-            })?;
-            ResponseBody::Json(Box::new(inner))
-        }
-        _ => ResponseBody::Json(Box::new(ty)),
-    })
-}
-
-fn ty_span(ty: &Type) -> Span {
-    use syn::spanned::Spanned;
-    ty.span()
 }

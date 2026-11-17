@@ -38,7 +38,7 @@ mod typed {
         Ok(Json(Payload { value: 1 }))
     }
 
-    #[handler(override_response(200, Payload))]
+    #[handler(override_response(200, Json<Payload>))]
     pub async fn over() -> Json<Other> {
         Json(Other { other: 2 })
     }

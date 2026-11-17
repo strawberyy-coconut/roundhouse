@@ -79,14 +79,21 @@ mod files {
         File::new(vec![1u8, 2, 3]).content_type("application/octet-stream")
     }
 
+    type EventStream = std::pin::Pin<
+        Box<
+            dyn futures_util::Stream<
+                    Item = ::core::result::Result<Event, ::core::convert::Infallible>,
+                > + Send,
+        >,
+    >;
+
     /// @summary: Server-sent events
     #[handler]
-    pub async fn events() -> Sse<
-        impl futures_util::Stream<Item = ::core::result::Result<Event, ::core::convert::Infallible>>,
-    > {
-        Sse::new(futures_util::stream::once(async {
+    pub async fn events() -> Sse<EventStream> {
+        let stream: EventStream = Box::pin(futures_util::stream::once(async {
             Ok(Event::default().data("hello"))
-        }))
+        }));
+        Sse::new(stream)
     }
 }
 

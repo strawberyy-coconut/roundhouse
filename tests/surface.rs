@@ -520,7 +520,7 @@ mod shapes {
         })
     }
     #[handler(
-        response(201, Note),
+        response(201, Json<Note>),
         response(409, Problem),
         response_description(201, "Created")
     )]

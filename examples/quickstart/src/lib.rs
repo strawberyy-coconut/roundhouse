@@ -125,7 +125,7 @@ mod routes {
 
     /// @summary: Create a note
     #[allow(clippy::result_large_err)]
-    #[handler(response(201, Note), response_description(201, "The stored note."))]
+    #[handler(response_description(201, "The stored note."))]
     pub async fn create(
         State(app): State<AppState>,
         Json(body): Json<NewNote>,

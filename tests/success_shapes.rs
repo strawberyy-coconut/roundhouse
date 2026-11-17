@@ -142,8 +142,12 @@ fn return_shapes_document_the_runtime_status() {
     assert!(paths["/shapes/dynamic"]["get"]["responses"]["default"].is_object());
     assert!(paths["/shapes/created"]["get"]["responses"]["201"].is_object());
     assert!(paths["/shapes/no-content"]["get"]["responses"]["204"].is_object());
-    assert!(paths["/shapes/created-plain"]["get"]["responses"]["201"].is_object());
-    assert!(paths["/shapes/result-created-plain"]["get"]["responses"]["201"].is_object());
+    // `Plain` publishes no schema, so `Created<Plain>` has no documented 201. The permissive
+    // placeholder is a `default` response, marked unverified.
+    assert!(paths["/shapes/created-plain"]["get"]["responses"]["201"].is_null());
+    assert!(paths["/shapes/created-plain"]["get"]["responses"]["default"].is_object());
+    assert!(paths["/shapes/result-created-plain"]["get"]["responses"]["201"].is_null());
+    assert!(paths["/shapes/result-created-plain"]["get"]["responses"]["default"].is_object());
 }
 
 #[tokio::test]
@@ -174,18 +178,18 @@ fn a_known_shape_without_a_probe_is_marked_unverified() {
 }
 
 #[test]
-fn strict_rejects_the_unverified_fallback() {
+fn strict_rejects_a_response_without_a_documented_shape() {
     let error = roundhouse::App::new(State)
         .include(&shapes::MODULE)
         .openapi(|| roundhouse::openapi::Info::new("Shapes", "0.1.0"))
         .strict()
         .try_build()
         .err()
-        .expect("strict must reject an unverified response");
-    assert!(matches!(
-        error,
-        roundhouse::BuildError::UnverifiedResponse { .. }
-    ));
+        .expect("strict must reject a response with no documented shape");
+    assert!(
+        matches!(error, roundhouse::BuildError::UndeclaredSuccess { .. }),
+        "{error:?}"
+    );
 }
 
 #[test]

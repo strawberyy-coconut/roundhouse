@@ -1,5 +1,5 @@
 error: status 200 is declared more than once
- --> tests/ui/handler_args_conflict.rs:7:32
+ --> tests/ui/handler_args_conflict.rs:7:38
   |
-7 | #[handler(response(200, Note), response(200, Note))]
-  |                                ^^^^^^^^
+7 | #[handler(response(200, Json<Note>), response(200, Json<Note>))]
+  |                                      ^^^^^^^^

@@ -22,13 +22,15 @@ impl DocumentBuild<'_> {
         context: &mut crate::doc::DocContext<'_>,
         used_schemes: &mut BTreeMap<String, (SchemeDoc, crate::build_error::Source)>,
     ) -> Result<utoipa::openapi::path::Operation, BuildError> {
-        let unverified = docs.verification.body();
-        let unverified_response = docs.verification.response();
         let unverified_extractor = docs.verification.extractor();
         self.merge_operation_contract(route, &mut docs, unverified_extractor)?;
         let parameters = self.resolve_operation_parameters(route, &mut docs)?;
         let (responses, overridden) = self.resolve_operation_responses(route, &mut docs)?;
         let security = self.resolve_operation_security(route, &mut docs, used_schemes)?;
+        // Read the markers after response resolution: a permissive build marks a placeholder
+        // success here, and the marker must reach the operation's extensions.
+        let unverified = docs.verification.body();
+        let unverified_response = docs.verification.response();
 
         let mut tags: Vec<String> = Vec::new();
         for tag in route.tags.iter().chain(route.record.tags.iter()) {
@@ -443,8 +445,17 @@ impl DocumentBuild<'_> {
                 .keys()
                 .any(|status| *status == 0 || (200..400).contains(status))
         {
-            // Discovery needs a document-shaped placeholder; the strict pass replaces it with
-            // the inferred success before validation.
+            // A permissive or discovery build keeps the operation in the document, but the
+            // placeholder is still loud: the marker and diagnostic say the success is missing.
+            docs.verification.mark_response();
+            self.diagnostics.push(Diagnostic::new(
+                route.record.source_ref(),
+                format!(
+                    "operation `{}` has no documented success response; the `default` response is \
+                     a placeholder",
+                    route.operation_id
+                ),
+            ));
             responses.insert(0, ResponseDoc::default_response());
         }
 

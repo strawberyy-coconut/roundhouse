@@ -14,10 +14,7 @@
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::Schema;
 
-use super::super::{
-    ApiSchema, ResponseDoc, SchemaContext, register_self,
-    response_doc::{json_response_doc, json_response_doc_to_schema},
-};
+use super::super::{ApiSchema, SchemaContext, register_self};
 
 pub struct SchemaProbe<T: ?Sized>(std::marker::PhantomData<T>);
 
@@ -108,36 +105,5 @@ impl<T: ?Sized> ProbeSchema<T> for &&&SchemaProbe<T> {
         _pointer: &str,
         _errors: &mut crate::validate::ValidationErrors,
     ) {
-    }
-}
-
-/// A concrete-type probe for a typed `response(status, Type)` declaration.
-pub struct JsonResponseDocProbe<T>(std::marker::PhantomData<T>);
-
-impl<T> JsonResponseDocProbe<T> {
-    pub const fn new() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
-
-impl<T> Default for JsonResponseDocProbe<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub trait ProbeJsonResponseDoc {
-    fn probe_json_response_doc(self, context: &mut dyn SchemaContext, status: u16) -> ResponseDoc;
-}
-
-impl<T: ApiSchema> ProbeJsonResponseDoc for &JsonResponseDocProbe<T> {
-    fn probe_json_response_doc(self, context: &mut dyn SchemaContext, status: u16) -> ResponseDoc {
-        json_response_doc::<T>(context, status)
-    }
-}
-
-impl<T: utoipa::ToSchema> ProbeJsonResponseDoc for &&JsonResponseDocProbe<T> {
-    fn probe_json_response_doc(self, context: &mut dyn SchemaContext, status: u16) -> ResponseDoc {
-        json_response_doc_to_schema::<T>(context, status)
     }
 }

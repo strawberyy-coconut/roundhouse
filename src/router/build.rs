@@ -257,7 +257,7 @@ where
         contract = if self.strict {
             contract.strict()
         } else {
-            contract.permissive()
+            contract.permissive().allow_undeclared_success(true)
         };
 
         let built = contract.build()?;

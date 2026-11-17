@@ -76,7 +76,7 @@ mod declared {
     use super::*;
 
     /// @summary: Declare responses without an enum.
-    #[handler(response(201, Thing))]
+    #[handler(response(201, Json<Thing>))]
     pub async fn create() -> Json<Thing> {
         Json(Thing { id: 1 })
     }
@@ -104,7 +104,7 @@ mod hooked {
     use crate::things::Thing;
 
     /// @summary: The hook owns the prose.
-    #[handler(response(200, Thing))]
+    #[handler(response(200, Json<Thing>))]
     pub async fn show() -> Json<Thing> {
         Json(Thing { id: 1 })
     }

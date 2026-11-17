@@ -46,7 +46,7 @@ mod typed {
         "/x" => { get(x, operation_id = "typed_x") },
     }
 
-    #[handler(response(200, Payload))]
+    #[handler(response(200, Json<Payload>))]
     pub async fn x() -> impl IntoResponse {
         Json(Payload { value: 1 })
     }
@@ -66,7 +66,7 @@ mod override_response {
         "/x" => { get(x, operation_id = "override_x") },
     }
 
-    #[handler(override_response(200, Payload))]
+    #[handler(override_response(200, Json<Payload>))]
     pub async fn x() -> Json<OtherPayload> {
         Json(OtherPayload { other: 1 })
     }
@@ -81,7 +81,7 @@ mod conflict_response {
         "/x" => { get(x, operation_id = "conflict_x") },
     }
 
-    #[handler(response(200, Payload))]
+    #[handler(response(200, Json<Payload>))]
     pub async fn x() -> Json<OtherPayload> {
         Json(OtherPayload { other: 1 })
     }
@@ -450,8 +450,8 @@ fn foreign_extractors_are_marked_and_strict_turns_the_marker_into_an_error() {
         .strict()
         .try_build()
         .err()
-        .expect("strict mode rejects unverified extractors");
-    assert!(matches!(error, BuildError::Diagnostic { .. }));
+        .expect("strict mode rejects an unverified extractor");
+    assert!(matches!(error, BuildError::Diagnostic { .. }), "{error:?}");
 }
 
 #[test]
@@ -517,8 +517,8 @@ fn an_error_type_without_documentation_is_loud() {
     assert!(
         app.diagnostics()
             .iter()
-            .any(|diagnostic| diagnostic.message.contains("BlindError")),
-        "expected a diagnostic naming the undocumented error type"
+            .any(|diagnostic| diagnostic.message.contains("blind_error_x")),
+        "expected a diagnostic naming the operation with no documented success"
     );
 
     let error = scoped(module)
@@ -527,7 +527,10 @@ fn an_error_type_without_documentation_is_loud() {
         .try_build()
         .err()
         .expect("strict turns the warning into an error");
-    assert!(matches!(error, BuildError::Diagnostic { .. }));
+    assert!(matches!(
+        error,
+        BuildError::UndeclaredSuccess { ref operation_id, .. } if operation_id == "blind_error_x"
+    ));
 }
 
 #[tokio::test]

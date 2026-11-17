@@ -11,8 +11,9 @@ use syn::{FnArg, ItemFn, LitStr, Type};
 use crate::doc_tags::AllowedTags;
 use crate::util::{outer_ident, single_generic};
 
+use self::args::DeclaredBody;
 pub(crate) use self::args::HandlerArgs;
-use self::response::{classify_return, response_statements};
+use self::response::response_statements;
 use self::signature::{
     ExtractorKind, auth_types, classify, is_explicit_strict, is_parts_arg, is_wrapper_type,
     result_ok_type, strip_wrappers,
@@ -160,12 +161,7 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
         Err(error) => return error.to_compile_error(),
     }
 
-    let return_shape = classify_return(&item.sig.output);
-    let response_statements = match response_statements(&return_shape) {
-        Ok(statements) => statements,
-        Err(error) => return error.to_compile_error(),
-    };
-    statements.extend(response_statements);
+    statements.extend(response_statements(&item.sig.output));
 
     let path_names = match &path_type {
         Some(ty) => quote!(<#ty as #krate::doc::Params>::NAMES),
@@ -390,25 +386,21 @@ fn declared_response_statements(args: &HandlerArgs) -> syn::Result<Vec<TokenStre
         let status = proc_macro2::Literal::u16_suffixed(status_u16);
 
         statements.push(match &declaration.body {
-            ResponseBody::Empty => quote! {
+            DeclaredBody::Empty => quote! {
                 docs.push_declared_response(#krate::doc::ResponseDoc::new(
                     #status,
                     #krate::doc::canonical_reason(#status),
                 ));
             },
-            ResponseBody::Problem => quote! {
-                docs.push_declared_response(#krate::doc::ResponseDoc::problem(
-                    #status,
-                    #krate::doc::canonical_reason(#status),
-                ));
-            },
-            ResponseBody::Json(ty) => quote! {
-                docs.push_declared_response({
-                    use #krate::__private::ProbeJsonResponseDoc as _;
-                    (&#krate::__private::JsonResponseDocProbe::<#ty>::new())
-                        .probe_json_response_doc(context, #status)
-                });
-            },
+            DeclaredBody::Type(ty) => {
+                let ty = ty.as_ref();
+                quote! {
+                    docs.push_declared_responses(
+                        #status,
+                        <#ty as #krate::doc::DocumentedResponse>::responses(context),
+                    );
+                }
+            }
         });
     }
 
@@ -448,11 +440,4 @@ fn response_description_statements(args: &HandlerArgs) -> syn::Result<Vec<TokenS
         });
     }
     Ok(statements)
-}
-
-#[derive(Clone)]
-enum ResponseBody {
-    Empty,
-    Problem,
-    Json(Box<Type>),
 }

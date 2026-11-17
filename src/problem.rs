@@ -11,9 +11,7 @@ pub use roundhouse_problem::problem_value;
 pub use roundhouse_problem::{problem_schema, problem_schema_ref};
 
 #[cfg(feature = "contract")]
-impl crate::doc::ResponseDocSource for Problem {
-    const SUCCESS: &'static [u16] = &[];
-
+impl crate::doc::DocumentedResponse for Problem {
     /// `Problem` is the framework's default error type, so it contributes a `default` response
     /// with the `application/problem+json` schema. A `Result<_, Problem>` therefore documents the
     /// failures it can produce instead of only its success status.

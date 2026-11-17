@@ -118,7 +118,7 @@ mod verify {
         "/verify-mismatch" => { get(mismatch, operation_id = "verify_mismatch") },
     }
 
-    #[handler(response(200, Note))]
+    #[handler(response(200, Json<Note>))]
     pub async fn mismatch() -> Response {
         Json(Registered {
             value: "not a note".to_string(),

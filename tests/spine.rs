@@ -76,7 +76,7 @@ mod notes {
     }
 
     /// @summary: Read a note
-    #[handler(response(200, Note), response(404, Problem))]
+    #[handler(response(200, Json<Note>), response(404, Problem))]
     pub async fn show(
         State(state): State<TestState>,
         Path(NoteId { id }): Path<NoteId>,

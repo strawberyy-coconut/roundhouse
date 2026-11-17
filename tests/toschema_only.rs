@@ -19,12 +19,12 @@ mod more {
         "/declared" => { get(declared, operation_id = "toschema_declared") },
     }
 
-    #[handler(response(201, Payload))]
+    #[handler(response(201, Json<Payload>))]
     pub async fn created(Json(body): Json<Payload>) -> Response {
         (axum::http::StatusCode::CREATED, Json(body)).into_response()
     }
 
-    #[handler(response(200, Payload))]
+    #[handler(response(200, Json<Payload>))]
     pub async fn declared() -> axum::http::StatusCode {
         axum::http::StatusCode::NO_CONTENT
     }
