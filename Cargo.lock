@@ -1317,7 +1317,6 @@ version = "0.4.0"
 dependencies = [
  "clap",
  "serde_json",
- "syn 2.0.119",
  "toml_edit 0.22.27",
 ]
 
