@@ -14,7 +14,7 @@ src/lib.rs + #[roundhouse::schema] + routes! + #[handler]
 Module / Fragment / RouteRecord + DocSource + ExtractArg/ExtractDoc metadata
         │  + DocumentedResponse impls
         │
-        │  build.rs → roundhouse_cli::prepare()
+        │  build.rs → roundhouse_build::prepare()
         │     target/roundhouse harness
         │     one strict build
         ▼

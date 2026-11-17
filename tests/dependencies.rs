@@ -20,6 +20,10 @@ fn no_external_validation_crate_is_a_dependency() {
             include_str!("../roundhouse-schema/Cargo.toml"),
         ),
         (
+            "roundhouse-build",
+            include_str!("../roundhouse-build/Cargo.toml"),
+        ),
+        (
             "roundhouse-cli",
             include_str!("../roundhouse-cli/Cargo.toml"),
         ),

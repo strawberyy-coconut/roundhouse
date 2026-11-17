@@ -53,9 +53,9 @@ jobs:
       - run: cargo check -p roundhouse --no-default-features --features contract-runtime
       - run: cargo check -p roundhouse --no-default-features --features contract
       - run: cargo check -p roundhouse --no-default-features --features multipart,contract
-      # `build.rs` users depend on the library with `default-features = false`, so the generator
-      # must compile without the CLI parser or manifest editing.
-      - run: cargo check -p roundhouse-cli --no-default-features
+      # `build.rs` users depend on the generator library; it must compile on its own, without
+      # the CLI's parser or manifest editing.
+      - run: cargo check -p roundhouse-build
       # The committed contract bins and artifacts must match the handlers. This is the CI gate the
       # build-time workflow is designed around.
       - run: cargo build -p roundhouse-cli --bin cargo-roundhouse

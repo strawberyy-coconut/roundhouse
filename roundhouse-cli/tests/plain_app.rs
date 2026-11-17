@@ -144,8 +144,12 @@ pub mod routes {
     run(&dir, &["init"]);
     let manifest = fs::read_to_string(dir.join("Cargo.toml")).expect("read manifest");
     assert!(
-        manifest.contains("[build-dependencies]") && manifest.contains("roundhouse-cli"),
+        manifest.contains("[build-dependencies]") && manifest.contains("roundhouse-build"),
         "init adds the build-dependency: {manifest}"
+    );
+    assert!(
+        !manifest.contains("roundhouse-cli"),
+        "init uses the build crate, not the CLI crate: {manifest}"
     );
     assert!(
         !dir.join("src/bin").exists(),

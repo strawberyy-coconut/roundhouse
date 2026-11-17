@@ -5,8 +5,18 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use roundhouse_build::ARTIFACT_DIR;
 
-const ARTIFACT_DIR: &str = ".roundhouse";
+mod check;
+mod diff;
+mod explain;
+mod init;
+mod prepare;
+mod verify;
+
+pub(crate) fn error(message: impl Into<String>) -> Box<dyn Error> {
+    std::io::Error::other(message.into()).into()
+}
 
 #[derive(Parser)]
 #[command(
@@ -71,12 +81,12 @@ fn main() {
 
 fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
     match cli.command {
-        Commands::Init { no_build_script } => roundhouse_cli::init(no_build_script),
-        Commands::Prepare { out } => roundhouse_cli::prepare_to(out),
-        Commands::Check => roundhouse_cli::check(),
-        Commands::Explain { operation } => roundhouse_cli::explain(&operation),
-        Commands::Verify { args } => roundhouse_cli::verify(args),
-        Commands::Diff { against, check } => roundhouse_cli::diff(against, check),
+        Commands::Init { no_build_script } => init::init(no_build_script),
+        Commands::Prepare { out } => prepare::prepare(out),
+        Commands::Check => check::check(),
+        Commands::Explain { operation } => explain::explain(&operation),
+        Commands::Verify { args } => verify::verify(args),
+        Commands::Diff { against, check } => diff::diff(against, check),
     }
 }
 

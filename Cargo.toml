@@ -4,6 +4,7 @@ members = [
     "roundhouse-macros-core",
     "roundhouse-path",
     "roundhouse-schema",
+    "roundhouse-build",
     "roundhouse-cli",
     "examples/notes",
     "examples/quickstart",

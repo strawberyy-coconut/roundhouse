@@ -12,7 +12,8 @@ roundhouse
 ├── roundhouse-macros-core parsing and expansion for those macros
 ├── roundhouse-path        path joining/template validation shared with the macros
 ├── roundhouse-schema      ApiSchema, parts schemas, validation errors, schema engine
-└── roundhouse-cli         generation library + `cargo roundhouse` binary (build-time only)
+├── roundhouse-build       generation library for `build.rs` (build-time only)
+└── roundhouse-cli         the `cargo roundhouse` binary (build-time only)
 ```
 
 `roundhouse` is the application facade. It owns the app builder, route resolution, router
@@ -20,10 +21,11 @@ assembly, document assembly, the extractor wrappers, the reusable `Created<T>` /
 response wrappers and auth. It re-exports the derives and `routes!` at the crate root and in the
 prelude.
 
-`roundhouse-cli` is not a runtime dependency. `cargo roundhouse init` adds it as a
-`[build-dependencies]` entry with `default-features = false`, so the build script can call
-`roundhouse_cli::prepare()` without clap or manifest editing. The binary enables the `cli`
-feature for parsing and `init`.
+`roundhouse-build` is not a runtime dependency. `cargo roundhouse init` adds it as a
+`[build-dependencies]` entry, so the build script can call `roundhouse_build::prepare()`. The
+`init` command itself, including the manifest and `build.rs` editing, lives in `roundhouse-cli`.
+So do the developer/CI commands (`check`, `explain`, `verify`, `diff`); `roundhouse-build` only
+generates the contract.
 
 `roundhouse-schema` has no axum dependency. It can be used by a build script, an SDK or a
 test that never starts a server. The facade re-exports its public items, so application code
@@ -42,7 +44,8 @@ exists to keep that path honest.
 | `roundhouse-macros-core` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate`, path | no |
 | `roundhouse-path` | `matchit` | no |
 | `roundhouse-schema` | serde, jsonschema (optional), utoipa (contract feature only) | no |
-| `roundhouse-cli` | syn, serde_json; clap/toml_edit under `cli` | no |
+| `roundhouse-build` | serde_json | no |
+| `roundhouse-cli` | clap, serde_json, toml_edit, `roundhouse-build` | no |
 
 The arrows only point one way: `schema` → `roundhouse`. The `Problem` body and the typed
 multipart extractor are facade modules (`src/problem.rs`, `src/multipart.rs`) behind the same

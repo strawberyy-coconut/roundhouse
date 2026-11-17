@@ -18,7 +18,7 @@
 //! ```
 //!
 //! `contract-runtime` is the production feature. Contract generation uses the
-//! `roundhouse-cli` build-dependency added by `cargo roundhouse init`.
+//! `roundhouse-build` build-dependency added by `cargo roundhouse init`.
 //!
 //! ## Quick start
 //!
@@ -84,7 +84,7 @@
 //! }
 //! ```
 //!
-//! Run `cargo roundhouse init` once. It adds `roundhouse-cli` as a build-dependency and generates
+//! Run `cargo roundhouse init` once. It adds `roundhouse-build` as a build-dependency and generates
 //! a guarded `build.rs`, so `cargo build` refreshes `.roundhouse/` before `include_contract!`
 //! expands. `cargo roundhouse check` verifies the committed artifacts in CI.
 //!
@@ -94,7 +94,7 @@
 //!    security guards, the routes declared in that table, and the children composed with
 //!    `..module`. `#[handler]` emits a marker implementing [`doc::HandlerSpec`] and
 //!    [`doc::DocSource`], plus the route shim.
-//! 2. **Compile the contract.** The generated build script calls `roundhouse_cli::prepare()`. One
+//! 2. **Compile the contract.** The generated build script calls `roundhouse_build::prepare()`. One
 //!    strict build evaluates the response traits and declarations, and writes
 //!    `.roundhouse/contract.json` plus `openapi.json`.
 //! 3. **Build and enforce.** [`App::build`](router::App::build) walks the module tree into a

@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Run `cargo roundhouse init` once. It adds `roundhouse-cli` as a build-dependency and generates a
+Run `cargo roundhouse init` once. It adds `roundhouse-build` as a build-dependency and generates a
 guarded `build.rs`. From then on, `cargo build` and `cargo test` refresh `.roundhouse/`
 automatically before `include_contract!` expands. `cargo roundhouse prepare` remains available for
 an explicit run, and `cargo roundhouse check` verifies the committed artifacts in CI. No
@@ -108,7 +108,7 @@ document of its own.
    guards and routes, plus the child modules composed with `...module`. `#[handler]` reads the
    handler signature and produces the request, response and security contribution for that
    operation.
-2. **Compile the contract.** The generated `build.rs` calls `roundhouse_cli::prepare()` before
+2. **Compile the contract.** The generated `build.rs` calls `roundhouse_build::prepare()` before
    rustc reads `include_contract!`. One strict build evaluates the response traits and explicit
    declarations, and writes `.roundhouse/contract.json` plus `openapi.json`.
 3. **Build and enforce.** `App::build()` walks the module tree and produces a `Built` with the

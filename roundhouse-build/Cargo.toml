@@ -1,0 +1,15 @@
+[package]
+name = "roundhouse-build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Build-time contract generation for roundhouse."
+
+[lib]
+name = "roundhouse_build"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1"

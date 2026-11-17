@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- The contract generator moved out of `roundhouse-cli` into a new `roundhouse-build` crate;
+  `roundhouse-cli` is now only the `cargo-roundhouse` binary. `roundhouse-build` exposes only
+  `prepare`/`prepare_to` for `build.rs`; `check`, `explain`, `verify`, `diff` and `init` live in
+  the CLI. A `build.rs` should depend on `roundhouse-build = "0.4"` and call
+  `roundhouse_build::prepare()`. `cargo roundhouse init` migrates an existing generated
+  `build.rs` and build-dependency; a hand-written build script needs the same two-line edit.
+
 ## 0.4.0 — 2026-11-16
 
 ### Breaking

@@ -1311,10 +1311,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "roundhouse-build"
+version = "0.4.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "roundhouse-cli"
 version = "0.4.0"
 dependencies = [
  "clap",
+ "roundhouse-build",
  "serde_json",
  "toml_edit 0.22.27",
 ]
