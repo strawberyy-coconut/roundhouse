@@ -12,8 +12,6 @@ roundhouse
 ├── roundhouse-macros-core parsing and expansion for those macros
 ├── roundhouse-path        path joining/template validation shared with the macros
 ├── roundhouse-schema      ApiSchema, parts schemas, validation errors, schema engine
-├── roundhouse-problem     the RFC 9457 Problem body
-├── roundhouse-multipart   Multipart<F>, FilePart, TempFile (optional)
 └── roundhouse-cli         generation library + `cargo roundhouse` binary (build-time only)
 ```
 
@@ -44,13 +42,13 @@ exists to keep that path honest.
 | `roundhouse-macros-core` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate`, path | no |
 | `roundhouse-path` | `matchit` | no |
 | `roundhouse-schema` | serde, jsonschema (optional), utoipa (contract feature only) | no |
-| `roundhouse-problem` | axum (no default features), http, schema, utoipa (contract feature only) | yes |
-| `roundhouse-multipart` | axum (multipart only), problem, schema | yes |
 | `roundhouse-cli` | syn, serde_json; clap/toml_edit under `cli` | no |
 
-The arrows only point one way: `schema` → `problem` → `multipart` → `roundhouse`, and
-`path` is shared by the facade and `roundhouse-macros-core`. The macro crates emit token
-streams and have no runtime dependency on the server crates.
+The arrows only point one way: `schema` → `roundhouse`. The `Problem` body and the typed
+multipart extractor are facade modules (`src/problem.rs`, `src/multipart.rs`) behind the same
+feature gates as the rest of the runtime. `path` is shared by the facade and
+`roundhouse-macros-core`. The macro crates emit token streams and have no runtime dependency on
+the server crates.
 
 ## Constraints
 
@@ -124,7 +122,7 @@ for the contract build only.
 |---|---|---|
 | `schema-engine` | Compile and execute the emitted JSON Schema, plus the build-time regex check | Pulls in `jsonschema`; contract generation and request validation use it |
 | `serve` | `App::serve`/`App::serve_with`, axum `http1`/`tokio`, tokio, tracing, `ConnectInfo<T>` docs | Pulls in hyper, tokio and tracing; tests and check binaries usually use `try_build` instead |
-| `multipart` | `Multipart<F>`, `FilePart`, and axum's multipart support | Pulls in `roundhouse-multipart` and `multer` |
+| `multipart` | `Multipart<F>`, `FilePart`, and axum's multipart support | Pulls in `multer` |
 | `multipart-tempfile` | `TempFile` (implies `multipart`) | Pulls in `tempfile` |
 | `swagger` | Vendored Swagger UI assets for local `App::docs()` and `App::swagger()` (default) | Adds ~1.6 MB of embedded assets to the binary; disable it to use the unpkg UI |
 | `contract-runtime` | `ContractBundle`, `include_contract!`, `App::contract`, `contract.json` request plans and verbatim `openapi.json` serving (`openapi_route`) | The production contract feature; implies `schema-engine`, no utoipa |
@@ -143,23 +141,24 @@ The result is the intended dependency shape:
 
 ```text
 cargo tree -p roundhouse --no-default-features
-  axum, axum-core, roundhouse-path, matchit
+  axum, bytes, http, matchit, roundhouse-macros, roundhouse-path, roundhouse-schema,
+  serde, serde_html_form, serde_json, tower
 
 cargo tree -p roundhouse --no-default-features --features serve
-  axum, hyper, hyper-util, tokio, tracing, roundhouse-path, matchit
+  the same graph plus hyper, hyper-util, tokio and tracing
 ```
 
-The no-default build must not pull in tokio, hyper, tracing, `jsonschema`, `regex` or `utoipa`.
-`tests/fixtures/production` is a real app compiled without `contract`; CI asserts that
-`cargo tree -p production-fixture` contains no utoipa, and the feature matrix in
-`.github/workflows/ci.yml` exercises the optional capability surface.
+The no-default build must not pull in tokio, hyper, tracing, `jsonschema`, `regex`, `utoipa`,
+`multer` or `tempfile`. `tests/fixtures/production` is a real app compiled without `contract`;
+CI asserts that `cargo tree -p production-fixture` contains none of those, and the feature
+matrix in `.github/workflows/ci.yml` exercises the optional capability surface.
 
 ## Decisions
 
 - **Gate runtime capabilities, not the authoring model.** The `macros` feature was removed
   rather than kept as a default-on escape hatch. It advertised a macro-free workflow that did
   not exist.
-- **Keep `roundhouse-schema` free of axum.** `Problem` lives beside axum because a rejection is
+- **Keep `roundhouse-schema` free of axum.** `Problem` is a facade module because a rejection is
   a response; a schema error is not.
 - **Inherit workspace package metadata.** All crates share edition, license, repository and
   MSRV from `[workspace.package]`, so a version bump cannot drift.

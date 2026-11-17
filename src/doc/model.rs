@@ -101,10 +101,10 @@ impl ResponseDoc {
 
 /// The Problem body as a schema, for documented rejection responses.
 ///
-/// The wire shape has one definition in `roundhouse-problem`, so the documented schema cannot
+/// The wire shape has one definition in [`crate::problem`], so the documented schema cannot
 /// drift from the runtime body.
 pub fn problem_schema() -> RefOr<Schema> {
-    roundhouse_problem::problem_schema_ref()
+    crate::problem::problem_schema_ref()
 }
 
 pub fn canonical_reason(status: u16) -> &'static str {

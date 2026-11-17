@@ -1295,13 +1295,12 @@ dependencies = [
  "regex",
  "roundhouse",
  "roundhouse-macros",
- "roundhouse-multipart",
  "roundhouse-path",
- "roundhouse-problem",
  "roundhouse-schema",
  "serde",
  "serde_html_form",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
  "tower",
@@ -1340,36 +1339,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "roundhouse-multipart"
-version = "0.4.0"
-dependencies = [
- "axum",
- "bytes",
- "roundhouse-problem",
- "roundhouse-schema",
- "serde",
- "serde_json",
- "tempfile",
- "utoipa",
-]
-
-[[package]]
 name = "roundhouse-path"
 version = "0.4.0"
 dependencies = [
  "matchit",
-]
-
-[[package]]
-name = "roundhouse-problem"
-version = "0.4.0"
-dependencies = [
- "axum",
- "http",
- "roundhouse-schema",
- "serde",
- "serde_json",
- "utoipa",
 ]
 
 [[package]]

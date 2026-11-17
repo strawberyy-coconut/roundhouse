@@ -33,12 +33,15 @@
 - An outcome the analyzer cannot classify is an explicit `unknown` response with
   `provenance: "unknown"` in `contract.json`. Strict builds reject it unless the handler declares
   `@response default: ...`, a typed `response(default, ..)`, or the route has `unverified = "..."`.
+- `roundhouse-problem` and `roundhouse-multipart` are folded into `roundhouse`. Remove the direct
+  dependencies and import `roundhouse::Problem` / `roundhouse::multipart::*` instead. Behaviour is
+  unchanged.
 
 ### Added
 
 - `contract` / `contract-runtime` features, `tests/fixtures/production` (no-contract compile
   guard), and a CI dependency check that asserts the production fixture graph contains no
-  `utoipa`.
+  `utoipa`, `multer` or `tempfile`.
 - `roundhouse-schema` `ValidateHook`, and runtime `Params` implementations independent of schema
   derivation.
 - `cargo roundhouse verify` plus `App::verify_responses()` / `ROUNDHOUSE_VERIFY=1`: actual

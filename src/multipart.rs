@@ -21,9 +21,9 @@ use std::collections::HashMap;
 #[cfg(feature = "multipart-tempfile")]
 use std::io::{Read, Seek, SeekFrom, Write};
 
+pub use crate::problem::Problem;
 use axum::http::{StatusCode, header};
 use bytes::{Bytes, BytesMut};
-pub use roundhouse_problem::Problem;
 #[cfg(feature = "contract")]
 use roundhouse_schema::ApiSchema;
 use roundhouse_schema::{ValidationError, ValidationErrors, pointer};

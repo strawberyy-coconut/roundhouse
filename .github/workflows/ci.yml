@@ -52,7 +52,7 @@ jobs:
       - run: cargo check -p roundhouse --no-default-features --features multipart
       - run: cargo check -p roundhouse --no-default-features --features contract-runtime
       - run: cargo check -p roundhouse --no-default-features --features contract
-      - run: cargo check -p roundhouse-multipart
+      - run: cargo check -p roundhouse --no-default-features --features multipart,contract
       # `build.rs` users depend on the library with `default-features = false`, so the generator
       # must compile without the CLI parser or manifest editing.
       - run: cargo check -p roundhouse-cli --no-default-features
@@ -65,8 +65,9 @@ jobs:
             (cd "examples/$example" && cargo roundhouse check)
           done
       # The production fixture is built without the contract feature: its graph must not contain
-      # utoipa, and the runtime must still compile routes and handlers.
-      - run: "! cargo tree -p production-fixture -e normal | grep -i utoipa"
+      # utoipa or the optional multipart body crates, and the runtime must still compile routes
+      # and handlers.
+      - run: "! cargo tree -p production-fixture -e normal | grep -iE 'utoipa|multer|tempfile'"
       # The examples consume committed contracts through `contract-runtime`; only their dev
       # builds enable the document builder.
       - run: |

@@ -178,6 +178,8 @@ pub const CONTRACT_COMPILED: bool = cfg!(feature = "contract");
 
 #[cfg(feature = "contract")]
 pub mod interop;
+#[cfg(feature = "multipart")]
+pub mod multipart;
 #[cfg(feature = "contract")]
 pub mod openapi;
 #[doc(hidden)]
@@ -221,9 +223,6 @@ pub mod __private {
     }
 }
 
-/// Typed multipart extraction, re-exported from `roundhouse-multipart`.
-#[cfg(feature = "multipart")]
-pub use roundhouse_multipart as multipart;
 /// The schema half, re-exported from `roundhouse-schema`.
 pub use roundhouse_schema as schema;
 pub use roundhouse_schema::validate;

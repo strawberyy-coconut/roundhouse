@@ -564,9 +564,6 @@ response. The runtime build validates the route table and the embedded contract 
 
 ## Features
 
-Upgrading from 0.3? See [`MIGRATING-0.4.md`](MIGRATING-0.4.md) for the contract workflow,
-feature split and authoring changes. Upgrading from 0.2? See [`MIGRATING-0.3.md`](MIGRATING-0.3.md).
-
 | Feature | Enables |
 |---|---|
 | `contract-runtime` | `ContractBundle`, `include_contract!`, `App::contract`, `contract.json` request validation, response verification and verbatim `openapi.json` serving; no utoipa |
