@@ -57,8 +57,8 @@ spread is a separate item and must carry its own `cfg`. Table-local duplicate ch
 `cfg` is still caught by the resolved route table at build time.
 
 The macro never parses a function body. `#[handler]` reads the signature and doc attributes only;
-routing metadata cannot be inferred from what the function does. Response inference happens later,
-in the contract build, from the source file on disk—not inside the proc macro.
+routing metadata cannot be inferred from what the function does. Response documentation comes from
+the declared return type's `DocumentedResponse` impl or an explicit `response(..)` declaration.
 
 ## Prose and typed metadata
 

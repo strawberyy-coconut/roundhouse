@@ -130,8 +130,8 @@ so it is not an escape hatch for large bodies.
 `benches/throughput.rs` compares plain axum, schema validation, `validate_body = false` and
 `validate = false`. On the development container the framework's layer/shim path costs about
 1.5–2 µs per small request before any schema work; the schema engine adds roughly another 1 µs.
-The engine is therefore not the dominant cost, and replacing it with `validator`/`garde` would not
-remove the overhead that dominates the comparison. The benchmark is the decision gate for any
+The engine is therefore not the dominant cost, and replacing it with a Rust-native validation
+pass would not remove the overhead that dominates the comparison. The benchmark is the decision gate for any
 change here: measure, then optimize the layer path or the double parse, not the engine in
 isolation.
 
@@ -297,7 +297,10 @@ checks to tests that already have the response in hand.
   most format checks need the whole value.
 - Response validation is JSON-only and needs the body in memory.
 - Constraints are declarative. Cross-field, database or async rules belong in `validate_with`
-  or the handler, and are not inferred from the document.
+  or the handler, and are not projected from the document.
+- `jsonschema` is the only engine. `validator`, `garde`, `axum-valid` and `validify` are not
+  supported: their rules are a runtime DSL, not a schema, and a bridge would make the document a
+  lossy projection. `validate_with` is the escape hatch for non-schema rules.
 - `schema-engine` off means no declarative enforcement. The code still compiles and the document
   is still honest about its shape, but the checks are not executed.
 

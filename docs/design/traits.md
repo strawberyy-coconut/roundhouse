@@ -9,6 +9,7 @@ author implements.
 | Trait | Subject | Implemented by | Used by | Phase |
 |---|---|---|---|---|
 | `ApiSchema` | A body/response JSON shape and its hooks | `#[roundhouse::schema]`, manual impls, primitives | contract build, validation export | build |
+| `DocumentedResponse` | A response type's statuses, content types, bodies and headers | built-ins, custom response types | contract build | build |
 | `Params` | A path/query/form type's runtime value | `PathParams`/`QueryParams` derives, scalars | request validation | request |
 | `ValidateHook` | Custom validation attached to a value | schema derives | runtime validation | request |
 | `ParamsDoc` | Parameter table and parts schema | `PathParams`/`QueryParams` derives | contract build | build |
@@ -41,6 +42,20 @@ schema derive supplies the shape; without it, the runtime still compiles `ApiSch
 
 `SchemaContext` lives in `roundhouse-schema`, so the schema crate stays axum-free. The facade
 implements it for `DocContext`, which owns the component table and the collision ledger.
+
+### `DocumentedResponse`
+
+```rust
+pub trait DocumentedResponse {
+    fn responses(context: &mut dyn SchemaContext) -> Vec<ResponseDoc>;
+}
+```
+
+This is the only source of response documentation. A built-in is special only because it
+implements this trait; a custom response type implements it once and is documented the same way.
+The macro probes the declared return type: an impl publishes its responses, and a missing impl
+leaves the operation without a success for the strict build to reject. There is no name-based
+fallback.
 
 ### `Params`, `ParamsDoc`, `ValidateHook`
 
@@ -135,8 +150,8 @@ leak into the document model.
 
 These traits are `#[doc(hidden)]` or live in `__private`. They are not extension points:
 
-- `ResponseDocSource` describes built-in return shapes for the contract build. `ProbeResponses`
-  discovers whether a type has it.
+- `ProbeResponses` discovers whether a declared return type implements `DocumentedResponse`, so a
+  handler whose body type publishes no schema still compiles.
 - `ProbeArg`, `ProbeSchema` and the schema probes implement autoref specialization, because the
   macro cannot ask "does this unseen type implement X?" with a normal bound.
 - `ShimPolicy`, `ShimPolicyFor` and `SubstateOf` are the state/auth plumbing behind the generated
@@ -151,7 +166,8 @@ impl<T>       Probe<T> for &&ProbeType<T> { /* fallback */ }
 ```
 
 Rust prefers the more specific receiver when the bound holds. That keeps an unregistered extractor
-or response type compiling, at the cost of a marker that the strict build turns into a diagnostic.
+or response type compiling; the strict build then reports the missing documentation instead of the
+macro guessing.
 
 ## Why the split is worth it
 

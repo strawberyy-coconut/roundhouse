@@ -42,15 +42,16 @@ The handler attribute owns the structured half:
 
 | Form | Meaning |
 |---|---|
-| `response(status, Type)` | A JSON response body |
+| `response(status, Type)` | `Type`'s documented body at `status` |
 | `response(status)` | An empty response |
 | `default_response(Type)` | OpenAPI's `default` response |
-| `override_response(status, Type)` | Replace an inferred response |
+| `override_response(status, Type)` | Replace the return type's response |
 | `response_description(status, "text")` | Override one response description |
 | `path(name, "text")` | Describe a path parameter with no field description |
 
-`Json<T>` is unwrapped to `T` for the body schema. `Problem` and `ValidationErrors` are documented
-as problem bodies. A typed declaration that changes the shape of an inferred response needs
+`Type` must implement `roundhouse::doc::DocumentedResponse`; the declaration overrides only the
+status. Use `Json<T>` for a JSON body, `Problem` for problem+json, or a custom response type. A
+typed declaration that changes the shape of an already-documented response needs
 `override_response`.
 
 ## Precedence

@@ -94,9 +94,9 @@
 //!    security guards, the routes declared in that table, and the children composed with
 //!    `..module`. `#[handler]` emits a marker implementing [`doc::HandlerSpec`] and
 //!    [`doc::DocSource`], plus the route shim.
-//! 2. **Compile the contract.** The generated build script calls `roundhouse_cli::prepare()`. It
-//!    runs a discovery build, infers responses from handler source, runs a strict build, and
-//!    writes `.roundhouse/contract.json` plus `openapi.json`.
+//! 2. **Compile the contract.** The generated build script calls `roundhouse_cli::prepare()`. One
+//!    strict build evaluates the response traits and declarations, and writes
+//!    `.roundhouse/contract.json` plus `openapi.json`.
 //! 3. **Build and enforce.** [`App::build`](router::App::build) walks the module tree into a
 //!    [`Built`]: the `axum::Router` and the resolved route table. The committed contract supplies
 //!    `openapi.json` serving, request validation and response verification. Rejections use the
@@ -133,13 +133,16 @@
 //! | `serve` | `App::serve`/`App::serve_with`, axum's `ConnectInfo<T>`, and the tokio server runtime (default) |
 //! | `swagger` | Vendored Swagger UI assets for `App::docs()` and `App::swagger()` (default) |
 //! | `contract-runtime` | `ContractBundle`, `include_contract!`, contract-backed request validation, verification and verbatim `openapi.json` serving |
-//! | `contract` | Schema derivation, the document builder and the `target/roundhouse` contract harness (implies `contract-runtime`) |
+//! | `contract` | Schema derivation, `DocumentedResponse`, the document builder and the `target/roundhouse` contract harness (implies `contract-runtime`) |
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 //! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | schema support for those types |
 //!
 //! `use roundhouse::prelude::*;` is the normal import. utoipa names are `contract`-only
-//! plumbing; the supported integration surface is `interop`.
+//! plumbing; the supported integration surface is `interop`. Response documentation is public:
+//! implement [`doc::DocumentedResponse`] for a custom response type. Request validation uses the
+//! same `#[roundhouse(..)]` annotation that emits the schema; `jsonschema` is the only engine and
+//! no external validation crate is supported.
 //!
 //! ## Examples
 //!

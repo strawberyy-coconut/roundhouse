@@ -129,18 +129,19 @@ use proc_macro::TokenStream;
 /// /// @summary: Create a note.
 /// /// @description: Persists the note and returns it.
 /// #[handler(
-///     response(201, Note),
+///     response(201, Json<Note>),
 ///     response(409, Problem),
 /// )]
 /// async fn create(...) -> ... { ... }
 /// ```
 ///
-/// `@summary:` and `@description:` set the operation text. `response(status, Type)` declares a
-/// JSON body, `response(status)` an empty response, `default_response(Type)` OpenAPI's `default`,
-/// and `override_response(status, Type)` replaces an inferred shape.
+/// `@summary:` and `@description:` set the operation text. `response(status, Type)` uses `Type`'s
+/// `DocumentedResponse` impl and overrides the status, `response(status)` declares an empty
+/// response, `default_response(Type)` uses OpenAPI's `default`, and
+/// `override_response(status, Type)` replaces the return type's documented shape.
 /// `response_description(status, "...")` overrides one description, and
-/// `path(name, "...")` describes a path parameter with no field description. `Json<T>` is
-/// unwrapped to `T`.
+/// `path(name, "...")` describes a path parameter with no field description. `Type` must
+/// implement `roundhouse::doc::DocumentedResponse`; use `Json<T>` for a JSON body.
 ///
 /// # Entry options
 ///
@@ -156,7 +157,7 @@ use proc_macro::TokenStream;
 ///   parent module prefix. Useful for keeping a library's public URL stable.
 /// - `layer = expression` — a tower layer applied to this route's `MethodRouter`.
 /// - `doc = expression` — a hook of type `fn(&mut roundhouse::doc::OperationDoc)` that runs after
-///   the handler's inferred documentation and before document checks. It uses the operation's
+///   the handler's documented responses and before document checks. It uses the operation's
 ///   builder methods (`set_summary`, `push_param`, `set_body`, `push_response`, …) to override
 ///   prose or add hand-written parameters, bodies or responses; the additions still go through
 ///   conflict and capture validation.
@@ -270,7 +271,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// `response_description(..)`, `path(..)`); routing policy belongs in the `routes!` table. It
 /// leaves the function untouched and appends a hidden marker
 /// type implementing `roundhouse::doc::HandlerSpec`, which supplies the state type, path capture
-/// names, request documentation and inferred responses.
+/// names and response documentation.
 ///
 /// It also emits a hidden shim beside the marker. `routes!` registers the shim instead of the
 /// function, so route-entry policy (`validate`, `security`) is applied without changing the

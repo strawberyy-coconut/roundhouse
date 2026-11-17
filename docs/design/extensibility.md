@@ -9,7 +9,7 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 | Need | Use |
 |---|---|
 | A custom axum extractor with parameters, a body or auth | `ExtractArg` + `ExtractDoc` |
-| A custom response type with a status, body or headers | `#[handler(response(..))]` plus a `doc = |docs|` hook |
+| A custom response type with a status, body or headers | `DocumentedResponse` (and `#[handler(response(..))]` for a status override) |
 | A documented JSON body or response type | `ApiSchema` (or `#[roundhouse::schema]`) |
 | A query or path struct | `#[derive(QueryParams)]`, `#[derive(PathParams)]` |
 | A tower layer that terminates requests | `App::layer_documented` or a `doc = ..` hook |
@@ -117,42 +117,60 @@ The build emits a diagnostic, and the strict build rejects the operation. This i
 impl is not a compile error but is a contract gap CI can catch. The same mechanism keeps any
 unregistered extractor compiling.
 
-## Custom responses: declarations and hooks
+## Custom responses: `DocumentedResponse`
 
-A response type implements `IntoResponse` as usual. That is enough to serve it, but it does not
-describe it: roundhouse only knows the built-in shapes (`Json`, text, bytes, `Html`, attachments,
-SSE, `StatusCode`, `Result`, `Created`/`NoContent` and `Problem`). For anything else, declare the
-outcome on the handler:
+A response type implements `IntoResponse` to serve and `DocumentedResponse` to document:
 
 ```rust
-#[handler(response(200))]
+use roundhouse::doc::{DocumentedResponse, ResponseDoc, SchemaContext, schema};
+
+pub struct Csv;
+
+impl axum::response::IntoResponse for Csv {
+    fn into_response(self) -> axum::response::Response {
+        (
+            [(axum::http::header::CONTENT_TYPE, "text/csv")],
+            "id,name\n",
+        )
+            .into_response()
+    }
+}
+
+impl DocumentedResponse for Csv {
+    fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
+        vec![ResponseDoc {
+            status: 200,
+            description: "CSV export".to_string(),
+            content_type: Some("text/csv".to_string()),
+            schema: Some(schema::string()),
+            headers: Vec::new(),
+        }]
+    }
+}
+```
+
+The impl owns the status, content type, body schema and headers, exactly like `Json<T>` or
+`Problem`. A handler that returns the type documents it automatically:
+
+```rust
+#[handler]
 pub async fn csv() -> Csv {
     Csv
 }
 ```
 
-Add content type, schema or headers with a route-level `doc` hook:
+A declaration overrides only the status while keeping the type's body:
 
 ```rust
-routes! {
-    "/csv" => {
-        get(csv, doc = |docs| {
-            if let Some(response) = docs.response_mut(200) {
-                response.content_type = Some("text/csv".to_string());
-                response.schema = Some(roundhouse::doc::schema::string());
-            }
-        })
-    },
+#[handler(response(206, Csv))]
+pub async fn partial_csv() -> Csv {
+    Csv
 }
 ```
 
-`response(..)` gives the status (and optionally a typed body); the hook owns the rest. A typed
-declaration can be mutated with `docs.declared_response_mut(status)`.
-
-`ApiResponse`/`ApiError` and their derives were removed in 0.4. The internal `ResponseDocSource`
-trait still describes built-in types for the document build, but it is `#[doc(hidden)]` and is not
-an extension point. A custom type with no declaration compiles and is marked unverified; the
-strict build rejects it.
+`doc = |docs| ..` remains available for metadata the type cannot express, such as an operation
+summary or an extra parameter. `ApiResponse`/`ApiError` and their derives were removed in 0.4;
+there is no hidden response trait behind the public one.
 
 ## Schemas: `ApiSchema`
 
@@ -257,7 +275,7 @@ one call. A `doc` hook without the layer would be a lie.
 
 ## One-off operation additions
 
-`doc = |docs| { .. }` on a `routes!` entry runs after the handler's inferred documentation and
+`doc = |docs| { .. }` on a `routes!` entry runs after the handler's documented responses and
 before the document checks. It can set summary/description, add parameters, a body or responses:
 
 ```rust

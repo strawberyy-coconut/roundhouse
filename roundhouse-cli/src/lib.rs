@@ -32,7 +32,8 @@
 //! ```
 //!
 //! The generated harness lives under `target/roundhouse`; nothing outside `target/` and
-//! `.roundhouse/` is written. Generation is re-entrant-safe: the harness run sets
+//! `.roundhouse/` is written. Generation is one strict build: a handler with no documented
+//! success fails `prepare` instead of being guessed. The harness run sets
 //! `ROUNDHOUSE_BUILDING_CONTRACT`, so an application build script does not recurse.
 
 use std::error::Error;

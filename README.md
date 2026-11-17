@@ -109,8 +109,8 @@ document of its own.
    handler signature and produces the request, response and security contribution for that
    operation.
 2. **Compile the contract.** The generated `build.rs` calls `roundhouse_cli::prepare()` before
-   rustc reads `include_contract!`. It runs a discovery build, infers responses from handler
-   source, runs a strict build, and writes `.roundhouse/contract.json` plus `openapi.json`.
+   rustc reads `include_contract!`. One strict build evaluates the response traits and explicit
+   declarations, and writes `.roundhouse/contract.json` plus `openapi.json`.
 3. **Build and enforce.** `App::build()` walks the module tree and produces a `Built` with the
    `axum::Router`. The committed contract supplies `openapi.json` serving and request validation;
    declared security installs the matching guard. Rejections use the `Problem` body.
@@ -160,7 +160,7 @@ attribute:
 /// @summary: Create a note.
 /// @description: Persists the note and returns the stored representation.
 #[handler(
-    response(201, Note),
+    response(201, Json<Note>),
     response(409, Problem),
     response_description(201, "The stored note."),
 )]
@@ -169,14 +169,14 @@ pub async fn create(...) -> ... { ... }
 
 - `@summary:` and `@description:` are prose. `@summary:` ends at a blank line;
   `@description:` keeps blank lines as paragraphs. Untagged doc prose is ignored for OpenAPI.
-- `response(status, Type)` declares a JSON response body. `response(status)` declares an empty
-  response, `default_response(Type)` uses OpenAPI's `default`, and
-  `override_response(status, Type)` replaces an inferred shape.
+- `response(status, Type)` calls `Type`'s `DocumentedResponse` impl and overrides the status.
+  `response(status)` declares an empty response, `default_response(Type)` uses OpenAPI's
+  `default`, and `override_response(status, Type)` replaces the return type's documented shape.
 - `response_description(status, "...")` overrides one response description.
 - `path(name, "...")` describes a path parameter with no field to carry the description. A
   `PathParams` field description still wins.
-- `Json<T>` is unwrapped to `T` for the body schema, so `response(200, Note)` and
-  `response(200, Json<Note>)` are equivalent.
+- `Type` must implement `DocumentedResponse`. Use `Json<T>` for a JSON body, `Problem` for
+  problem+json, or a custom response type; `response(200, Note)` is not an implicit JSON wrapper.
 - `@responses:`, `@responses(override):`, `@response-descriptions:` and `@path:` were removed in
   0.3. Use the typed attribute only; `MIGRATING-0.3.md` maps the old spellings.
 
@@ -384,9 +384,9 @@ The current deliberate trade-offs are:
 - JSON bodies are parsed once for validation and once for extraction. Use
   `validate_body = false` for a large body that should be parsed but not checked twice.
 - `validate = false` is a whole-route opt-out and requires `unverified = "reason"`.
-- Swapping the engine for `validator`/`garde` would validate the typed value after one parse, but
-  it would not remove the framework overhead measured above and would narrow the set of JSON
-  Schema keywords the document can enforce. Measure first; the benchmark exists for that.
+- `jsonschema` is the only validation engine. `validator`, `garde`, `axum-valid` and `validify`
+  are not supported: their rules are a runtime DSL, not a schema, and a bridge would make the
+  document a lossy projection. `validate_with` covers non-schema rules.
 
 Failures carry JSON Pointers and stable codes:
 
@@ -450,23 +450,22 @@ should verify signatures, expiry, audience and issuer with a maintained library 
 `Problem` is the error body for malformed JSON, rejected extractors, failed constraints, unmatched
 routes (`404`) and unsupported methods (`405`).
 
-Handlers return plain `impl IntoResponse`; the analyzer derives statuses and bodies from the
-return paths, and `Problem` is the universal error body:
+Handlers use named response types so the document comes from their traits, and `Problem` is the
+universal error body:
 
 ```rust
 /// @response 200: The stored note.
 /// @response 404: The requested note does not exist.
-#[handler]
+#[handler(response(404, Problem))]
 pub async fn show(
     State(app): State<AppState>,
     Path(NoteId { id }): Path<NoteId>,
-) -> impl IntoResponse {
+) -> Result<Json<Note>, Problem> {
     match app.get(id) {
-        Some(note) => Json(note).into_response(),
-        None => Problem::not_found("Note not found")
+        Some(note) => Ok(Json(note)),
+        None => Err(Problem::not_found("Note not found")
             .type_uri("https://roundhouse.rs/problems/NoteNotFound")
-            .detail(format!("note {id} was not found"))
-            .into_response(),
+            .detail(format!("note {id} was not found"))),
     }
 }
 ```
@@ -476,8 +475,9 @@ pub async fn show(
 - A blanket `From<E> for Problem` turns infrastructure errors into `500`; `?` works without an
   `InternalError` enum.
 - `Created<T>` and `NoContent` cover the common created/no-content responses.
-- `#[handler(response(..))]` declares an outcome the analyzer cannot see, and `doc = |docs|`
-  is the escape hatch for hand-written response prose, headers or a custom content type.
+- A custom response type implements `roundhouse::doc::DocumentedResponse`. An
+  `impl IntoResponse` handler needs `#[handler(response(..))]` because its concrete type cannot be
+  named. `doc = |docs|` remains the escape hatch for hand-written prose, headers or metadata.
 
 `ApiResponse`/`ApiError` and their derives were removed in 0.4. See
 [`MIGRATING-0.4.md`](MIGRATING-0.4.md) for the before/after.

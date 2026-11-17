@@ -12,10 +12,11 @@ src/lib.rs + #[roundhouse::schema] + routes! + #[handler]
         │  macro expansion
         ▼
 Module / Fragment / RouteRecord + DocSource + ExtractArg/ExtractDoc metadata
+        │  + DocumentedResponse impls
         │
         │  build.rs → roundhouse_cli::prepare()
         │     target/roundhouse harness
-        │     discovery build → response inference → strict build
+        │     one strict build
         ▼
 .roundhouse/contract.json     runtime plans, response table, shared $defs
 .roundhouse/openapi.json      OpenAPI 3.1 document
@@ -30,18 +31,19 @@ Two rules shape the design:
 - **The runtime never builds documentation.** Schema derivation and the document builder are
   compiled only under the `contract` feature, and normally only in the `target/roundhouse`
   harness. A production binary consumes the committed contract.
-- **Inference proposes; the contract build decides.** Response inference reads source and records
-  candidates with provenance. The strict contract build is the authority for missing, unknown or
-  contradictory responses.
+- **The document is a glass box.** Response documentation comes from a public
+  `DocumentedResponse` impl or an explicit `response(..)` declaration. No type name carries
+  meaning; the macro and CLI never decide a response from a spelling. A missing success is a
+  strict-build error, not a guess.
 
 ## Index
 
-- [Contract](contract.md) — the build pipeline, `api!`, artifacts, inference, versioning and the
-  CLI. Start here.
+- [Contract](contract.md) — the build pipeline, `api!`, artifacts, versioning and the CLI. Start
+  here.
 - [Routing](routing.md) — `routes!` → `Module` → `App::build` → `axum::Router`, including the
   static checks at each stage.
-- [Documentation](documentation.md) — how a handler signature and extractor contribute an
-  `OperationDoc`, how responses are merged, and how the OpenAPI document is emitted.
+- [Documentation](documentation.md) — how a handler signature, extractor and response trait
+  contribute an `OperationDoc`, how responses are merged, and how the document is emitted.
 - [Validation](validation.md) — contract-backed request validation, the JSON Schema engine,
   validation hooks, rejection bodies and response verification.
 - [Traits](traits.md) — the current public extension traits versus internal macro machinery.
