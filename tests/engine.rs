@@ -49,6 +49,17 @@ pub struct Link {
     pub url: String,
 }
 
+/// One type per remaining keyword, so the document and the engine are checked together.
+#[derive(Debug, Deserialize, Serialize, ToSchema, ApiSchema)]
+pub struct Ranged {
+    #[roundhouse(min_items = 1, max_items = 3, unique_items)]
+    pub tags: Vec<String>,
+    #[roundhouse(exclusive_minimum = 0, exclusive_maximum = 10)]
+    pub score: i64,
+    #[roundhouse(maximum = 5)]
+    pub count: i64,
+}
+
 #[derive(Debug, Serialize, ToSchema, ApiSchema)]
 pub struct NoteOut {
     pub ok: bool,
@@ -289,6 +300,38 @@ fn url_is_emitted_as_uri_and_enforced() {
         &validator,
         &serde_json::json!({"url": "not a url"}),
     ));
+}
+
+#[test]
+fn collection_and_bound_keywords_are_documented_and_enforced() {
+    let mut components = roundhouse::interop::utoipa::openapi::schema::Components::new();
+    <Ranged as roundhouse::ApiSchema>::register(&mut components);
+    let schema = serde_json::to_value(&components.schemas["Ranged"]).expect("schema serializes");
+    assert_eq!(schema["properties"]["tags"]["minItems"], 1);
+    assert_eq!(schema["properties"]["tags"]["maxItems"], 3);
+    assert_eq!(schema["properties"]["tags"]["uniqueItems"], true);
+    assert_eq!(schema["properties"]["score"]["exclusiveMinimum"], 0);
+    assert_eq!(schema["properties"]["score"]["exclusiveMaximum"], 10);
+    assert_eq!(schema["properties"]["count"]["maximum"], 5);
+
+    let validator = engine::compile::<Ranged>().expect("the emitted schema is valid");
+    let valid = serde_json::json!({
+        "tags": ["a", "b"],
+        "score": 5,
+        "count": 5
+    });
+    assert!(engine::is_valid(&validator, &valid));
+
+    for invalid in [
+        serde_json::json!({ "tags": [], "score": 5, "count": 5 }),
+        serde_json::json!({ "tags": ["a", "b", "c", "d"], "score": 5, "count": 5 }),
+        serde_json::json!({ "tags": ["a", "a"], "score": 5, "count": 5 }),
+        serde_json::json!({ "tags": ["a"], "score": 0, "count": 5 }),
+        serde_json::json!({ "tags": ["a"], "score": 10, "count": 5 }),
+        serde_json::json!({ "tags": ["a"], "score": 5, "count": 6 }),
+    ] {
+        assert!(!engine::is_valid(&validator, &invalid), "{invalid}");
+    }
 }
 
 #[test]
