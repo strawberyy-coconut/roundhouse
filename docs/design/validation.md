@@ -10,8 +10,9 @@ run — or run a check the document does not describe.
 it as a component and records request plans in `.roundhouse/contract.json`:
 
 - the shared component schemas (`$defs`);
-- body plans keyed by operation id and stable type name;
-- parts plans for path/query/form types;
+- body plans keyed by operation id, plus body schemas keyed by stable type name for extractors
+  that enforce themselves;
+- parts plans for path/query/form types, keyed by stable type name;
 - the response table used by verification.
 
 The production runtime reads that artifact, compiles the plans with `jsonschema`, and never
@@ -19,7 +20,7 @@ assembles or derives a document. There is no second, hand-written validation mod
 that appears in the document came from the same attribute that produced the validator.
 
 The contract build and the runtime are split so a production build does not carry utoipa, the
-document builder or the response probes. See [Contract](contract.md).
+document builder or the response probes. See [Contract build](contract-build.md).
 
 ## Modes
 
@@ -27,48 +28,43 @@ document builder or the response probes. See [Contract](contract.md).
 
 | Setting | Behaviour |
 |---|---|
-| `Validation::Schema` | Execute the emitted schema, then the `validate_with` hooks |
-| `Validation::Off` | Do not validate |
+| `Validation::Schema` | Execute the emitted schema, then the `validate_with` hooks. |
+| `Validation::Off` | Do not validate. |
 
-With the `schema-engine` feature (default), the app defaults to `Schema`. Without the feature
-the default is `Off`; the document is still built and extractors still reject malformed input,
-but the emitted schema is not executed. `App::validation(Validation::Off)` disables it for the
-whole app.
+With the `schema-engine` feature (default), the app defaults to `Schema`. Without the feature the
+default is `Off`; the document is still built and extractors still reject malformed input, but the
+emitted schema is not executed. `App::validation(Validation::Off)` disables it for the whole app.
 
-Per-route opt-out is `validate = false` on a `routes!` entry. It is intentionally not an
-attribute on the type: whether a request is enforced is a routing policy, not a property of the
-payload.
+A runtime contract is required for `Schema` mode. A `contract-runtime` build without
+`App::contract(include_contract!())` fails with `BuildError::MissingContract`; use
+`Validation::Off` for a router-only build. A `contract` build without a bundle builds the
+contract in-process for tests and checks.
+
+Per-route policy is declared on the `routes!` entry:
 
 ```rust
 routes! {
     "/import" => {
         post(import, validate = false, unverified = "opaque import payload"),
     },
-}
-```
-
-`validate = false` disables both body and parts validation. The narrower policy is
-`validate_body = false`: path, query and form values keep their schema, but the body is opaque.
-This is the route policy for a large payload that should be deserialized but should not be
-buffered into `serde_json::Value` and checked twice:
-
-```rust
-routes! {
     "/layouts" => {
         post(create_layout, validate_body = false),
     },
 }
 ```
 
-The body schema is still documented, but the raw JSON layer is not installed and the body schema
-is not compiled into the engine. Malformed JSON, a wrong content type and a failed
+`validate = false` disables both body and parts validation. It is intentionally not an attribute
+on the type: whether a request is enforced is a routing policy, not a property of the payload.
+`validate_body = false` keeps path, query and form schema checks while treating the body as
+opaque. The body schema is still documented, but the raw JSON layer is not installed and the body
+schema is not compiled into the engine. Malformed JSON, a wrong content type and a failed
 deserialization still reject exactly as they do on a validated route.
 
 ## Request pipeline
 
 ```text
 inject_validation_config
-  ├─ inserts ValidationState { status, mode, what to skip }
+  ├─ inserts ValidationState { status, mode, skip, skip_body, body_validated }
   ├─ inserts the compiled engine (schema mode)
   └─ inserts multipart limits
         │
@@ -77,6 +73,9 @@ auth guard (if any) → entry layer (if any)
         │
         ▼
 raw JSON body validator (only when the route documents a JSON body)
+        │
+        ▼
+validation-policy marker (Off / PartsOnly)
         │
         ▼
 axum extraction
@@ -101,44 +100,29 @@ through interior state, so a route's opt-out cannot leak into another request.
 For a route whose documented body is `application/json` (or a `+json` media type), the build
 installs a middleware that:
 
-1. honours `Validation::Off`, the route's `validate = false` and its `validate_body = false`;
+1. honours `Validation::Off` and the route's `validate = false`;
 2. ignores non-JSON content types;
-3. reads the body with the app's body limit (`413` if exceeded);
+3. reads the body with the app's body limit (`413` if exceeded; default 2 MiB);
 4. parses it as JSON (`400` if malformed);
-5. validates the value with the engine by the body's `TypeId`;
+5. validates the value with the engine by operation id;
 6. rebuilds the request and marks `body_validated = true`.
 
 Doing this before extraction is deliberate. The engine sees the bytes the client sent, plain
 `axum::Json<T>` is validated without requiring `T: Serialize` for the extractor itself, and
-malformed JSON has the same `Problem` shape as a constraint failure. The flag prevents a
-`Strict<Json<T>>` later in the chain from validating the same bytes twice.
+malformed JSON has the same `Problem` shape as a constraint failure. The flag prevents a later
+validator from validating the same bytes twice.
 
 The cost is that the request body is buffered and parsed once by the validator, then parsed again
 by axum's extractor. That is a deliberate trade-off: it keeps the `Serialize` bound off the
-handler and validates before any extractor can consume the body. The body limit bounds the memory;
-the default is 2 MiB and `App::max_body` raises or lowers it.
+handler and validates before any extractor can consume the body. `App::max_body` raises or lowers
+the limit.
 
 `validate = false` is not a silent performance switch: it marks the body unverified in the
 document, and the default strict build rejects that marker unless the entry acknowledges it with
 `unverified = "reason"`. `validate_body = false` is the precise alternative: it records
-`x-roundhouse-body-validation: false`, does not compile a body validator, and is quiet under
-the strict build because the author made a body-only decision. `Strict<Json<T>>` honors both policies,
+`x-roundhouse-body-validation: false`, does not compile a body validator, and is quiet under the
+strict build because the author made a body-only decision. `Strict<Json<T>>` honors both policies,
 so it is not an escape hatch for large bodies.
-
-### Measured cost
-
-`benches/throughput.rs` compares plain axum, schema validation, `validate_body = false` and
-`validate = false`. On the development container the framework's layer/shim path costs about
-1.5–2 µs per small request before any schema work; the schema engine adds roughly another 1 µs.
-The engine is therefore not the dominant cost, and replacing it with a Rust-native validation
-pass would not remove the overhead that dominates the comparison. The benchmark is the decision gate for any
-change here: measure, then optimize the layer path or the double parse, not the engine in
-isolation.
-
-A later optimization may skip the raw layer when the body schema has no enforceable keywords, or
-offer a validate-after-extraction mode for `Serialize` body types. The latter would need an
-explicit extractor or route mode so the `Serialize` bound is checked at compile time. Neither
-changes the default until a benchmark justifies it.
 
 ### 3. The shim
 
@@ -205,9 +189,9 @@ part. Opting out is not an invitation to skip deserialisation.
 `SchemaEngine` is built from `.roundhouse/contract.json` during `App::build`:
 
 - the shared `$defs` table is compiled once;
-- body plans are keyed by operation id and stable type name, so composites (`Vec<T>`,
-  `Option<T>` and maps) work without inventing a component;
-- parts plans are keyed separately, because the same Rust type can be a JSON body in one
+- body plans are keyed by operation id, with body schemas keyed by stable type name for
+  extractors that enforce themselves (`Strict<Json<T>>`);
+- parts plans are keyed by stable type name, because the same Rust type can be a JSON body in one
   operation and a query struct in another.
 
 The contract builder writes those plans; it does not compile a separate runtime document. The
@@ -228,8 +212,8 @@ Every validation failure becomes an RFC 9457 `Problem`:
 
 ```json
 {
-  "type": "about:blank",
-  "title": "Bad Request",
+  "type": "https://roundhouse.rs/problems/validation",
+  "title": "Validation failed",
   "status": 400,
   "errors": [
     { "pointer": "/title", "code": "min_length", "message": "must be at least 3 character(s)", "limit": 3 }
@@ -243,9 +227,9 @@ Every validation failure becomes an RFC 9457 `Problem`:
 - The status defaults to `400`; `App::validation_status(StatusCode::UNPROCESSABLE_ENTITY)` is a
   common alternative.
 
-Malformed JSON and a wrong `Content-Type` use the same body shape. Axum's rejection would
-answer `422` for some malformed bodies; roundhouse normalises those to `400` so the document's
-promise stays true.
+Malformed JSON and a wrong `Content-Type` use the same body shape. Axum's rejection would answer
+`422` for some malformed bodies; roundhouse normalises those to `400` so the document's promise
+stays true.
 
 ## Opting out and honesty
 
@@ -258,23 +242,29 @@ promise stays true.
 }
 ```
 
-the strict build rejects a route whose body is unverified unless the entry acknowledges it with
+The strict build rejects a route whose body is unverified unless the entry acknowledges it with
 `unverified = "reason"`. This keeps the default loud for accidental gaps while making an explicit
 decision quiet. The acknowledgement suppresses the diagnostic; it does not change the extensions,
 so document consumers can still see that the body was not verified.
 
 `validate_body = false` is different: it is a precise body policy and records
 `x-roundhouse-body-validation: false`. It does not need an acknowledgement and is quiet under
-the strict build. The `x-roundhouse-unverified-body` marker remains because the body genuinely was not
-checked.
+the strict build. The `x-roundhouse-unverified-body` marker remains because the body genuinely was
+not checked.
+
+Multipart text fields are enforced by the extractor's field table and byte/media limits, not by
+the emitted body schema. A file field without `max_bytes` is bounded only by the app-wide body
+limit, and the strict build reports it.
 
 ## Response verification
 
 `App::verify_responses()` is an opt-in test layer driven by the contract response table. It
 checks the actual status, content type and JSON body against `.roundhouse/contract.json`:
 
+- a documented status is checked for content type and, when present, a JSON schema match;
+- a status the operation does not document is a failure;
+- routes absent from the contract are skipped;
 - a mismatch is a `500 Problem` naming the operation and the failing constraint;
-- operations with no documented response are left alone;
 - the body is buffered up to 32 MiB.
 
 `cargo roundhouse verify` runs `cargo test` with `ROUNDHOUSE_VERIFY=1`, which installs the same
@@ -288,26 +278,18 @@ checks to tests that already have the response in hand.
   deserialisation; multipart is enforced by its extractor.
 - A JSON body is currently parsed twice when schema mode is on: once for validation and once by
   the extractor. For large payloads, use `validate_body = false` (or `validate = false` /
-  `Validation::Off` deliberately); do not add a silent size threshold, because it would change
-  the contract based on the request size.
+  `Validation::Off` deliberately); do not add a silent size threshold, because it would change the
+  contract based on the request size.
 - Body and parts validation share one `jsonschema` engine. A feature that kept only parts
   validation would still depend on the engine, so it would not reduce dependency weight. The
   useful split is compile-time work: opted-out body schemas are not compiled.
 - Streaming JSON Schema validation is not planned: `required`, `additionalProperties`, `oneOf` and
   most format checks need the whole value.
 - Response validation is JSON-only and needs the body in memory.
-- Constraints are declarative. Cross-field, database or async rules belong in `validate_with`
-  or the handler, and are not projected from the document.
+- Constraints are declarative. Cross-field, database or async rules belong in `validate_with` or
+  the handler, and are not projected from the document.
 - `jsonschema` is the only engine. `validator`, `garde`, `axum-valid` and `validify` are not
   supported: their rules are a runtime DSL, not a schema, and a bridge would make the document a
   lossy projection. `validate_with` is the escape hatch for non-schema rules.
 - `schema-engine` off means no declarative enforcement. The code still compiles and the document
   is still honest about its shape, but the checks are not executed.
-
-## Future
-
-- The engine could validate multipart text fields from the emitted schema, but the current
-  extractor already enforces the field table and the limits at the byte level. Adding a second
-  pass needs a clear story for which errors win.
-- Streaming request validation is not planned: a JSON schema check needs the whole value, and
-  buffering is bounded by the body limit.

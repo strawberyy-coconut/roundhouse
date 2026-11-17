@@ -10,6 +10,10 @@
   the CLI. A `build.rs` should depend on `roundhouse-build = "0.4"` and call
   `roundhouse_build::prepare()`. `cargo roundhouse init` migrates an existing generated
   `build.rs` and build-dependency; a hand-written build script needs the same two-line edit.
+- Source-level response inference was removed (`roundhouse-cli/src/semantic.rs` is gone).
+  Response documentation now comes from the return type's `DocumentedResponse` impl or an explicit
+  `#[handler(response(..))]` declaration. The contract build no longer inspects handler bodies,
+  and an unclassified outcome is the same strict-build failure as any other missing response.
 
 ## 0.4.0 — 2026-11-16
 

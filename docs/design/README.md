@@ -1,66 +1,79 @@
 # Design notes
 
-Roundhouse has one source of truth: the declarations in your crate. The same `routes!` table and
-`#[handler]` signatures produce the runtime router and the OpenAPI contract. These notes describe
-how that works in 0.4 and why the boundaries are where they are.
+Roundhouse has one source of truth: the declarations in your crate. The same `routes!` table,
+`#[handler]` signatures, schema derives and response impls produce the runtime router and the
+OpenAPI contract. These notes explain how that works, where the boundaries are, and why they are
+there.
 
-## The system at a glance
+They are not the user guide. The crate [README](../../README.md) covers installation, quick start
+and the authoring surface; rustdoc is the API reference. These pages are for contributors and for
+anyone deciding whether the design fits their application.
 
-```text
-src/lib.rs + #[roundhouse::schema] + routes! + #[handler]
-        │
-        │  macro expansion
-        ▼
-Module / Fragment / RouteRecord + DocSource + ExtractArg/ExtractDoc metadata
-        │  + DocumentedResponse impls
-        │
-        │  build.rs → roundhouse_build::prepare()
-        │     target/roundhouse harness
-        │     one strict build
-        ▼
-.roundhouse/contract.json     runtime plans, response table, shared $defs
-.roundhouse/openapi.json      OpenAPI 3.1 document
-        │
-        │  include_contract!()
-        ▼
-contract-runtime: Router + request validation + verbatim docs + response verification
-```
+## Invariants
 
-Two rules shape the design:
+- **The module tree is the complete route set.** There is no global registry, no linker discovery
+  and no runtime `add_route`.
+- **Production does not build documentation.** Schema derivation and the document builder run in
+  the contract build under `target/roundhouse`; a production binary consumes the committed
+  contract. A `contract` build without a bundle builds one in-process for tests.
+- **Strict builds are the default.** A missing success response, an unverified body or an
+  unacknowledged merged router is an error. Opt-outs are explicit and stay visible in the
+  document.
+- **Response documentation is trait-driven.** A return type publishes its own statuses, media
+  types and schemas. No type name or function body spelling decides a response.
+- **The document is a projection, not a second model.** `openapi.json` is produced from the same
+  resolved routes the router uses; it is not a hand-maintained specification.
 
-- **The runtime never builds documentation.** Schema derivation and the document builder are
-  compiled only under the `contract` feature, and normally only in the `target/roundhouse`
-  harness. A production binary consumes the committed contract.
-- **The document is a glass box.** Response documentation comes from a public
-  `DocumentedResponse` impl or an explicit `response(..)` declaration. No type name carries
-  meaning; the macro and CLI never decide a response from a spelling. A missing success is a
-  strict-build error, not a guess.
+## Reading paths
+
+- **New to the architecture:** [Architecture](architecture.md) → [Declarations](declarations.md)
+  → [Contract build](contract-build.md) → [Runtime](runtime.md).
+- **Changing how a request is routed or checked:** [Declarations](declarations.md) →
+  [Runtime](runtime.md) → [Validation](validation.md).
+- **Changing the emitted document:** [The document](document.md).
+- **Adding support for a custom type or layer:** [Extension points](extension-points.md).
+- **Asking "why is it like this?":** [Decisions](decisions.md).
 
 ## Index
 
-- [Contract](contract.md) — the build pipeline, `api!`, artifacts, versioning and the CLI. Start
-  here.
-- [Routing](routing.md) — `routes!` → `Module` → `App::build` → `axum::Router`, including the
-  static checks at each stage.
-- [Documentation](documentation.md) — how a handler signature, extractor and response trait
-  contribute an `OperationDoc`, how responses are merged, and how the document is emitted.
-- [Validation](validation.md) — contract-backed request validation, the JSON Schema engine,
-  validation hooks, rejection bodies and response verification.
-- [Traits](traits.md) — the current public extension traits versus internal macro machinery.
-- [Macros](macros.md) — what `routes!`, `#[handler]`, `api!` and the derives expand to, and which
-  mistakes are compile-time versus build-time errors.
-- [Extensibility](extensibility.md) — the supported seams for custom extractors, responses,
-  schemas, layers and operation metadata.
-- [Layering](layering.md) — crate boundaries, dependency direction and the feature matrix.
-- [Doc tags](doc-tags.md) — prose tags, typed metadata and their precedence.
+- [Architecture](architecture.md) — the declaration → contract → runtime phases, crate map,
+  feature policy and dependency direction.
+- [Declarations](declarations.md) — `routes!`, `#[handler]`, `api!`, doc tags, schema derives,
+  macro expansion and the checks that run at compile time.
+- [Contract build](contract-build.md) — `build.rs`, the `prepare` harness, build modes, artifact
+  shape, contract versioning and the CLI.
+- [Runtime](runtime.md) — prefix/security/layer resolution, router assembly, state, `Built` and
+  documentation serving.
+- [Validation](validation.md) — the contract-backed request pipeline, enforcement matrix, schema
+  engine, error shape and response verification.
+- [The document](document.md) — `OperationDoc`, response documentation, prose precedence,
+  component registration, document validity and extensions.
+- [Extension points](extension-points.md) — the public traits, custom extractors and responses,
+  documented layers and the internal probes.
+- [Decisions](decisions.md) — the constraints and tradeoffs that produced the current shape,
+  including rejected alternatives and open questions.
 
 ## Conventions
 
-Each note describes the code as it exists in 0.4:
+- These notes describe the current tree. Release and migration history belongs in the
+  [changelog](../../CHANGELOG.md), not here.
+- **Constraints**, **decisions** and **open questions** live in [Decisions](decisions.md). Topic
+  pages state the rule; the decision log explains the tradeoff.
+- API reference belongs in rustdoc and the README. A design page points at a public item instead
+  of duplicating its full signature or option table.
+- Each fact has one owner. If two pages need it, one page states it and the other links to it.
 
-- **Constraints** are deliberate limits that keep the design coherent.
-- **Decisions** are tradeoffs that have already been made.
-- **Future** is not implemented and is not an API promise.
+## Retired page names
 
-Version-specific migration details belong in `MIGRATING-0.4.md`, not in these notes. Historical
-alternatives are noted only when they explain why the current shape was chosen.
+The phase-based structure replaced the earlier subsystem-based files. For in-repo links:
+
+| Old page | Now |
+|---|---|
+| `contract.md` | [Contract build](contract-build.md), [Runtime](runtime.md), [The document](document.md) |
+| `routing.md` | [Declarations](declarations.md), [Runtime](runtime.md) |
+| `documentation.md` | [The document](document.md) |
+| `traits.md` | [Extension points](extension-points.md) |
+| `extensibility.md` | [Extension points](extension-points.md) |
+| `macros.md` | [Declarations](declarations.md) |
+| `layering.md` | [Architecture](architecture.md) |
+| `doc-tags.md` | [Declarations](declarations.md), [The document](document.md) |

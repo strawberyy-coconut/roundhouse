@@ -156,8 +156,8 @@ impl<S: 'static> Contract<S> {
 
     /// Register a response/body type's schema before the document is built.
     ///
-    /// This is for types the analyzer can infer but cannot access from the contract harness,
-    /// or for private response bodies that do not otherwise appear in an extractor or return type.
+    /// This is for private response bodies or bodies that do not otherwise appear in an extractor
+    /// or return type, so the contract harness cannot name them.
     pub fn register<T: crate::doc::ApiSchema>(mut self) -> Self {
         self.registrations
             .push(<T as crate::doc::ApiSchema>::register);
@@ -166,8 +166,8 @@ impl<S: 'static> Contract<S> {
 
     /// Set shared response prose defaults by status.
     ///
-    /// A default replaces a response's canonical/body-derived description unless the handler
-    /// supplied explicit prose. Use `0` for OpenAPI's `default` response.
+    /// A default replaces a response's canonical description. Explicit handler prose and a body
+    /// type's description take priority. Use `0` for OpenAPI's `default` response.
     pub fn response_defaults(mut self, defaults: &[(u16, &'static str)]) -> Self {
         self.response_defaults.extend(
             defaults

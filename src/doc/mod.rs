@@ -19,8 +19,9 @@
 //! - `validate_document` — the structural check every build runs over the finished document.
 //!
 //! `axum::Json<T>`, `Form<T>` and JSON responses require `T: ApiSchema` for automatic
-//! documentation. A plain `ToSchema` type remains available through an explicit
-//! typed `response(status, Type)` declaration. Component names follow utoipa: unique names stay
+//! documentation. A plain `ToSchema` type can be adapted with
+//! `roundhouse::interop::impl_from_utoipa!` or documented by an explicit
+//! `DocumentedResponse` impl. Component names follow utoipa: unique names stay
 //! simple, and a collision is disambiguated with `#[schema(as = module::Type)]`.
 
 #[cfg(feature = "contract")]
@@ -210,7 +211,6 @@ pub struct OperationDoc {
     pub(crate) schemes: Vec<crate::auth::SchemeDoc>,
     /// Honesty markers: what this operation could not verify or describe.
     pub verification: Verification,
-    /// Whether inference found a return path it could not classify.
     /// The schema of a scalar `Path<T>`; the parameter's name comes from the template.
     pub(crate) path_schema:
         Option<fn() -> Option<utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>>>,

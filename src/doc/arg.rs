@@ -7,8 +7,9 @@
 //!
 //! Automatic body documentation requires [`ApiSchema`]: it is the trait that publishes the
 //! patched component (`unique_items`, `url` → `uri`, `validate_with`) the document promises. A
-//! type that only implements `ToSchema` can still be used in an explicit
-//! typed `response(status, Type)` declaration.
+//! type that only implements `ToSchema` can be adapted with
+//! `roundhouse::interop::impl_from_utoipa!` or documented by an explicit `DocumentedResponse`
+//! impl.
 
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::Schema;

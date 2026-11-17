@@ -178,10 +178,10 @@ pub async fn create(...) -> ... { ... }
 - `Type` must implement `DocumentedResponse`. Use `Json<T>` for a JSON body, `Problem` for
   problem+json, or a custom response type; `response(200, Note)` is not an implicit JSON wrapper.
 - `@responses:`, `@responses(override):`, `@response-descriptions:` and `@path:` were removed in
-  0.3. Use the typed attribute only; `MIGRATING-0.3.md` maps the old spellings.
+  0.3. Use the typed attribute only.
 
-The full grammar and precedence rules are in
-[`docs/design/doc-tags.md`](docs/design/doc-tags.md).
+The grammar is in [Declarations](docs/design/declarations.md); response-description precedence is
+in [The document](docs/design/document.md).
 
 ### Entry options
 
@@ -193,7 +193,7 @@ The full grammar and precedence rules are in
 | `path = "/full/path"` | Assert the final resolved path, including module prefixes. |
 | `layer = expression` | Apply a tower layer to this route. |
 | `doc = expression` | Run a hook over the operation's `OperationDoc` before document checks. |
-| `prose = expression` | Take the summary and description from a `&'static str`, usually `include_str!(...)`. The first line is the summary. |
+| `prose = expression` | Take the summary and description from a `&'static str`, usually `include_str!(...)`. The first non-empty line is the summary. |
 | `hidden` | Serve the route without documenting it. |
 | `absolute` | Use the path as the full URL, ignoring inherited prefixes, tags, layers and guards. |
 | `deprecated` | Mark the operation deprecated. |
@@ -278,8 +278,9 @@ pub struct Profile {
 ```
 
 `axum::Json<T>`, `Form<T>` and a JSON response require `T: ApiSchema` when the framework documents
-them automatically. A type that only implements utoipa's `ToSchema` can still be published with an
-explicit `#[handler(response(..))]` declaration, or with a `doc = |docs| …` hook.
+them automatically. A type that only implements utoipa's `ToSchema` can be adapted with
+`roundhouse::interop::impl_from_utoipa!`, or documented by an explicit `DocumentedResponse` impl;
+`doc = |docs| …` remains the escape hatch for metadata the declarations cannot express.
 
 For generated types that cannot carry the derive, use the interop adapter:
 
@@ -298,31 +299,16 @@ cannot represent them.
 
 ### Extending the document
 
-Extractors stay axum's. To teach roundhouse about a custom extractor, implement
-`roundhouse::doc::ExtractArg` for it. The handler macro asks each argument how it documents itself
-and whether route-level validation has any work to do.
+Extractors stay axum's. Implement `roundhouse::ExtractArg` for route-level validation and, under
+`contract`, `roundhouse::doc::ExtractDoc` to document the argument. A custom response type
+implements `roundhouse::doc::DocumentedResponse`; implementing `IntoResponse` alone leaves the
+outcome unknown. An `impl IntoResponse` handler, or a response type with no documentation impl,
+needs an explicit `#[handler(response(..))]` declaration naming documented types.
 
-```rust
-impl ExtractArg for Tenant {
-    fn document(_context: &mut DocContext<'_>) -> ArgDoc {
-        ArgDoc {
-            params: vec![
-                Param::new("x-tenant", ParamIn::Header, schema::string())
-                    .description("tenant id"),
-            ],
-            ..ArgDoc::default()
-        }
-    }
-}
-```
-
-A custom response type documents its shape with `#[handler(response(..))]` or a
-`doc = |docs|` route hook. Implementing `IntoResponse` alone leaves the outcome unknown; the
-strict build asks for an explicit declaration.
-
-An extractor without an `ExtractArg` impl (or a body type without `ApiSchema`) is still accepted,
+An extractor without an `ExtractDoc` impl (or a body type without `ApiSchema`) is still accepted,
 but the operation is marked `x-roundhouse-unverified-extractor`/`-body` and the strict build
-turns that marker into an error.
+turns that marker into an error. See
+[Extension points](docs/design/extension-points.md) for the trait contracts and examples.
 
 Component names are the Rust type name by default. Two different Rust types that claim one name
 are a `BuildError::ComponentCollision`; use `#[roundhouse(name = "module.Name")]` on one of them.
@@ -355,16 +341,14 @@ tests and checks. The emitted JSON Schema is both the published shape and the en
 `Strict<Path<T>>`, and so on). `Mapped<T>` only converts a foreign extractor's rejection into a
 `Problem` and does not apply a schema.
 
-A JSON body is buffered and parsed once by the schema engine and once by the extractor. That is
-deliberate: it keeps the `Serialize` bound off the handler and validates the bytes the client
-sent. The body limit bounds the memory; the default is 2 MiB, and `App::max_body` changes it.
-`validate = false` is not a silent performance switch: it marks the body unverified, and a strict
-build rejects it unless the entry acknowledges the decision with `unverified = "reason"`.
-`validate_body = false` is the precise alternative: it records
-`x-roundhouse-body-validation: false`, compiles no body validator, and does not warn.
-`Strict<Json<T>>` honors both policies. A future after-extraction mode for `Serialize` body types
-would avoid the second parse; streaming JSON Schema validation is not planned, because
-`required`, `additionalProperties` and `oneOf` need the whole value.
+A JSON body is buffered and parsed once by the schema engine and once by the extractor. That keeps
+the `Serialize` bound off the handler and validates the bytes the client sent; the body limit
+bounds the memory (2 MiB by default, `App::max_body` changes it). `validate = false` marks the
+body unverified and requires `unverified = "reason"`; `validate_body = false` is the body-only
+policy and records `x-roundhouse-body-validation: false`.
+
+The rationale and the full enforcement matrix are in
+[Validation](docs/design/validation.md).
 
 ### Performance
 
@@ -379,14 +363,8 @@ small and ~20 KiB bodies; run it on the target hardware before making deployment
 about 80 µs per app and the committed-bundle path about 25 µs, so documentation generation is the
 difference 0.4 moved out of the deployed binary.
 
-The current deliberate trade-offs are:
-
-- JSON bodies are parsed once for validation and once for extraction. Use
-  `validate_body = false` for a large body that should be parsed but not checked twice.
-- `validate = false` is a whole-route opt-out and requires `unverified = "reason"`.
-- `jsonschema` is the only validation engine. `validator`, `garde`, `axum-valid` and `validify`
-  are not supported: their rules are a runtime DSL, not a schema, and a bridge would make the
-  document a lossy projection. `validate_with` covers non-schema rules.
+`jsonschema` is the only validation engine; `validate_with` covers rules a schema cannot express.
+See [Decisions](docs/design/decisions.md) for the tradeoffs behind the validation pipeline.
 
 Failures carry JSON Pointers and stable codes:
 
@@ -479,8 +457,8 @@ pub async fn show(
   `impl IntoResponse` handler needs `#[handler(response(..))]` because its concrete type cannot be
   named. `doc = |docs|` remains the escape hatch for hand-written prose, headers or metadata.
 
-`ApiResponse`/`ApiError` and their derives were removed in 0.4. See
-[`MIGRATING-0.4.md`](MIGRATING-0.4.md) for the before/after.
+`ApiResponse`/`ApiError` and their derives were removed in 0.4; see the
+[changelog](CHANGELOG.md) for the release history.
 
 `App::document_rejections(false)` disables automatic extractor rejection responses, leaving only
 the responses supplied by handlers and declarations.
@@ -623,8 +601,9 @@ Full API documentation:
 cargo doc --workspace --no-deps --open
 ```
 
-The rationale behind the API lives in [`docs/design`](docs/design): the crate and feature
-policy, the routing and document pipelines, validation, extensibility and macro diagnostics.
+The rationale behind the API lives in [`docs/design`](docs/design): the architecture, declaration
+and contract-build phases, runtime and validation behavior, document assembly, extension points
+and the decision log. Start with [Architecture](docs/design/architecture.md).
 
 ## License
 

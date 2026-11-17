@@ -122,8 +122,9 @@
 //! [`prelude`] is the usual import for application code. Schema derivation and the document
 //! builder are behind the `contract` feature, so a production build has no utoipa dependency. Use
 //! the `interop` module (also `contract`-only) when sharing types with another utoipa project. The
-//! repository's `docs/design/` notes explain the contract pipeline, routing, validation,
-//! extensibility and feature policy.
+//! repository's `docs/design/` notes explain the architecture, declaration and contract-build
+//! phases, runtime and validation behavior, document assembly, extension points and design
+//! decisions.
 //!
 //! ## Feature flags
 //!
