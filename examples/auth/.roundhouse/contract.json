@@ -26,7 +26,6 @@
             }
           },
           "description": "OK",
-          "provenance": "declared",
           "status": 200
         },
         {
@@ -92,7 +91,6 @@
             }
           },
           "description": "Unauthorized",
-          "provenance": "declared",
           "status": 401
         },
         {
@@ -158,7 +156,6 @@
             }
           },
           "description": "Forbidden",
-          "provenance": "declared",
           "status": 403
         },
         {
@@ -224,7 +221,6 @@
             }
           },
           "description": "Error",
-          "provenance": "declared",
           "status": 0
         }
       ],
@@ -260,7 +256,6 @@
             }
           },
           "description": "OK",
-          "provenance": "declared",
           "status": 200
         },
         {
@@ -326,7 +321,6 @@
             }
           },
           "description": "Unauthorized",
-          "provenance": "declared",
           "status": 401
         },
         {
@@ -392,7 +386,6 @@
             }
           },
           "description": "Forbidden",
-          "provenance": "declared",
           "status": 403
         }
       ],
@@ -430,7 +423,6 @@
             }
           },
           "description": "OK",
-          "provenance": "declared",
           "status": 200
         }
       ],
@@ -466,7 +458,6 @@
             }
           },
           "description": "OK",
-          "provenance": "declared",
           "status": 200
         },
         {
@@ -532,7 +523,6 @@
             }
           },
           "description": "Unauthorized",
-          "provenance": "declared",
           "status": 401
         },
         {
@@ -598,7 +588,6 @@
             }
           },
           "description": "Forbidden",
-          "provenance": "declared",
           "status": 403
         }
       ],
@@ -634,7 +623,6 @@
             }
           },
           "description": "OK",
-          "provenance": "declared",
           "status": 200
         },
         {
@@ -700,7 +688,6 @@
             }
           },
           "description": "Bad Request",
-          "provenance": "declared",
           "status": 400
         },
         {
@@ -766,7 +753,6 @@
             }
           },
           "description": "Unauthorized",
-          "provenance": "declared",
           "status": 401
         },
         {
@@ -832,7 +818,6 @@
             }
           },
           "description": "Forbidden",
-          "provenance": "declared",
           "status": 403
         },
         {
@@ -898,7 +883,6 @@
             }
           },
           "description": "Error",
-          "provenance": "declared",
           "status": 0
         }
       ],
@@ -934,7 +918,6 @@
             }
           },
           "description": "OK",
-          "provenance": "declared",
           "status": 200
         }
       ],
@@ -970,7 +953,6 @@
             }
           },
           "description": "OK",
-          "provenance": "declared",
           "status": 200
         },
         {
@@ -1036,7 +1018,6 @@
             }
           },
           "description": "Unauthorized",
-          "provenance": "declared",
           "status": 401
         },
         {
@@ -1102,7 +1083,6 @@
             }
           },
           "description": "Forbidden",
-          "provenance": "declared",
           "status": 403
         }
       ],
@@ -1138,7 +1118,6 @@
             }
           },
           "description": "OK",
-          "provenance": "declared",
           "status": 200
         },
         {
@@ -1204,7 +1183,6 @@
             }
           },
           "description": "Unauthorized",
-          "provenance": "declared",
           "status": 401
         },
         {
@@ -1270,7 +1248,6 @@
             }
           },
           "description": "Forbidden",
-          "provenance": "declared",
           "status": 403
         }
       ],

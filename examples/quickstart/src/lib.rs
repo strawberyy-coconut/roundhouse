@@ -136,17 +136,17 @@ mod routes {
     /// @summary: Read a note
     /// @response 200: The stored note.
     /// @response 404: The requested note does not exist.
-    #[handler(path(id, "The note identifier."))]
+    #[allow(clippy::result_large_err)]
+    #[handler(path(id, "The note identifier."), response(404, Problem))]
     pub async fn show(
         State(app): State<AppState>,
         Path(NoteId { id }): Path<NoteId>,
-    ) -> impl IntoResponse {
+    ) -> Result<Json<Note>, Problem> {
         match app.get(id) {
-            Some(note) => Json(note).into_response(),
-            None => Problem::not_found("Note not found")
+            Some(note) => Ok(Json(note)),
+            None => Err(Problem::not_found("Note not found")
                 .type_uri("https://roundhouse.rs/problems/NoteNotFound")
-                .detail(format!("note {id} was not found"))
-                .into_response(),
+                .detail(format!("note {id} was not found"))),
         }
     }
 

@@ -67,11 +67,6 @@ pub enum BuildError {
         operation_id: String,
         source: Source,
     },
-    /// A response type the document cannot describe (`axum::Json`, `axum::Html`).
-    UnverifiedResponse {
-        operation_id: String,
-        source: Source,
-    },
     /// The same security scheme name is registered with two different kinds.
     SchemeKindConflict {
         name: String,
@@ -152,11 +147,6 @@ pub enum BuildError {
     InvalidDocument { message: String },
     /// The emitted document could not be compiled into a validator.
     SchemaCompilation { message: String },
-    /// Inference found a return path whose status/body it could not classify.
-    UnknownResponse {
-        operation_id: String,
-        source: Source,
-    },
     /// Request validation is enabled but the build has no contract artifact.
     MissingContract,
     /// The embedded contract artifact is unreadable or uses an unsupported layout version.
@@ -201,14 +191,6 @@ impl fmt::Display for BuildError {
                 f,
                 "error: operation `{operation_id}` takes a body extractor the document cannot verify\n  {source}\n\
                  hint: use `roundhouse::Json`, `Form` or `Multipart`, or drop `App::strict()`"
-            ),
-            BuildError::UnverifiedResponse {
-                operation_id,
-                source,
-            } => write!(
-                f,
-                "error: operation `{operation_id}` returns a response type the document cannot verify\n  {source}\n\
-                 hint: return a concrete response type or declare `#[handler(response(..))]`"
             ),
             BuildError::SchemeKindConflict {
                 name,
@@ -313,16 +295,6 @@ impl fmt::Display for BuildError {
                  hint: declare the crate-wide state once with `roundhouse::app_state!(Type)` at the \
                  crate root, or set `state = ...` on the `routes!` table that declares this route. \
                  `state = infer` restores per-handler inference"
-            ),
-            BuildError::UnknownResponse {
-                operation_id,
-                source,
-            } => write!(
-                f,
-                "error: operation `{operation_id}` has an outcome inference could not classify\n  \
-                 {source}\n\
-                 hint: add `/// @response default: ...` (or a typed `response(default, ..)`), or \
-                 acknowledge it with `unverified = \"reason\"` on the route"
             ),
             BuildError::MissingContract => write!(
                 f,

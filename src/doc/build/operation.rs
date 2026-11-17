@@ -302,19 +302,6 @@ impl DocumentBuild<'_> {
         route: &ResolvedRoute,
         docs: &mut OperationDoc,
     ) -> Result<(BTreeMap<u16, ResponseDoc>, bool), BuildError> {
-        // An unknown outcome is a conservative `default Problem`; it is only acceptable when the
-        // author acknowledged it explicitly.
-        let unknown = docs.has_unknown_response();
-        let unknown_acknowledged = route.record.unverified.is_some()
-            || docs
-                .declared_responses
-                .iter()
-                .any(|response| response.status == 0)
-            || docs
-                .response_descriptions
-                .iter()
-                .any(|(status, _)| *status == 0);
-
         let mut responses: BTreeMap<u16, ResponseDoc> = BTreeMap::new();
         let failures = if self.include_rejections {
             std::mem::take(&mut docs.failures)
@@ -421,23 +408,6 @@ impl DocumentBuild<'_> {
                     response.description = default.clone();
                 }
             }
-        }
-
-        if unknown && !unknown_acknowledged {
-            if self.strict {
-                return Err(BuildError::UnknownResponse {
-                    operation_id: route.operation_id.clone(),
-                    source: route.record.source_ref(),
-                });
-            }
-            self.diagnostics.push(Diagnostic::new(
-                route.record.source_ref(),
-                format!(
-                    "operation `{}` has an outcome inference could not classify; add \
-                     `@response default: ...` or acknowledge it with `unverified = \"reason\"`",
-                    route.operation_id
-                ),
-            ));
         }
 
         if self.allow_undeclared_success

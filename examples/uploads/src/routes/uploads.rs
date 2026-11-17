@@ -60,11 +60,15 @@ pub async fn raw() -> File {
     File::new(vec![0u8, 1, 2, 3])
 }
 
+type EventStream =
+    std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Event, Infallible>> + Send>>;
+
 /// @summary: Stream server-sent events
 #[handler]
-pub async fn events() -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
-    Sse::new(stream::iter(vec![
+pub async fn events() -> Sse<EventStream> {
+    let stream: EventStream = Box::pin(stream::iter(vec![
         Ok(Event::default().event("greeting").data("hello")),
         Ok(Event::default().event("done").data("bye")),
-    ]))
+    ]));
+    Sse::new(stream)
 }

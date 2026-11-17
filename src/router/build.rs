@@ -43,7 +43,6 @@ pub(crate) struct DocumentConfig<'a> {
     pub(crate) include_rejections: bool,
     pub(crate) strict: bool,
     pub(crate) allow_undeclared_success: bool,
-    pub(crate) inference: &'a crate::doc::inference::Inference,
     pub(crate) response_defaults: &'a std::collections::BTreeMap<u16, String>,
     pub(crate) registrations: &'a [fn(&mut dyn crate::doc::SchemaContext)],
     pub(crate) servers: &'a [utoipa::openapi::Server],
@@ -57,13 +56,12 @@ pub(crate) fn build_openapi(
     config: DocumentConfig<'_>,
 ) -> Result<(OpenApi, doc::build::Observations), BuildError> {
     let mut observations = doc::build::Observations::default();
-    let built_document = doc::build::build_with_observations_and_inference(
+    let built_document = doc::build::build_with_config(
         info.into_utoipa(),
         resolved,
         config.include_rejections,
         config.strict,
         config.allow_undeclared_success,
-        config.inference,
         config.response_defaults,
         config.registrations,
         &mut observations,

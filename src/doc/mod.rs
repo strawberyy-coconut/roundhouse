@@ -28,15 +28,11 @@ pub mod build;
 #[cfg(feature = "contract")]
 pub mod downgrade;
 #[cfg(feature = "contract")]
-pub mod inference;
-#[cfg(feature = "contract")]
 pub mod validity;
 #[cfg(all(feature = "contract", feature = "schema-engine"))]
 pub use crate::contract_response::ContractResponseValidator;
 #[cfg(feature = "contract")]
 pub use build::{build, build_with_options};
-#[cfg(feature = "contract")]
-pub use inference::{Inference, InferredResponse};
 #[cfg(feature = "contract")]
 pub use validity::validate_document;
 #[cfg(feature = "contract")]
@@ -121,7 +117,6 @@ pub struct Verification {
     response: bool,
     extractor: bool,
     body_verified: bool,
-    undocumented_error: Option<&'static str>,
     unbounded_file_fields: Vec<&'static str>,
 }
 
@@ -148,10 +143,6 @@ impl Verification {
     }
 
     /// A `Result<_, E>` whose `E` registered no documented responses.
-    pub fn undocumented_error(&self) -> Option<&'static str> {
-        self.undocumented_error
-    }
-
     /// File fields declared without `max_bytes`.
     pub fn unbounded_file_fields(&self) -> &[&'static str] {
         &self.unbounded_file_fields
@@ -179,10 +170,6 @@ impl Verification {
 
     pub fn set_body_verified(&mut self, verified: bool) {
         self.body_verified = verified;
-    }
-
-    pub fn set_undocumented_error(&mut self, type_name: &'static str) {
-        self.undocumented_error = Some(type_name);
     }
 
     pub fn extend_unbounded_file_fields(&mut self, names: impl IntoIterator<Item = &'static str>) {
@@ -224,7 +211,6 @@ pub struct OperationDoc {
     /// Honesty markers: what this operation could not verify or describe.
     pub verification: Verification,
     /// Whether inference found a return path it could not classify.
-    pub(crate) unknown_response: bool,
     /// The schema of a scalar `Path<T>`; the parameter's name comes from the template.
     pub(crate) path_schema:
         Option<fn() -> Option<utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>>>,
@@ -314,16 +300,6 @@ impl OperationDoc {
     /// Add several inferred responses.
     pub fn extend_responses(&mut self, responses: impl IntoIterator<Item = ResponseDoc>) {
         self.responses.extend(responses);
-    }
-
-    /// Record that inference found an outcome it could not classify.
-    pub fn mark_unknown_response(&mut self) {
-        self.unknown_response = true;
-    }
-
-    /// Whether inference found an outcome it could not classify.
-    pub fn has_unknown_response(&self) -> bool {
-        self.unknown_response
     }
 
     /// Mutate the inferred response with `status`, if there is one.

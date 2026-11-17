@@ -48,28 +48,26 @@ pub(crate) fn build_with_observations(
     strict: bool,
     observations: &mut Observations,
 ) -> Result<OpenApi, BuildError> {
-    build_with_observations_and_inference(
+    build_with_config(
         info,
         routes,
         include_rejections,
         strict,
         false,
-        &crate::doc::inference::Inference::default(),
         &std::collections::BTreeMap::new(),
         &[],
         observations,
     )
 }
 
-/// Build the document with build-time response inference and an optional discovery mode.
+/// Build the document with the options the app/contract builder carries.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn build_with_observations_and_inference(
+pub(crate) fn build_with_config(
     info: impl Into<Info>,
     routes: &[ResolvedRoute],
     include_rejections: bool,
     strict: bool,
     allow_undeclared_success: bool,
-    inference: &crate::doc::inference::Inference,
     response_defaults: &std::collections::BTreeMap<u16, String>,
     registrations: &[fn(&mut dyn crate::doc::SchemaContext)],
     observations: &mut Observations,
@@ -79,7 +77,6 @@ pub(crate) fn build_with_observations_and_inference(
         include_rejections,
         strict,
         allow_undeclared_success,
-        inference,
         response_defaults,
         registrations,
         diagnostics: &mut observations.diagnostics,
@@ -96,7 +93,6 @@ pub(super) struct DocumentBuild<'a> {
     include_rejections: bool,
     strict: bool,
     allow_undeclared_success: bool,
-    inference: &'a crate::doc::inference::Inference,
     response_defaults: &'a std::collections::BTreeMap<u16, String>,
     registrations: &'a [fn(&mut dyn crate::doc::SchemaContext)],
     diagnostics: &'a mut Vec<Diagnostic>,
@@ -153,14 +149,6 @@ impl DocumentBuild<'_> {
             if let Some(custom) = route.record.doc {
                 custom(&mut docs);
             }
-            if let Some(inferred) = self.inference.operations.get(&route.operation_id) {
-                for response in inferred {
-                    if response.unknown {
-                        docs.mark_unknown_response();
-                    }
-                    docs.push_response(response.to_response_doc(&mut context));
-                }
-            }
             if !docs.verification.unbounded_file_fields().is_empty() {
                 crate::build_error::report(
                     self.diagnostics,
@@ -198,37 +186,6 @@ impl DocumentBuild<'_> {
                         route.operation_id
                     ),
                 ));
-            }
-            if docs.verification.response() && !acknowledged {
-                if self.strict {
-                    return Err(BuildError::UnverifiedResponse {
-                        operation_id: route.operation_id.clone(),
-                        source: route.record.source_ref(),
-                    });
-                }
-                self.diagnostics.push(Diagnostic::new(
-                    route.record.source_ref(),
-                    format!(
-                        "operation `{}` returns a response type the document cannot verify; it is \
-                         marked `x-roundhouse-unverified-response`",
-                        route.operation_id
-                    ),
-                ));
-            }
-            if let Some(error_type) = docs.verification.undocumented_error() {
-                crate::build_error::report(
-                    self.diagnostics,
-                    self.strict,
-                    Diagnostic::new(
-                        route.record.source_ref(),
-                        format!(
-                            "operation `{}` returns `{error_type}` but that type registers no \
-                             documented responses; return `Problem` or declare \
-                             `Problem`",
-                            route.operation_id
-                        ),
-                    ),
-                )?;
             }
             let operation = self.operation(route, docs, &mut context, &mut used_schemes)?;
             paths.add_path_operation(&route.path, vec![http_method], operation);

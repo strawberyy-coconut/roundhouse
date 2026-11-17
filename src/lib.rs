@@ -236,7 +236,7 @@ pub use contract_bundle::ContractBundle;
 pub use contract_response::ContractResponseValidator;
 pub use doc::Params;
 #[cfg(feature = "contract")]
-pub use doc::{ApiSchema, Inference, InferredResponse, validate_document};
+pub use doc::{ApiSchema, validate_document};
 pub use extract::{
     Extension, Form, Json, Mapped, Path, Query, Rejection, RepeatedQuery, Strict, Validation,
 };

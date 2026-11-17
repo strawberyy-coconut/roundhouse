@@ -1,7 +1,7 @@
-//! End-to-end: a fresh app with plain `impl IntoResponse` handlers.
+//! End-to-end: a fresh app with named response types and one explicit declaration.
 //!
-//! This is the core 0.4 promise. The test writes a temporary crate, runs the real CLI, and checks
-//! that inference fills in the 200/201/404 responses without response enums or manual prose.
+//! The test writes a temporary crate, runs the real CLI, and checks that the response traits fill
+//! in the 200/201/default responses without response enums or inferred statuses.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -53,7 +53,7 @@ fn cargo(dir: &Path, args: &[&str]) {
 }
 
 #[test]
-fn plain_handlers_are_inferred_end_to_end() {
+fn plain_handlers_are_documented_end_to_end() {
     let dir = temp_project("plain");
     let root = workspace_root();
     fs::write(
@@ -123,18 +123,18 @@ pub mod routes {
         Created(body)
     }
 
-    #[handler]
-    pub async fn show(Path(id): Path<u64>) -> impl IntoResponse {
+    #[handler(response(404, Problem))]
+    pub async fn show(Path(id): Path<u64>) -> Result<Json<serde_json::Value>, Problem> {
         if id == 0 {
-            Problem::not_found("missing").into_response()
+            Err(Problem::not_found("missing"))
         } else {
-            Json(serde_json::json!({ "id": id })).into_response()
+            Ok(Json(serde_json::json!({ "id": id })))
         }
     }
 
     #[handler]
-    pub async fn note(State(app): State<AppState>, Path(id): Path<u64>) -> impl IntoResponse {
-        Json(app.load(id)).into_response()
+    pub async fn note(State(app): State<AppState>, Path(id): Path<u64>) -> Json<Note> {
+        Json(app.load(id))
     }
 }
 "#,
@@ -194,23 +194,11 @@ pub mod routes {
             .filter_map(|response| response["status"].as_u64())
             .collect::<Vec<_>>()
     };
-    let provenance = |method: &str, path: &str, status: u64| {
-        responses(method, path)
-            .iter()
-            .find(|response| response["status"] == status)
-            .and_then(|response| response["provenance"].as_str())
-            .unwrap_or_else(|| panic!("missing response {status} for {method} {path}"))
-            .to_string()
-    };
-
     assert!(statuses("GET", "/plain").contains(&200));
     assert!(statuses("POST", "/plain").contains(&201));
     assert!(statuses("GET", "/plain/{id}").contains(&200));
     assert!(statuses("GET", "/plain/{id}").contains(&404));
-    assert_eq!(provenance("GET", "/plain", 200), "declared");
-    assert_eq!(provenance("GET", "/plain/{id}", 200), "inferred");
-    assert_eq!(provenance("GET", "/plain/{id}", 404), "inferred");
-    assert_eq!(provenance("GET", "/plain/{id}/note", 200), "inferred");
+    assert!(statuses("GET", "/plain/{id}/note").contains(&200));
     let note = responses("GET", "/plain/{id}/note")
         .into_iter()
         .find(|response| response["status"] == 200)
@@ -226,7 +214,7 @@ pub mod routes {
         .output()
         .expect("run explain");
     let text = String::from_utf8_lossy(&explain.stdout);
-    assert!(text.contains("inferred"), "explain output: {text}");
+    assert!(text.contains("200"), "explain output: {text}");
     assert!(text.contains("404"), "explain output: {text}");
 
     fs::remove_dir_all(&dir).expect("clean the temporary project");

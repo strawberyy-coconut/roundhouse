@@ -22,7 +22,6 @@ use serde_json::{Map, Value, json};
 use utoipa::openapi::Server;
 
 use crate::build_error::{BuildError, Diagnostic};
-use crate::doc::Inference;
 use crate::doc::build::Observations;
 use crate::doc::layer::LayerDoc;
 use crate::openapi::{Info, OpenApi};
@@ -59,7 +58,6 @@ pub struct Contract<S = ()> {
     document_rejections: DocumentRejections,
     strict: bool,
     allow_undeclared_success: bool,
-    inference: Inference,
     response_defaults: std::collections::BTreeMap<u16, String>,
     registrations: Vec<fn(&mut dyn crate::doc::SchemaContext)>,
     _state: PhantomData<fn() -> S>,
@@ -77,7 +75,6 @@ impl<S: 'static> Contract<S> {
             document_rejections: DocumentRejections::Auto,
             strict: true,
             allow_undeclared_success: false,
-            inference: Inference::default(),
             response_defaults: std::collections::BTreeMap::new(),
             registrations: Vec::new(),
             _state: PhantomData,
@@ -150,24 +147,11 @@ impl<S: 'static> Contract<S> {
 
     /// Allow operations without a documented success response.
     ///
-    /// This is the discovery mode used by `cargo roundhouse prepare`: the first pass needs the
-    /// operation/source table before response inference can supply the successes. The final
-    /// strict pass does not set this.
+    /// A permissive build uses this to publish a `default` placeholder, marked
+    /// `x-roundhouse-unverified-response`. The strict pass does not set it.
     pub fn allow_undeclared_success(mut self, allow: bool) -> Self {
         self.allow_undeclared_success = allow;
         self
-    }
-
-    /// Fold build-time response inference into the document.
-    pub fn inference(mut self, inference: Inference) -> Self {
-        self.inference = inference;
-        self
-    }
-
-    /// Parse and fold an inference document.
-    pub fn inference_json(mut self, json: &str) -> Result<Self, serde_json::Error> {
-        self.inference = Inference::from_json(json)?;
-        Ok(self)
     }
 
     /// Register a response/body type's schema before the document is built.
@@ -213,7 +197,6 @@ impl<S: 'static> Contract<S> {
                 include_rejections: self.document_rejections == DocumentRejections::Auto,
                 strict: self.strict,
                 allow_undeclared_success: self.allow_undeclared_success,
-                inference: &self.inference,
                 response_defaults: &self.response_defaults,
                 registrations: &self.registrations,
                 servers: &self.servers,
@@ -227,7 +210,6 @@ impl<S: 'static> Contract<S> {
             routes: resolved,
             diagnostics,
             observations,
-            inference: self.inference,
         })
     }
 }
@@ -238,7 +220,6 @@ pub struct BuiltContract {
     routes: Vec<ResolvedRoute>,
     diagnostics: Vec<Diagnostic>,
     observations: Observations,
-    inference: Inference,
 }
 
 impl BuiltContract {
@@ -314,7 +295,7 @@ impl BuiltContract {
                     }),
                 );
             }
-            let responses = contract_responses(&document, route, &self.inference);
+            let responses = contract_responses(&document, route);
 
             operations.push(json!({
                 "operation_id": route.operation_id,
@@ -397,11 +378,7 @@ impl BuiltContract {
     }
 }
 
-fn contract_responses(
-    document: &Value,
-    route: &ResolvedRoute,
-    inference: &Inference,
-) -> Vec<Value> {
+fn contract_responses(document: &Value, route: &ResolvedRoute) -> Vec<Value> {
     let method = route.method.as_str().to_ascii_lowercase();
     let Some(responses) =
         document["paths"][route.path.as_str()][method.as_str()]["responses"].as_object()
@@ -416,22 +393,8 @@ fn contract_responses(
             } else {
                 status.parse::<u16>().unwrap_or(0)
             };
-            let inferred = inference
-                .operations
-                .get(&route.operation_id)
-                .and_then(|responses| {
-                    responses
-                        .iter()
-                        .find(|response| response.status == status_number)
-                });
-            let provenance = match inferred {
-                Some(response) if response.unknown => "unknown",
-                Some(_) => "inferred",
-                None => "declared",
-            };
             let mut object = response.as_object().cloned().unwrap_or_default();
             object.insert("status".to_string(), json!(status_number));
-            object.insert("provenance".to_string(), json!(provenance));
             Value::Object(object)
         })
         .collect()
