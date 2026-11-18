@@ -1,7 +1,7 @@
 {
   "contract_version": 1,
   "diagnostics": [],
-  "generator_version": "0.4.0",
+  "generator_version": "0.4.1",
   "kind": "roundhouse.contract",
   "openapi": "openapi.json",
   "operations": [
