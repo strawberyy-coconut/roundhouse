@@ -79,8 +79,8 @@ declaration. A type that only implements `ToSchema` is not automatically documen
 with `ApiSchema` interop or implement `DocumentedResponse`. A missing success is a strict-build
 error, not a guess.
 
-**Rejected.** Semantic response inference (shipped in 0.4.0 and removed afterwards); inferring a
-JSON body from a type name; treating `response(200, Note)` as an implicit `Json<Note>`.
+**Rejected.** Semantic response inference; inferring a JSON body from a type name; treating
+`response(200, Note)` as an implicit `Json<Note>`.
 
 ## D6 — Strict builds are the default
 
@@ -151,9 +151,8 @@ separate framework-neutral OpenAPI crate.
 **Decision.** `roundhouse-macros` is a normal dependency. There is no `macros` feature and no
 supported macro-free builder.
 
-**Why.** The product is the authoring surface. Removing the feature made the situation honest:
-runtime capabilities are optional, the authoring model is not. A builder would be a
-runtime-checked copy with fewer guarantees.
+**Why.** The product is the authoring surface. Runtime capabilities are optional; the authoring
+model is not. A builder would be a runtime-checked copy with fewer guarantees.
 
 **Consequences.** A `--no-default-features` build still exposes `routes!`, `#[handler]` and the
 runtime derives. `Module::from_spec`/`RouteRecord::from_spec` are public only because macro
@@ -223,8 +222,7 @@ expands. The harness sets `ROUNDHOUSE_BUILDING_CONTRACT`, and the generated buil
 CI unless `ROUNDHOUSE_AUTO_CONTRACT=1`. `roundhouse-build` is the build-dependency;
 `roundhouse-cli` is only the binary.
 
-**Rejected.** A generated `src/bin/roundhouse-contract.rs`; an `init --ephemeral` mode; a
-generated Cargo feature.
+**Rejected.** A generated `src/bin/roundhouse-contract.rs`; a generated Cargo feature.
 
 ## Open questions
 

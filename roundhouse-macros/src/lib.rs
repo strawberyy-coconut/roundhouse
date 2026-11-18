@@ -222,9 +222,7 @@ use proc_macro::TokenStream;
 /// - two entries that resolve to the same method and normalised template (`{id}` and `{post_id}`
 ///   are the same shape), including an `any` entry against a concrete method;
 /// - two entries with the same `operation_id`, or two entries that would derive the same id from
-///   their method and handler name;
-/// - an entry whose return type the macro can classify as producing no success response, unless
-///   the handler declares one with `#[handler(response(..))]`.
+///   their method and handler name.
 ///
 /// Checks that need the composed tree — collisions across separate modules, resolved prefix
 /// joins, a handler state that disagrees with the app — remain `BuildError`s from
@@ -252,8 +250,8 @@ use proc_macro::TokenStream;
 /// ```
 /// Declare the build-time contract configuration.
 ///
-/// Call once at the crate root. It generates `__roundhouse_contract()`, which the generated
-/// `roundhouse-contract` bin calls.
+/// Call once at the crate root. It generates `__roundhouse_contract()`, which the contract
+/// harness under `target/roundhouse` calls.
 #[proc_macro]
 pub fn api(input: TokenStream) -> TokenStream {
     roundhouse_macros_core::expand_api(input.into()).into()
@@ -269,9 +267,9 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// Apply `#[handler]` to a function item. The attribute accepts typed response and path metadata
 /// (`response(..)`, `override_response(..)`, `default_response(..)`,
 /// `response_description(..)`, `path(..)`); routing policy belongs in the `routes!` table. It
-/// leaves the function untouched and appends a hidden marker
-/// type implementing `roundhouse::doc::HandlerSpec`, which supplies the state type, path capture
-/// names and response documentation.
+/// leaves the function untouched and appends a hidden marker type implementing
+/// `roundhouse::doc::HandlerSpec` and `roundhouse::doc::DocSource`, which supply the state type,
+/// path capture names and response documentation.
 ///
 /// It also emits a hidden shim beside the marker. `routes!` registers the shim instead of the
 /// function, so route-entry policy (`validate`, `security`) is applied without changing the
@@ -281,9 +279,10 @@ pub fn routes(input: TokenStream) -> TokenStream {
 ///
 /// # Extractors
 ///
-/// The macro no longer classifies argument types. Each extractor contributes its own
-/// documentation and validation through `roundhouse::doc::ExtractArg`; the macro asks the
-/// concrete type and marks an extractor without an implementation as unverified.
+/// The macro does not infer documentation from argument types. Each extractor contributes
+/// validation through `roundhouse::ExtractArg` and documentation through
+/// `roundhouse::doc::ExtractDoc`; the macro asks the concrete type and marks an extractor without
+/// documentation as unverified.
 ///
 /// - `State<T>` — extracted from the route table's `state = S` using `T: FromRef<S>`. Without a
 ///   table state, a single `State<T>` is the default router state. The app state is still exact at
@@ -300,8 +299,9 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// - `Strict<axum::Json<T>>`, `Strict<Path<T>>`, … — a pure axum extractor with the framework's
 ///   `Problem` rejection; documentation comes from the inner type.
 /// - `Extension<T>`, `HeaderMap`, `Method`, `Uri`, … — known axum extractors with their documented
-///   contribution. A custom extractor is supported by implementing `ExtractArg`; without it, the
-///   operation is marked `x-roundhouse-unverified-extractor` and a strict build rejects it.
+///   contribution. A custom extractor implements `ExtractArg` for validation and `ExtractDoc` for
+///   documentation; without `ExtractDoc`, the operation is marked
+///   `x-roundhouse-unverified-extractor` and a strict build rejects it.
 /// - `Result<Extractor, E>` — documents the extractor's successful shape but lets the error type
 ///   own the rejection response.
 ///
@@ -316,7 +316,7 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// - `Json<T>` — `200` with an `application/json` schema for `T: ApiSchema`;
 /// - `Html<T>` — `200` with a `text/html` schema;
 /// - `String` and `&str` — `200` with `text/plain`;
-/// - `Vec<u8>`, `Bytes` and `Body` — a binary response; other `Vec<T>` values are JSON arrays;
+/// - `Vec<u8>`, `Bytes` and `Body` — a binary response. Use `Json<Vec<T>>` for a JSON array;
 /// - `Attachment<T>`, `File` and `Sse` — the corresponding attachment/file/event-stream response;
 /// - `StatusCode` — the OpenAPI `default` response, because the status is chosen at runtime;
 /// - `(StatusCode, Body)` — the `default` response. Other tuples are not classified; declare
@@ -325,12 +325,8 @@ pub fn routes(input: TokenStream) -> TokenStream {
 ///   declare the error responses with `#[handler(response(..))]`); otherwise the build reports an
 ///   undocumented error.
 ///
-/// A known shape whose body type publishes no schema (for example `Created<T>` where `T` is only
-/// `Serialize`) is documented with its status and `x-roundhouse-unverified-response`; the strict build
-/// rejects it unless the entry acknowledges it with `unverified = "reason"`.
-///
 /// For any other `IntoResponse` type, declare the response on the handler with
-/// `#[handler(response(..))]`. An operation with no declared success response is a build error.
+/// `#[handler(response(..))]`. An operation with no documented success response is a build error.
 ///
 /// # Limitations
 ///
@@ -371,11 +367,11 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 ///
 /// `ApiSchema` registers the type as a named component (`$ref`) and applies the roundhouse-only
-/// patches. It is the trait automatic body and response documentation requires; a type that
-/// derives only `ToSchema` can still be published with an explicit `#[handler(response(..))]`
-/// declaration or a `doc` hook. Derive `ApiSchema` when the type is a documented JSON body or
-/// response, should be a named component, uses `unique_items` or the `url` to `uri` format
-/// mapping, or has a `validate_with` hook.
+/// patches. It is the trait automatic body and response documentation requires. A type that
+/// derives only `ToSchema` can be adapted with `roundhouse::interop::impl_from_utoipa!` or
+/// documented by an explicit `DocumentedResponse` impl. Derive `ApiSchema` when the type is a
+/// documented JSON body or response, should be a named component, uses `unique_items` or the
+/// `url` to `uri` format mapping, or has a `validate_with` hook.
 ///
 /// Component names are the Rust type name by default; use
 /// `#[roundhouse(name = "module.Name")]` when two types share a simple name.

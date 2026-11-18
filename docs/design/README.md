@@ -55,25 +55,10 @@ anyone deciding whether the design fits their application.
 
 ## Conventions
 
-- These notes describe the current tree. Release and migration history belongs in the
+- These notes describe the current tree. Release history belongs in the
   [changelog](../../CHANGELOG.md), not here.
 - **Constraints**, **decisions** and **open questions** live in [Decisions](decisions.md). Topic
   pages state the rule; the decision log explains the tradeoff.
 - API reference belongs in rustdoc and the README. A design page points at a public item instead
   of duplicating its full signature or option table.
 - Each fact has one owner. If two pages need it, one page states it and the other links to it.
-
-## Retired page names
-
-The phase-based structure replaced the earlier subsystem-based files. For in-repo links:
-
-| Old page | Now |
-|---|---|
-| `contract.md` | [Contract build](contract-build.md), [Runtime](runtime.md), [The document](document.md) |
-| `routing.md` | [Declarations](declarations.md), [Runtime](runtime.md) |
-| `documentation.md` | [The document](document.md) |
-| `traits.md` | [Extension points](extension-points.md) |
-| `extensibility.md` | [Extension points](extension-points.md) |
-| `macros.md` | [Declarations](declarations.md) |
-| `layering.md` | [Architecture](architecture.md) |
-| `doc-tags.md` | [Declarations](declarations.md), [The document](document.md) |

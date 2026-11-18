@@ -7,13 +7,16 @@ route set.
 
 ## Install
 
-Contract generation needs the CLI:
+The `cargo roundhouse` commands come from the CLI:
 
 ```sh
 cargo install roundhouse-cli
 # or, from a checkout:
 cargo install --path roundhouse-cli
 ```
+
+Contract generation itself runs through the `roundhouse-build` build-dependency that the
+scaffolding adds to the application.
 
 `cargo roundhouse new` creates a package with a library target, a thin binary, the runtime and
 build dependencies, `.roundhouse/` and a guarded `build.rs`:
@@ -97,8 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-A package created with `cargo roundhouse new`, or adopted with `cargo roundhouse init`, has
-`roundhouse-build` as a build-dependency and a guarded `build.rs`. From then on, `cargo build` and
+By default, a package created with `cargo roundhouse new`, or adopted with
+`cargo roundhouse init`, has `roundhouse-build` as a build-dependency and a guarded `build.rs`. From then on, `cargo build` and
 `cargo test` refresh `.roundhouse/` automatically before `include_contract!` expands. Missing
 artifacts are seeded with empty placeholders during the contract build, so a new package builds
 before its first contract exists. `cargo roundhouse prepare` remains available for an explicit run,
@@ -185,9 +188,6 @@ pub async fn create(...) -> ... { ... }
   `PathParams` field description still wins.
 - `Type` must implement `DocumentedResponse`. Use `Json<T>` for a JSON body, `Problem` for
   problem+json, or a custom response type; `response(200, Note)` is not an implicit JSON wrapper.
-- `@responses:`, `@responses(override):`, `@response-descriptions:` and `@path:` were removed in
-  0.3. Use the typed attribute only.
-
 The grammar is in [Declarations](docs/design/declarations.md); response-description precedence is
 in [The document](docs/design/document.md).
 
@@ -260,9 +260,9 @@ alias, so neither needs to repeat it. `state = OtherState` overrides one table;
 
 `#[roundhouse::schema]` is the one-annotation form: it derives the schema and the roundhouse
 adapter, and constraints use the `#[roundhouse(..)]` namespace. The explicit
-`#[derive(ToSchema, ApiSchema)]` form remains available through `roundhouse::interop` for
-projects that already share utoipa types (import `ToSchema` and `PartialSchema` from
-`roundhouse::interop`). `#[derive(ApiSchema)]` adds:
+`#[derive(ToSchema, ApiSchema)]` form is still supported for projects that already share utoipa
+types; with `contract` enabled, import `ToSchema` and `PartialSchema` from
+`roundhouse::interop`. `#[derive(ApiSchema)]` adds:
 
 - a named component (`$ref`) for the type;
 - `#[roundhouse(unique_items)]`;
@@ -368,8 +368,8 @@ small and ~20 KiB bodies; run it on the target hardware before making deployment
 
 `cargo bench -p roundhouse --bench build` compares the full contract build with the production
 `contract-runtime` startup on the same route table. On the development container the build path is
-about 80 µs per app and the committed-bundle path about 25 µs, so documentation generation is the
-difference 0.4 moved out of the deployed binary.
+about 80 µs per app and the committed-bundle path about 25 µs, so the difference is the
+documentation work the deployed binary does not perform.
 
 `jsonschema` is the only validation engine; `validate_with` covers rules a schema cannot express.
 See [Decisions](docs/design/decisions.md) for the tradeoffs behind the validation pipeline.
@@ -465,9 +465,6 @@ pub async fn show(
   `impl IntoResponse` handler needs `#[handler(response(..))]` because its concrete type cannot be
   named. `doc = |docs|` remains the escape hatch for hand-written prose, headers or metadata.
 
-`ApiResponse`/`ApiError` and their derives were removed in 0.4; see the
-[changelog](CHANGELOG.md) for the release history.
-
 `App::document_rejections(false)` disables automatic extractor rejection responses, leaving only
 the responses supplied by handlers and declarations.
 
@@ -501,8 +498,9 @@ tests and checks. Production configuration is only routing and UI: `App::openapi
 chooses the document path, `App::docs()` serves a Swagger UI at `/docs`, and
 `App::docs_route(..)` moves it.
 
-The document's title, version, servers and shared prose belong in `api!`. `App::openapi(..)` is a
-`contract`-only build-time override for tests and tools, not a production runtime setting.
+The document's title, version, servers and shared response prose belong in `api!`.
+`App::openapi(..)` is a `contract`-only build-time override for tests and tools, not a production
+runtime setting.
 
 With the default `swagger` feature, the CSS, JavaScript and OAuth assets are embedded in the
 binary and served by the app, so `/docs` works in an air-gapped deployment. `App::docs_cdn()` opts
@@ -517,7 +515,7 @@ std::fs::write("target/openapi.json", built.openapi_json())?;
 `Built::document()` returns the `OpenApi` value, `Built::openapi_30()` returns a 3.0.3-shaped
 document, `Built::routes()` returns the resolved route table with source locations, and
 `Built::diagnostics()` returns non-fatal observations. These document accessors require the
-`contract` feature in 0.4. A `contract-runtime` production build serves the committed
+`contract` feature. A `contract-runtime` production build serves the committed
 `.roundhouse/openapi.json` instead (`App::openapi_route(..)`, `Built::openapi_json()`).
 `Built::router()` and `App::into_router()` return the ready `axum::Router<()>` in every
 configuration; application state is already applied.
@@ -540,8 +538,8 @@ fn routes_build() {
 
 Strict builds are the default: diagnostics are `BuildError`s. This includes undocumented response
 types, unverified bodies, empty modules and routers added with `App::merge`. `App::permissive()`
-downgrades them to warnings for a migration. Merged routers are served but cannot be discovered
-for the document, so the document is marked `x-roundhouse-merged` and the merge is recorded in
+downgrades them to warnings. Merged routers are served but cannot be discovered for the document,
+so the document is marked `x-roundhouse-merged` and the merge is recorded in
 `Built::merges()`. Use `App::merge_undocumented(router, reason)` to acknowledge one.
 
 Every contract build validates the finished document: path captures match parameters, operation
@@ -580,8 +578,9 @@ Run any example from the repository root:
 
 `examples/quickstart` is the smallest starting point; `examples/notes` shows the multi-file
 layout. Each example commits its `.roundhouse/` artifacts and builds production with
-`contract-runtime`, so `cargo tree -p <example>` has no utoipa; their tests enable `contract` to
-read the typed document. Run `cargo roundhouse check` inside an example after changing handlers.
+`contract-runtime`, so `cargo tree -p <example>` has no utoipa; the examples that read the typed
+document enable `contract` in their dev-dependencies. Run `cargo roundhouse check` inside an
+example after changing handlers.
 Detailed feature coverage lives in the crate's integration tests. The route, schema,
 validation, auth and layering contracts are exercised there without a runnable example for every
 feature. `tests/fixtures/renamed` checks that the macros work when the dependency is renamed.

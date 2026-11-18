@@ -39,9 +39,8 @@ routes! {
 ```
 
 A path group, `"/path" => { .. }`, declares routes directly. A prefix group,
-`prefix "/path" [options] { .. }`, nests another table. The flat `get("/path", handler)` form and
-the compact `get "/path" => handler` form were removed in 0.3; there is one way to declare a
-route.
+`prefix "/path" [options] { .. }`, nests another table. Routes are always declared inside a
+group.
 
 ## Entry and module options
 
@@ -136,7 +135,8 @@ The full response-description precedence is owned by [The document](document.md)
 
 `#[roundhouse::schema]` is the one-annotation form. With `contract` it derives the schema and the
 roundhouse adapter, and constraints use the `#[roundhouse(..)]` namespace. The explicit
-`#[derive(ToSchema, ApiSchema)]` form remains available through `roundhouse::interop`.
+`#[derive(ToSchema, ApiSchema)]` form is still supported; with `contract` enabled, import utoipa's
+`ToSchema` and `PartialSchema` from `roundhouse::interop`.
 
 - `#[derive(ApiSchema)]` adds a named component (`$ref`), `#[roundhouse(unique_items)]`, the
   `url` → `uri` format mapping and `#[roundhouse(validate_with = path)]` hooks.
@@ -229,7 +229,7 @@ One invocation can check its own tokens. These fail `cargo check`:
 | Duplicate operation id | Two explicit ids, or two entries that would derive the same id. |
 | Path capture subset | A `Path<T: Params>` whose `NAMES` omits a capture in the leaf template. |
 | Missing `#[handler]` | The marker type does not exist, reported once through a type alias. |
-| Attribute syntax | Unknown options, non-type security schemes, removed attributes. |
+| Attribute syntax | Unknown options, misplaced prose and non-type security schemes. |
 
 `#[cfg(..)]` and other outer attributes on an entry are copied to every generated item for that
 entry and to direct entries in a group. The macro does not interpret them. A nested group or

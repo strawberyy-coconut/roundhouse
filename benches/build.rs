@@ -9,7 +9,8 @@
 //! The first number is the full `contract` build (`App::build` with no bundle): schema
 //! derivation, the document builder and route resolution. The second is the production
 //! `contract-runtime` path: route resolution plus contract compilation. Both are measured on the
-//! same tiny route table, so the difference is the documentation work 0.4 moved off the runtime.
+//! same tiny route table, so the difference is documentation work the deployed binary does not
+//! perform.
 
 use std::time::Instant;
 

@@ -113,8 +113,7 @@ does not accept a `ToSchema`-only type. A typed declaration that contradicts the
 shape needs `override_response(..)`.
 
 `Problem` documents `default`. For exact error codes, use `response(404, Problem)` or a typed
-error enum that implements `DocumentedResponse` with its own statuses. `ApiResponse`/`ApiError`
-and their derives were removed in 0.4.
+error enum that implements `DocumentedResponse` with its own statuses.
 
 ### Response description precedence
 

@@ -159,9 +159,9 @@
 //!
 //! ## Examples
 //!
-//! The repository ships runnable examples for routing, module composition, layers, validation,
-//! uploads, auth and utoipa interop (see the `examples/` directory). `examples/notes` is the
-//! smallest multi-file example; `examples/quickstart` is the smallest app.
+//! The repository ships runnable examples for routing, module composition, layers, uploads and
+//! auth (see the `examples/` directory). `examples/quickstart` is the smallest app;
+//! `examples/notes` is the smallest multi-file example.
 //!
 //! ## Minimum supported Rust version
 //!
@@ -328,7 +328,7 @@ macro_rules! impl_from_utoipa {
 ///
 /// It expands to a hidden `pub type __RoundhouseAppState = ...;` that `routes!` uses when a table
 /// does not set `state = ...`. A table can still name a different state explicitly, and
-/// `state = infer` restores the pre-0.3 per-handler inference.
+/// `state = infer` restores per-handler inference.
 #[macro_export]
 macro_rules! app_state {
     ($state:ty) => {

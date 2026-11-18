@@ -248,7 +248,7 @@ For an extractor you own, implement `ExtractArg` and, under `contract`, `Extract
 ### Why a probe instead of a bound
 
 `#[handler]` cannot write `where T: ExtractDoc`, because custom extractors that do not implement
-it must still compile. Instead it calls `ArgProbe::<T>::new().document(..)`, which resolves
+it must still compile. Instead it calls `ArgDocProbe::<T>::new().document(..)`, which resolves
 through autoref specialization:
 
 - if `T: ExtractDoc`, the specific impl runs;
@@ -310,8 +310,7 @@ pub async fn partial_csv() -> Csv {
 ```
 
 `doc = |docs| ..` remains available for metadata the type cannot express, such as an operation
-summary or an extra parameter. `ApiResponse`/`ApiError` and their derives were removed in 0.4;
-there is no hidden response trait behind the public one.
+summary or an extra parameter. There is no hidden response trait behind the public one.
 
 ## Schemas
 
@@ -340,21 +339,10 @@ roundhouse::interop::impl_from_utoipa!(generated::Row);
 ```
 
 It then implements `ApiSchema` and is used like any other documented body. An explicit
-`DocumentedResponse` impl is the alternative for a response that cannot be adapted. For a body
-documented only by a hook, use `roundhouse::doc::json_body_to_schema::<T>()`:
-
-```rust
-routes! {
-    "/import" => {
-        post(import, doc = |docs| {
-            docs.set_body(roundhouse::doc::json_body_to_schema::<Import>());
-        }),
-    },
-}
-```
-
-That is more verbose, and the request will not be automatically validated unless the type also
-implements `ApiSchema`. Explicit documentation and automatic enforcement are the same decision.
+`DocumentedResponse` impl is the alternative for a response that cannot be adapted. A type used
+only in a request body needs `ApiSchema` for automatic documentation; a `doc` hook can attach a
+hand-written `BodyDoc`, but it does not register the type's component or make the request
+validated. Explicit documentation and automatic enforcement are the same decision.
 
 ## Query and path types
 

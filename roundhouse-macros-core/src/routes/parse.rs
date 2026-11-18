@@ -6,8 +6,8 @@ use crate::util::parse_security_types;
 
 /// The router state a table declares.
 ///
-/// A type path is the normal form. `state = infer` restores the pre-0.3 behaviour: each entry
-/// derives its state from its handler or its single auth scheme.
+/// A type path is the normal form. `state = infer` derives each entry's state from its handler
+/// or its single auth scheme.
 pub(super) enum StateOption {
     Type(Box<Type>),
     Infer,
