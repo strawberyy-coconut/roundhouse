@@ -87,7 +87,7 @@ impl PartsDoc {
     }
 }
 
-/// The contract-only half of a path, query or form type: its documented parameters and schema.
+/// The build-only half of a path, query or form type: its documented parameters and schema.
 ///
 /// Runtime code bounds on [`Params`](crate::params::Params); the document builder additionally
 /// requires this trait. `PathParams` and `QueryParams` derive both, but only `Params` survives a

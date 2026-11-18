@@ -210,12 +210,17 @@ fn install_dependencies(directory: &Path) -> Result<(), Box<dyn Error>> {
     let version = minor_version(env!("CARGO_PKG_VERSION"));
 
     let dependencies = table(&mut manifest, "dependencies")?;
-    insert_dependency(dependencies, "roundhouse", &version, &["contract-runtime"]);
+    insert_dependency_without_defaults(
+        dependencies,
+        "roundhouse",
+        &version,
+        &["contract", "server", "swagger-ui"],
+    );
     insert_dependency(dependencies, "serde", "1", &["derive"]);
     insert_dependency(dependencies, "tokio", "1", &["macros", "rt-multi-thread"]);
 
     let dev_dependencies = table(&mut manifest, "dev-dependencies")?;
-    insert_dependency(dev_dependencies, "roundhouse", &version, &["contract"]);
+    insert_dependency_without_defaults(dev_dependencies, "roundhouse", &version, &["build"]);
 
     let updated = manifest.to_string();
     if updated != original {
@@ -231,6 +236,18 @@ fn table<'a>(manifest: &'a mut DocumentMut, key: &str) -> Result<&'a mut Table, 
         .or_insert(Item::Table(Table::new()))
         .as_table_mut()
         .ok_or_else(|| error(format!("`[{key}]` in Cargo.toml is not a table")))
+}
+
+fn insert_dependency_without_defaults(
+    table: &mut Table,
+    name: &str,
+    version: &str,
+    features: &[&str],
+) {
+    insert_dependency(table, name, version, features);
+    if let Some(Item::Value(TomlValue::InlineTable(spec))) = table.get_mut(name) {
+        spec.insert("default-features", TomlValue::from(false));
+    }
 }
 
 fn insert_dependency(table: &mut Table, name: &str, version: &str, features: &[&str]) {

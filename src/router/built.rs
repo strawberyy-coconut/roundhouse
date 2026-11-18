@@ -1,4 +1,4 @@
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use std::sync::{Arc, OnceLock};
 
 use axum::Router;
@@ -8,9 +8,9 @@ use axum::response::Response;
 use tower::ServiceExt;
 
 use crate::auth::AuthGuard;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use crate::doc::{self, OperationDoc};
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use crate::openapi::OpenApi;
 use crate::registry::{Method, RouteRecord};
 
@@ -37,7 +37,7 @@ pub struct ResolvedRoute {
 }
 
 impl ResolvedRoute {
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn docs(&self) -> OperationDoc {
         let mut components = utoipa::openapi::schema::Components::new();
         let mut context = crate::doc::DocContext::new(&mut components);
@@ -50,10 +50,10 @@ impl ResolvedRoute {
 pub struct Built {
     pub(crate) router: Router<()>,
     pub(crate) routes: Vec<ResolvedRoute>,
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub(crate) document: Arc<OnceLock<OpenApi>>,
     /// The verbatim `openapi.json` from the contract bundle, for a runtime-only build.
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     #[allow(dead_code)]
     pub(crate) contract_openapi: Option<&'static str>,
     pub(crate) merges: Vec<MergeRecord>,
@@ -75,7 +75,7 @@ impl Built {
     ///
     /// In contract mode this parses the committed `openapi.json` on first use, so a runtime
     /// application does not pay for a view it never reads.
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn document(&self) -> &OpenApi {
         self.document.get_or_init(|| {
             let text = self
@@ -98,25 +98,25 @@ impl Built {
         &self.diagnostics
     }
 
-    #[cfg(feature = "contract")]
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
+    #[cfg(feature = "build")]
     pub fn openapi_json(&self) -> String {
         self.contract_openapi.unwrap_or_default().to_string()
     }
 
     /// The committed `openapi.json`, verbatim.
-    #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+    #[cfg(all(feature = "contract", not(feature = "build")))]
     pub fn openapi_json(&self) -> String {
         self.contract_openapi.unwrap_or_default().to_string()
     }
 
     /// A 3.0.3-shaped JSON document.
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn openapi_30(&self) -> serde_json::Value {
         doc::downgrade::to_openapi_30(self.document().as_utoipa())
     }
 
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn openapi_30_json(&self) -> String {
         serde_json::to_string_pretty(&self.openapi_30()).expect("JSON serializes")
     }

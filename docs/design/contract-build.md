@@ -44,7 +44,7 @@ elsewhere. `ARTIFACT_DIR` is `.roundhouse`.
 
 `prepare` first runs the handler analyzer over the application library and writes
 `target/roundhouse/handlers.json`. It then creates the harness under `target/roundhouse`, with the
-application crate as a dependency and `roundhouse` with the `contract` feature. Feature unification
+application crate as a dependency and `roundhouse` with the `build` feature. Feature unification
 makes the application's `api!` block visible for that build only. The harness target directory is
 `target/roundhouse`; nothing outside `target/` and `.roundhouse/` is written. There is no generated
 `src/bin` file and no generated feature.

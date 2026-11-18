@@ -24,13 +24,13 @@ use std::io::{Read, Seek, SeekFrom, Write};
 pub use crate::problem::Problem;
 use axum::http::{StatusCode, header};
 use bytes::{Bytes, BytesMut};
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use roundhouse_schema::ApiSchema;
 use roundhouse_schema::{ValidationError, ValidationErrors, pointer};
 use serde::de::DeserializeOwned;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use utoipa::openapi::RefOr;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use utoipa::openapi::schema::{ObjectBuilder, Schema, Type};
 
 /// The global body limit used when the app does not set one.
@@ -283,11 +283,11 @@ pub trait MultipartForm: Sized {
     fn from_fields(fields: &mut FieldValues) -> Result<Self, Problem>;
 }
 
-/// The contract-only half of a multipart form: its body schema.
+/// The build-only half of a multipart form: its body schema.
 ///
-/// The derive emits this beside [`MultipartForm`], but only a build with the `contract` feature
+/// The derive emits this beside [`MultipartForm`], but only a build with the `build` feature
 /// compiles it.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub trait MultipartDoc: MultipartForm {
     fn schema(context: &mut dyn roundhouse_schema::SchemaContext) -> RefOr<Schema>;
 }
@@ -682,12 +682,12 @@ fn media_type_matches(accept: &[&str], content_type: &str) -> bool {
         .any(|candidate| candidate.trim().to_ascii_lowercase() == media_type)
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn schema_object() -> ObjectBuilder {
     ObjectBuilder::new().schema_type(Type::Object)
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn binary_schema() -> RefOr<Schema> {
     roundhouse_schema::schema::string_with_format(
         utoipa::openapi::schema::SchemaFormat::KnownFormat(
@@ -696,27 +696,27 @@ pub fn binary_schema() -> RefOr<Schema> {
     )
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn file_schema() -> RefOr<Schema> {
     binary_schema()
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn files_schema() -> RefOr<Schema> {
     roundhouse_schema::schema::array(binary_schema()).into()
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn optional_file_schema() -> RefOr<Schema> {
     roundhouse_schema::schema::nullable(binary_schema())
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn optional_files_schema() -> RefOr<Schema> {
     roundhouse_schema::schema::nullable(files_schema())
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 /// Convenience for generated code: the schema of a text field.
 pub fn text_schema<T: ApiSchema>(
     context: &mut dyn roundhouse_schema::SchemaContext,
@@ -725,7 +725,7 @@ pub fn text_schema<T: ApiSchema>(
     T::schema()
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 /// Convenience for generated code: a nullable text schema.
 pub fn optional_text_schema<T: ApiSchema>(
     context: &mut dyn roundhouse_schema::SchemaContext,
@@ -734,7 +734,7 @@ pub fn optional_text_schema<T: ApiSchema>(
     roundhouse_schema::schema::nullable(T::schema())
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 /// Convenience for generated code: a repeated text schema.
 pub fn text_list_schema<T: ApiSchema>(
     context: &mut dyn roundhouse_schema::SchemaContext,

@@ -21,14 +21,14 @@ src/lib.rs
   Module / RouteRecord / HandlerSpec / DocSource
   ExtractArg + ExtractDoc / DocumentedResponse / DocumentedError / ApiSchema
         │
-        ├── contract build ── `contract` feature, `target/roundhouse` harness
+        ├── contract build ── `build` feature, `target/roundhouse` harness
         │      analyze opaque returns → handlers.json → resolve_tree → doc::build
         │      → validate_document
         │      ▼
         │   .roundhouse/contract.json     runtime plans, response table, shared $defs
         │   .roundhouse/openapi.json      OpenAPI 3.1 document
         │
-        └── runtime build ── `contract-runtime`, application binary
+        └── runtime build ── `contract`, application binary
                resolve_tree → assemble
                compile request plans, serve openapi.json verbatim
                ▼
@@ -44,7 +44,7 @@ There are three distinct times, and they must not be confused:
 3. **Runtime build** resolves the same tree again, assembles the `axum::Router`, compiles the
    request plans from `contract.json` and serves the committed `openapi.json`.
 
-The runtime never derives a schema or assembles a document. A `contract` build without a bundle
+The runtime never derives a schema or assembles a document. A `build` build without a bundle
 is the exception used by tests and checks: `App::build` builds the contract in-process, then
 consumes it exactly like the committed artifact.
 
@@ -86,7 +86,7 @@ crates.
 | `roundhouse-macros` | `roundhouse-macros-core`, `proc-macro2` | no |
 | `roundhouse-macros-core` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate`, path | no |
 | `roundhouse-path` | `matchit` | no |
-| `roundhouse-schema` | serde, serde_json, bytes; `jsonschema` (optional), utoipa (`contract` only) | no |
+| `roundhouse-schema` | serde, serde_json, bytes; `jsonschema` (optional), utoipa (`build` only) | no |
 | `roundhouse-build` | serde_json, Cargo process invocation | no |
 | `roundhouse-cli` | clap, serde_json, toml_edit, `roundhouse-build` | no |
 
@@ -102,17 +102,17 @@ Generated code names the facade through `proc-macro-crate`, which keeps `rh = { 
 The README's [feature table](../../README.md#features) is the canonical user-facing list. The
 policy behind it is:
 
-- **Schema execution** (`schema-engine`) is separable from schema publication; a document without
+- **Schema execution** (`validation`) is separable from schema publication; a document without
   an engine is still honest about its shape.
-- **The server runtime** (`serve`) is optional so tests and check binaries can build a router
+- **The server runtime** (`server`) is optional so tests and check binaries can build a router
   without hyper, tokio or tracing.
-- **Vendored docs** (`swagger`) add roughly 1.6 MB of assets; disabling them keeps the unpkg UI
+- **Vendored docs** (`swagger-ui`) add roughly 1.6 MB of assets; disabling them keeps the unpkg UI
   available.
 - **Multipart** and **multipart-tempfile** pull in `multer` and `tempfile`; a JSON-only app does
   not pay for them.
-- **`contract-runtime`** is the lean production contract consumer. It implies `schema-engine` and
+- **`contract`** is the lean production contract consumer. It implies `validation` and
   does not pull in utoipa.
-- **`contract`** adds schema derivation and the document builder. Only the contract harness or a
+- **`build`** adds schema derivation and the document builder. Only the contract harness or a
   docs/check build enables it; production does not.
 - **`uuid`/`chrono`/`time`/`jiff`/`decimal`** forward schema support for those types.
 
@@ -120,7 +120,7 @@ Runtime capabilities are optional; the authoring model is not. `roundhouse-macro
 dependency, and there is no `macros` feature.
 
 Axum's default features are disabled workspace-wide. `roundhouse` enables only the pieces it
-uses: `form`, `json`, `matched-path`, `original-uri` and `query`; `serve` adds `http1` and
+uses: `form`, `json`, `matched-path`, `original-uri` and `query`; `server` adds `http1` and
 `tokio`. A no-default build must not pull in tokio, hyper, tracing, `jsonschema`, `regex`,
 `utoipa`, `multer` or `tempfile`; CI checks the dependency graph and the feature matrix.
 
@@ -133,7 +133,7 @@ uses: `form`, `json`, `matched-path`, `original-uri` and `query`; `serve` adds `
   builder would move duplicate, capture and operation-id checks out of `cargo check` and weaken
   the guarantees.
 - **utoipa is an implementation detail.** Application code writes `#[roundhouse::schema]` and
-  `#[roundhouse(..)]`. The interop surface is explicit and contract-only.
+  `#[roundhouse(..)]`. The interop surface is explicit and build-only.
 - **The schema crate is the reusable half.** Routing and document assembly are axum-shaped on
   purpose; the schema and validation model is the part that travels.
 - **No second document model.** The document is utoipa's model behind a thin facade. Roundhouse

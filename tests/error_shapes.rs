@@ -24,6 +24,7 @@ impl IntoResponse for DbError {
     }
 }
 
+#[roundhouse::build_only]
 impl DocumentedError for DbError {
     fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![ResponseDoc::problem(404, "Not found")]
@@ -46,6 +47,7 @@ impl IntoResponse for ApiError {
     }
 }
 
+#[roundhouse::build_only]
 impl DocumentedError for ApiError {
     fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![

@@ -12,7 +12,7 @@
 //! - `openapi.json` — the OpenAPI 3.1 document.
 //!
 //! Under `contract`, [`App::build`](crate::App::build) builds this contract in-process when no
-//! bundle is supplied; under `contract-runtime` it consumes the committed bundle directly.
+//! bundle is supplied; under `contract` it consumes the committed bundle directly.
 
 use std::any::TypeId;
 use std::marker::PhantomData;

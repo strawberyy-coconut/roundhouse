@@ -1,8 +1,8 @@
 //! The runtime contract artifact.
 //!
 //! This module deliberately has no `utoipa` dependency: a production build enables
-//! `contract-runtime` to validate requests from the committed `contract.json` and serve
-//! `openapi.json` verbatim. Documentation generation enables the heavier `contract` feature.
+//! `contract` to validate requests from the committed `contract.json` and serve
+//! `openapi.json` verbatim. Documentation generation enables the heavier `build` feature.
 
 /// The artifact kind written by `Contract::contract_json`.
 pub(crate) const CONTRACT_KIND: &str = "roundhouse.contract";
@@ -57,7 +57,7 @@ impl ContractBundle {
     }
 
     /// Compile a test-only response validator from the contract response table.
-    #[cfg(all(feature = "contract", feature = "schema-engine"))]
+    #[cfg(all(feature = "build", feature = "validation"))]
     pub fn response_validator(
         &self,
     ) -> Result<crate::ContractResponseValidator, roundhouse_schema::engine::SchemaError> {

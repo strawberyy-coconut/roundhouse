@@ -47,12 +47,12 @@ jobs:
       # Optional features must compose without pulling in unrelated crates. The macros are always
       # present; these checks cover the runtime capability surface.
       - run: cargo check -p roundhouse --no-default-features
-      - run: cargo check -p roundhouse --no-default-features --features schema-engine
-      - run: cargo check -p roundhouse --no-default-features --features serve
+      - run: cargo check -p roundhouse --no-default-features --features validation
+      - run: cargo check -p roundhouse --no-default-features --features server
       - run: cargo check -p roundhouse --no-default-features --features multipart
-      - run: cargo check -p roundhouse --no-default-features --features contract-runtime
       - run: cargo check -p roundhouse --no-default-features --features contract
-      - run: cargo check -p roundhouse --no-default-features --features multipart,contract
+      - run: cargo check -p roundhouse --no-default-features --features build
+      - run: cargo check -p roundhouse --no-default-features --features multipart,build
       # `build.rs` users depend on the generator library; it must compile on its own, without
       # the CLI's parser or manifest editing.
       - run: cargo check -p roundhouse-build
@@ -64,11 +64,11 @@ jobs:
           for example in notes layers uploads auth quickstart; do
             (cd "examples/$example" && cargo roundhouse check)
           done
-      # The production fixture is built without the contract feature: its graph must not contain
+      # The production fixture is built without the build feature: its graph must not contain
       # utoipa or the optional multipart body crates, and the runtime must still compile routes
       # and handlers.
       - run: "! cargo tree -p production-fixture -e normal | grep -iE 'utoipa|multer|tempfile'"
-      # The examples consume committed contracts through `contract-runtime`; only their dev
+      # The examples consume committed contracts through `contract`; only their dev
       # builds enable the document builder.
       - run: |
           for package in notes-example layers-example uploads-example auth-example quickstart-example; do

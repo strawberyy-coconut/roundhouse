@@ -33,7 +33,7 @@ pub fn expand(input: ApiInput) -> TokenStream {
             "roundhouse::api! must be called at the crate root, not in a nested module",
         );
 
-        #krate::__roundhouse_contract_code! {
+        #krate::__roundhouse_build_code! {
             #[doc(hidden)]
             pub fn __roundhouse_contract() -> #krate::Contract<#state> {
                 #krate::Contract::new(#krate::openapi::Info::new(#title, #version))

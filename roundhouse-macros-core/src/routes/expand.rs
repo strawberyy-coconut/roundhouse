@@ -133,7 +133,7 @@ pub(super) fn emit_module(
     };
     if let Some(expr) = &options.doc {
         definitions.extend(quote! {
-            #krate::__roundhouse_contract_code! {
+            #krate::__roundhouse_build_code! {
                 fn #doc_fn() -> #krate::doc::layer::LayerDoc {
                     #expr
                 }
@@ -366,7 +366,7 @@ pub(super) fn expand_entry(
     });
     let doc = if entry.doc.is_some() || entry.prose.is_some() {
         quote! {
-            #krate::__roundhouse_contract_code! {
+            #krate::__roundhouse_build_code! {
                 fn #doc_fn(docs: &mut #krate::doc::OperationDoc) {
                     #prose_call
                     #hook_call

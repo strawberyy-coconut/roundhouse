@@ -62,7 +62,7 @@ drops extractor failure responses because the handler owns the rejection.
 `Json<T>`, `Form<T>`, `Path<T>`, `Query<T>`, `RepeatedQuery<T>`, `Extension<T>`, `State<T>`,
 `Bytes`, `Body`, `Auth<A>`, `Strict<..>`, `Mapped<..>` and the no-op axum parts extractors have
 implementations. Automatic body documentation requires `T: ApiSchema`; a custom extractor
-implements `ExtractArg` and, under `contract`, `ExtractDoc`.
+implements `ExtractArg` and, under `build`, `ExtractDoc`.
 
 ## Responses
 
@@ -105,9 +105,12 @@ Errors are documented by `DocumentedError`. `Result<T, E>` requires `T: Document
 into `E`, and the document describes `E`. If `From<DbError> for Problem` maps a specific error to
 the catch-all, return `DbError` (or a union enum) when its statuses matter.
 
-`Problem` is one implementor, not the mandatory error type:
+`Problem` is one implementor, not the mandatory error type. A custom documentation impl is
+marked `#[roundhouse::build_only]`, so a production build that compiles only
+the `contract` feature drops it instead of failing to resolve the documentation types:
 
 ```rust
+#[roundhouse::build_only]
 impl roundhouse::doc::DocumentedError for NoteMissing {
     fn responses(_: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![ResponseDoc::problem(404, "Note not found")]
@@ -161,14 +164,14 @@ declaration whose shape differs from the return type's documented response is
 - it registers the type as a named component (`$ref`);
 - it applies roundhouse-only patches (`unique_items`, the `url` → `uri` format mapping);
 - its generated `ValidateHook` impl carries `validate_with` hooks (`validate_at`) that survive
-  without `contract`;
+  without `build`;
 - it exposes the type's `#[roundhouse(description = "…")]` or `@description:` through
   `description()`, used for response prose;
 - it is the bound automatic body and JSON response documentation requires.
 
-`#[roundhouse::schema]` is the one-annotation form. With `contract` it injects the schema derive
-and `ApiSchema`; without `contract` it keeps the runtime `ValidateHook` impls and drops the utoipa
-tokens before name resolution. `roundhouse::doc::ApiSchema` is a contract-only re-export; the
+`#[roundhouse::schema]` is the one-annotation form. With `build` it injects the schema derive
+and `ApiSchema`; without `build` it keeps the runtime `ValidateHook` impls and drops the utoipa
+tokens before name resolution. `roundhouse::doc::ApiSchema` is a build-only re-export; the
 trait itself lives in `roundhouse-schema`.
 
 A type that only implements utoipa's `ToSchema` can still be documented explicitly:
@@ -279,8 +282,8 @@ Two tests keep the artifact honest:
 - `doc::validate_document` runs on every contract build, including after `Contract::document(..)`
   hooks, so a hook cannot publish a path that contradicts its own parameters.
 
-`Built::document()` is a `contract`-only convenience that parses the embedded artifact lazily. A
-production `contract-runtime` build should use `Built::openapi_json()` or `Built::routes()`
+`Built::document()` is a `build`-only convenience that parses the embedded artifact lazily. A
+production `contract` build should use `Built::openapi_json()` or `Built::routes()`
 instead.
 
 ## Constraints
@@ -293,5 +296,5 @@ instead.
   patches schemas and owns assembly, but does not define an alternative OpenAPI type.
 - **Unrepresentable routes are omitted, not guessed.** `any` routes are served and excluded.
   Merged routers are served and marked. The document never claims to describe them.
-- **Production does not assemble documents.** A `contract-runtime` build has no `DocSource`
+- **Production does not assemble documents.** A `contract` build has no `DocSource`
   execution and no schema derivation for the document.

@@ -36,14 +36,14 @@ duplicating the same check in both phases.
 
 ## D3 — Documentation is a build-time contract
 
-**Decision.** Schema derivation, the document builder and response probes run in a `contract`
-build, normally the `target/roundhouse` harness. Production consumes a committed contract.
+**Decision.** Schema derivation, the document builder and response probes run in a build with the
+`build` feature, normally the `target/roundhouse` harness. Production consumes a committed contract.
 
 **Why.** A production binary should not carry utoipa, the document builder or response probes.
 Generating once and committing the result also makes drift reviewable in CI.
 
-**Consequences.** `App::build` under `contract` can still build a contract in-process for tests
-and checks; `contract-runtime` without a bundle fails when validation is enabled. The committed
+**Consequences.** `App::build` with the `build` feature can still build a contract in-process for tests
+and checks; `contract` without a bundle fails when validation is enabled. The committed
 artifact must be regenerated after intentional changes.
 
 **Rejected.** Runtime document assembly as the default; requiring utoipa in production; a
@@ -192,12 +192,12 @@ did not exist.
 ## D11 — utoipa is an implementation detail
 
 **Decision.** Application code writes `#[roundhouse::schema]` and `#[roundhouse(..)]`. utoipa
-names live behind `roundhouse::interop` and only when `contract` is enabled.
+names live behind `roundhouse::interop` and only when `build` is enabled.
 
 **Why.** A production build should not resolve utoipa paths. Hiding the dependency also leaves
 roundhouse free to change the document model without breaking application code.
 
-**Consequences.** Schema derivation and the document builder are gated by `contract`. Interop is
+**Consequences.** Schema derivation and the document builder are gated by `build`. Interop is
 explicit for projects that already share `ToSchema` types. A blanket `impl<T: ToSchema>
 ApiSchema for T` is impossible because it would overlap the derive and primitive impls.
 

@@ -298,7 +298,7 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
             const REQUIRED_AUTH: &'static [&'static str] = &[#(#required_auth),*];
         }
 
-        #krate::__roundhouse_contract_code! {
+        #krate::__roundhouse_build_code! {
             impl #krate::doc::DocSource for #marker_type {
                 fn operation(
                     context: &mut #krate::doc::DocContext<'_>,

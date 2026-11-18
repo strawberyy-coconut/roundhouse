@@ -21,7 +21,7 @@
 //! ) -> Result<Json<Post>, Problem> { .. }
 //! ```
 //!
-//! [`Validation`] selects the enforcer: the emitted JSON Schema, executed by the `schema-engine`
+//! [`Validation`] selects the enforcer: the emitted JSON Schema, executed by the `validation`
 //! feature (enabled by default), or nothing. The schema is the source of declarative constraints;
 //! `validate_with` hooks run afterwards. Failures carry a JSON Pointer into the request body or
 //! the parameter value.
@@ -62,7 +62,7 @@ const MAX_REJECTION_BODY: usize = 64 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Validation {
     /// Execute the emitted JSON Schema, then the `validate_with` hooks (the default when the
-    /// `schema-engine` feature is enabled).
+    /// `validation` feature is enabled).
     Schema,
     /// Do not validate.
     Off,
@@ -71,11 +71,11 @@ pub enum Validation {
 #[allow(clippy::derivable_impls)]
 impl Default for Validation {
     fn default() -> Self {
-        #[cfg(feature = "schema-engine")]
+        #[cfg(feature = "validation")]
         {
             Self::Schema
         }
-        #[cfg(not(feature = "schema-engine"))]
+        #[cfg(not(feature = "validation"))]
         {
             Self::Off
         }

@@ -7,7 +7,7 @@ description = "The roundhouse example app: a small notes API declared with route
 
 [dependencies]
 axum = "0.8"
-roundhouse = { path = "../..", features = ["contract-runtime"] }
+roundhouse = { path = "../..", default-features = false, features = ["contract", "server", "swagger-ui"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -16,7 +16,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-roundhouse = { path = "../..", features = ["contract"] }
+roundhouse = { path = "../..", features = ["build"] }
 http = "1"
 http-body-util = "0.1"
 serde_json = "1"

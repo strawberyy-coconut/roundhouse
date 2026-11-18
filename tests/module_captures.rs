@@ -11,7 +11,7 @@ use roundhouse::interop::ToSchema;
 use roundhouse::prelude::*;
 use roundhouse::{App, BuildError};
 use serde::Deserialize;
-#[cfg(feature = "schema-engine")]
+#[cfg(feature = "validation")]
 use serde::Serialize;
 
 #[derive(Clone, Default)]
@@ -390,7 +390,7 @@ mod scoped_below {
     }
 }
 
-#[cfg(feature = "schema-engine")]
+#[cfg(feature = "validation")]
 mod validated {
     use super::*;
 
@@ -769,7 +769,7 @@ async fn a_nested_module_keeps_the_ancestor_prefix() {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
-#[cfg(feature = "schema-engine")]
+#[cfg(feature = "validation")]
 #[tokio::test]
 async fn verify_responses_matches_the_document_under_a_dynamic_module() {
     let app = scoped(&validated::MODULE).verify_responses().build();
@@ -784,7 +784,7 @@ async fn verify_responses_matches_the_document_under_a_dynamic_module() {
     assert_eq!(value["report_id"], 3);
 }
 
-#[cfg(feature = "schema-engine")]
+#[cfg(feature = "validation")]
 #[tokio::test]
 async fn response_validation_actually_runs_under_a_dynamic_module() {
     // If `MatchedPath` were the leaf path, the validator would have no entry, skip the body, and

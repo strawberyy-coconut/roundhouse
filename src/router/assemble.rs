@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Router;
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 use axum::handler::Handler;
 use axum::response::{IntoResponse, Response};
 use axum::routing::MethodRouter;
@@ -40,7 +40,7 @@ pub(super) fn merge_router(
     }
 }
 
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 pub(super) fn add_get_route<H, T>(
     router: Router<()>,
     path: &str,
@@ -77,7 +77,7 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     }
 }
 
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 pub(super) fn docs_html(spec_path: &str) -> String {
     format!(
         r##"<!doctype html>
@@ -104,14 +104,14 @@ pub(super) fn docs_html(spec_path: &str) -> String {
 }
 
 /// The vendored Swagger UI files served by [`App::swagger`](super::App::swagger).
-#[cfg(feature = "swagger")]
+#[cfg(feature = "swagger-ui")]
 pub(super) struct SwaggerAsset {
     pub(super) name: &'static str,
     pub(super) bytes: &'static [u8],
     pub(super) content_type: &'static str,
 }
 
-#[cfg(all(feature = "swagger", feature = "contract-runtime"))]
+#[cfg(all(feature = "swagger-ui", feature = "contract"))]
 pub(super) const SWAGGER_ASSETS: &[SwaggerAsset] = &[
     SwaggerAsset {
         name: "swagger-ui.css",
@@ -140,7 +140,7 @@ pub(super) const SWAGGER_ASSETS: &[SwaggerAsset] = &[
     },
 ];
 
-#[cfg(feature = "swagger")]
+#[cfg(feature = "swagger-ui")]
 pub(super) fn swagger_html(spec_path: &str, swagger_path: &str) -> String {
     let base = swagger_path.trim_end_matches('/');
     format!(
@@ -169,7 +169,7 @@ pub(super) fn swagger_html(spec_path: &str, swagger_path: &str) -> String {
 }
 
 /// Register the vendored Swagger UI page and its assets.
-#[cfg(all(feature = "swagger", feature = "contract-runtime"))]
+#[cfg(all(feature = "swagger-ui", feature = "contract"))]
 pub(super) fn add_swagger_routes(
     router: Router<()>,
     spec_path: &str,

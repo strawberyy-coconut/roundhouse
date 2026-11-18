@@ -53,10 +53,10 @@ pub trait ApiSchema {
 ```
 
 `ApiSchema` is the adapter between a Rust type and the OpenAPI component table. It also carries
-the type's description, which is the default prose for a JSON response. With `contract`, the
+the type's description, which is the default prose for a JSON response. With `build`, the
 schema derive supplies the shape; without it, the derive compiles only the runtime
 `ValidateHook` impl and no utoipa paths are resolved. `roundhouse::doc::ApiSchema` is re-exported
-only under `contract`; the trait itself lives in `roundhouse-schema`.
+only under `build`; the trait itself lives in `roundhouse-schema`.
 
 `SchemaContext` lives in `roundhouse-schema`, so the schema crate stays axum-free. The facade
 implements it for `DocContext`, which owns the component table and the collision ledger.
@@ -71,6 +71,9 @@ pub trait DocumentedResponse {
 
 This is the content contract for a success response. A built-in is special only because it
 implements the trait; a custom response type implements it once and is documented the same way.
+A custom impl depends on documentation-only types, so mark it with
+`#[roundhouse::build_only]`: a production build that compiles only the `contract` feature drops the
+item instead of failing to resolve the trait.
 For a named return type the macro probes the declared type: an impl publishes its responses, and
 a missing impl leaves the operation without a success for the strict build to reject. For an
 opaque return type the build-time analyzer selects the site and the macro emits a typed call to
@@ -87,8 +90,8 @@ pub trait DocumentedError {
 The failure counterpart. `Result<T, E>` requires `T: DocumentedResponse` and `E:
 DocumentedError`. `Problem` is one implementor; a custom enum can list every status it can
 produce. `?` documents `E`, not the error it converted, so return the specific error type when
-its statuses matter. The trait is contract-only, like `DocumentedResponse`: custom impls belong
-to the documentation build, and the contract harness compiles the application with `contract`
+its statuses matter. The trait is build-only, like `DocumentedResponse`: custom impls belong
+to the documentation build, and the contract harness compiles the application with the `build` feature
 unified.
 
 ### `DocumentedIntoResponse`
@@ -100,7 +103,7 @@ pub trait DocumentedIntoResponse: IntoResponse + DocumentedResponse {
 ```
 
 An identity marker for an opaque return site. The method changes no value; it tells the analyzer
-that this site is intentionally documentable. Under a non-`contract` build the documentation
+that this site is intentionally documentable. Under a non-`build` build the documentation
 supertrait is compiled out and the method remains available, so handler source does not need
 `cfg`. A bare `.into_response()` is deliberately opaque and is not documented.
 
@@ -123,7 +126,7 @@ pub trait ParamsDoc: Params {
 ```
 
 The runtime only needs capture names and the JSON value the contract engine validates. Document
-metadata is the contract-only half. `Path<T>`, `Query<T>` and `RepeatedQuery<T>` bound on
+metadata is the build-only half. `Path<T>`, `Query<T>` and `RepeatedQuery<T>` bound on
 `Params`; the contract build adds `ParamsDoc` when it documents the operation.
 
 `ValidateHook` is separate because `validate_with` hooks must run in a production build where the
@@ -186,7 +189,7 @@ pub trait DocSource {
 build uses `DocSource` to produce the operation. Route policy is applied by the builder to the
 returned `OperationDoc`; a handler describes what it is, and the route decides how it is enforced.
 
-Without `contract`, `DocSource` exists as a no-op trait so generated route records keep the same
+Without `build`, `DocSource` exists as a no-op trait so generated route records keep the same
 shape while every documentation body is compiled out.
 
 ### Auth
@@ -202,12 +205,12 @@ leak into the document model.
 ### Narrow contracts
 
 - `AttachmentType` chooses the content type for `Attachment<T>`.
-- `MultipartForm` is the derive-generated field table; `MultipartDoc` is its contract-only schema.
+- `MultipartForm` is the derive-generated field table; `MultipartDoc` is its build-only schema.
 - `Rejection` is a blanket adapter from an extractor's `IntoResponse` rejection to `Problem`.
 
 ## Custom extractors
 
-A custom extractor is a normal axum extractor plus a runtime impl and, under `contract`, a
+A custom extractor is a normal axum extractor plus a runtime impl and, under `build`, a
 documentation impl:
 
 ```rust
@@ -252,7 +255,7 @@ impl ExtractDoc for Tenant {
 
 `#[handler]` now documents the header and the document builder accepts it. The extractor's
 rejection type is already `Problem`, so no mapping is needed. A production build compiles only
-`ExtractArg`; the documentation impl is behind `contract`.
+`ExtractArg`; the documentation impl is behind `build`.
 
 `document` returns `ArgDoc`; it does not mutate `OperationDoc`. The builder merges the
 contribution, so a trait cannot read or overwrite another argument's work.
@@ -275,7 +278,7 @@ impl<T: ExtractDoc> ExtractDoc for SignedBody<T> {
 }
 ```
 
-For an extractor you own, implement `ExtractArg` and, under `contract`, `ExtractDoc`.
+For an extractor you own, implement `ExtractArg` and, under `build`, `ExtractDoc`.
 
 ### Why a probe instead of a bound
 
@@ -292,7 +295,8 @@ unregistered extractor compiling.
 
 ## Custom responses
 
-A response type implements `IntoResponse` to serve and `DocumentedResponse` to document:
+A response type implements `IntoResponse` to serve and `DocumentedResponse` to document. The
+documentation impl is marked `build_only` so a lean production build compiles it out:
 
 ```rust
 use roundhouse::doc::{DocumentedResponse, ResponseDoc, SchemaContext, schema};
@@ -336,6 +340,7 @@ An error type implements the same shape under `DocumentedError`, and a handler r
 `Result<T, E>` documents both sides:
 
 ```rust
+#[roundhouse::build_only]
 impl DocumentedError for NoteMissing {
     fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![ResponseDoc::problem(404, "Note not found")]
@@ -486,7 +491,7 @@ app = app.document(|document| {
 });
 ```
 
-`api! servers = [..]` or the contract-only `App::server(..)`/`App::servers(..)` add `servers`
+`api! servers = [..]` or the build-only `App::server(..)`/`App::servers(..)` add `servers`
 entries. The validity checks run again after the hook, so a hook cannot publish a path that
 contradicts its own parameters.
 
@@ -530,7 +535,7 @@ The split follows the two phases of the application:
   builder. It runs in the `target/roundhouse` harness, not in production.
 
 The result is one runtime schema model, one contract builder and no duplicated engine. The cost is
-a set of contract-only traits and probes, all hidden from normal application code.
+a set of build-only traits and probes, all hidden from normal application code.
 
 ## Constraints
 

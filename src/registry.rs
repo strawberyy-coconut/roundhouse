@@ -58,7 +58,7 @@ impl Method {
         })
     }
 
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn to_utoipa(self) -> Option<utoipa::openapi::path::HttpMethod> {
         use utoipa::openapi::path::HttpMethod;
         Some(match self {
@@ -125,7 +125,7 @@ pub type ModuleLayer = fn(Router<()>) -> Router<()>;
 pub type RouteLayer = fn(MethodRouter<()>) -> MethodRouter<()>;
 
 /// One route declaration from a `routes!` table.
-#[cfg_attr(not(feature = "contract"), allow(dead_code))]
+#[cfg_attr(not(feature = "build"), allow(dead_code))]
 pub struct RouteRecord {
     pub(crate) module_path: &'static str,
     pub(crate) file: &'static str,

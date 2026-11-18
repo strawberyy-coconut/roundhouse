@@ -117,7 +117,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
         }
 
-        #krate::__roundhouse_contract_code! {
+        #krate::__roundhouse_build_code! {
             impl #krate::doc::ParamsDoc for #ident {
                 fn register(
                     context: &mut dyn #krate::doc::SchemaContext,

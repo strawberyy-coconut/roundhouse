@@ -31,9 +31,9 @@ use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::MethodRouter;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use utoipa::openapi::SecurityRequirement;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme};
 
 use crate::problem::Problem;
@@ -48,7 +48,7 @@ pub enum SecuritySchemeKind {
 }
 
 impl SecuritySchemeKind {
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn to_utoipa(self) -> SecurityScheme {
         match self {
             SecuritySchemeKind::HttpBearer => {
@@ -97,7 +97,7 @@ pub struct AuthGuard {
     pub scheme: SchemeDoc,
     pub(crate) state: fn() -> TypeId,
     pub(crate) state_name: fn() -> &'static str,
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub(crate) failures: fn() -> Vec<crate::doc::ResponseDoc>,
     pub(crate) apply: fn(MethodRouter<()>, &dyn Any) -> MethodRouter<()>,
 }
@@ -114,13 +114,13 @@ impl AuthGuard {
             },
             state: state_id::<A>,
             state_name: state_name::<A>,
-            #[cfg(feature = "contract")]
+            #[cfg(feature = "build")]
             failures: failures::<A>,
             apply: apply::<A>,
         }
     }
 
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub(crate) fn doc(self) -> AuthDoc {
         AuthDoc {
             name: self.name,
@@ -137,7 +137,7 @@ fn state_name<A: AuthScheme>() -> &'static str {
     std::any::type_name::<A::State>()
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 fn failures<A: AuthScheme>() -> Vec<crate::doc::ResponseDoc> {
     crate::doc::auth_failures::<A>()
 }
@@ -411,13 +411,13 @@ impl IntoResponse for AuthRejection {
 }
 
 /// The required security requirement for an `Auth<A, S>` handler argument.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn auth_requirement<A: AuthScheme, S: Scopes<A>>() -> SecurityRequirement {
     SecurityRequirement::new(A::NAME, S::NAMES.iter().copied())
 }
 
 /// Optional security is OpenAPI's two alternatives: the scheme, or no scheme.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn optional_auth_requirements<A: AuthScheme, S: Scopes<A>>() -> Vec<SecurityRequirement> {
     vec![auth_requirement::<A, S>(), SecurityRequirement::default()]
 }

@@ -34,6 +34,27 @@ pub fn expand_routes(input: TokenStream) -> TokenStream {
     }
 }
 
+/// Emit an item only when the `build` feature is compiled.
+///
+/// A custom `DocumentedResponse` / `DocumentedError` impl depends on documentation-only types.
+/// Wrapping it with `#[roundhouse::build_only]` keeps the impl out of a production build that
+/// compiles only the `contract` feature, without a hand-written `cfg`.
+pub fn expand_build_only(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "`#[roundhouse::build_only]` takes no arguments",
+        )
+        .to_compile_error();
+    }
+    let krate = util::krate();
+    quote::quote! {
+        #krate::__roundhouse_build_code! {
+            #item
+        }
+    }
+}
+
 pub fn expand_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = if attr.is_empty() {
         handler::HandlerArgs::default()

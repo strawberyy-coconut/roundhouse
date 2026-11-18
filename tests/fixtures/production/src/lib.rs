@@ -28,6 +28,7 @@ roundhouse::routes! {
     "/notes" => { get(list), post(create) },
     "/notes/{id}" => { get(show) },
     "/opaque" => { get(opaque) },
+    "/conflict" => { get(conflict) },
 }
 
 #[handler]
@@ -45,11 +46,37 @@ pub async fn show(Path(id): Path<u64>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "id": id }))
 }
 
-#[handler]
+#[handler(response(200))]
 pub async fn opaque() -> impl IntoResponse {
     Json(Note {
         title: "opaque".to_string(),
     })
+}
+
+#[derive(Debug)]
+pub struct Conflict;
+
+impl IntoResponse for Conflict {
+    fn into_response(self) -> Response {
+        (StatusCode::CONFLICT, "conflict").into_response()
+    }
+}
+
+#[roundhouse::build_only]
+impl roundhouse::doc::DocumentedError for Conflict {
+    fn responses(
+        _context: &mut dyn roundhouse::doc::SchemaContext,
+    ) -> Vec<roundhouse::doc::ResponseDoc> {
+        vec![roundhouse::doc::ResponseDoc::problem(409, "Conflict")]
+    }
+}
+
+#[allow(clippy::result_large_err)]
+#[handler]
+pub async fn conflict() -> Result<Json<Note>, Conflict> {
+    Ok(Json(Note {
+        title: "conflict".to_string(),
+    }))
 }
 
 pub fn app() -> roundhouse::Built {
@@ -64,7 +91,7 @@ mod tests {
     #[test]
     fn the_runtime_builds_routes_without_a_contract() {
         let built = super::app();
-        assert_eq!(built.routes().len(), 4);
+        assert_eq!(built.routes().len(), 5);
     }
 
     #[test]

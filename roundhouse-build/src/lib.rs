@@ -147,7 +147,7 @@ fn generate(out: &Path, index_path: &Path, cwd: &Path) -> Result<(), Box<dyn Err
 
 /// Build and run the contract binary under `target/roundhouse`.
 ///
-/// The harness depends on the application crate and on `roundhouse` with the `contract` feature.
+/// The harness depends on the application crate and on `roundhouse` with the `build` feature.
 /// Feature unification makes the application's `api!` block visible for this build only. Nothing
 /// outside `target/` is written.
 fn run_contract_harness(out: &Path, index_path: &Path, cwd: &Path) -> Result<(), Box<dyn Error>> {
@@ -158,11 +158,11 @@ fn run_contract_harness(out: &Path, index_path: &Path, cwd: &Path) -> Result<(),
 
     let roundhouse_dep = match roundhouse.path {
         Some(path) => format!(
-            "{{ path = {:?}, features = [\"contract\"] }}",
+            "{{ path = {:?}, features = [\"build\"] }}",
             path.display().to_string()
         ),
         None => format!(
-            "{{ version = \"={}\", features = [\"contract\"] }}",
+            "{{ version = \"={}\", features = [\"build\"] }}",
             roundhouse.version
         ),
     };

@@ -48,7 +48,7 @@ fn write_manifest(directory: &Path, name: &str) {
              edition = \"2024\"\n\
              \n\
              [dependencies]\n\
-             roundhouse = {{ path = {:?}, features = [\"contract-runtime\"] }}\n",
+             roundhouse = {{ path = {:?}, features = [\"contract\"] }}\n",
             workspace_root().display().to_string()
         ),
     )
@@ -116,7 +116,7 @@ fn init_scaffolds_a_new_package() {
     assert!(main.contains(".serve("));
     let manifest = fs::read_to_string(dir.join("Cargo.toml")).expect("read manifest");
     assert!(manifest.contains("roundhouse-build"));
-    assert!(manifest.contains("contract-runtime"));
+    assert!(manifest.contains("contract"));
 
     // The scaffold must build against this checkout, including its first contract build, which
     // happens before `.roundhouse/` exists.

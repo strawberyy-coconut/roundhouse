@@ -248,6 +248,28 @@ use proc_macro::TokenStream;
 ///     },
 /// }
 /// ```
+/// Emit an item only when the `build` feature is compiled.
+///
+/// Use it for documentation-only impls, especially a custom
+/// `roundhouse::doc::DocumentedResponse` or `DocumentedError`:
+///
+/// ```ignore
+/// #[roundhouse::build_only]
+/// impl roundhouse::doc::DocumentedError for DbError {
+///     fn responses(context: &mut dyn roundhouse::doc::SchemaContext) -> Vec<roundhouse::doc::ResponseDoc> {
+///         // ...
+///     }
+/// }
+/// ```
+///
+/// A production build that compiles only the `contract` feature does not resolve the item at all,
+/// so the documentation types do not need to exist there. Do not apply it to an item the runtime
+/// needs, such as `IntoResponse`.
+#[proc_macro_attribute]
+pub fn build_only(attr: TokenStream, item: TokenStream) -> TokenStream {
+    roundhouse_macros_core::expand_build_only(attr.into(), item.into()).into()
+}
+
 /// Declare the build-time contract configuration.
 ///
 /// Call once at the crate root. It generates `__roundhouse_contract()`, which the contract
@@ -405,7 +427,7 @@ pub fn handler(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///   run in addition to the declared constraints. Its errors keep the field's JSON Pointer.
 ///
 /// Constraints are published and enforced: the emitted schema is compiled and executed by the
-/// `schema-engine` feature. Opt a route out of constraint checks with `validate = false` in
+/// `validation` feature. Opt a route out of constraint checks with `validate = false` in
 /// `routes!`.
 ///
 /// # Example

@@ -1,4 +1,4 @@
-//! The schema engine when the `schema-engine` feature is off.
+//! The schema engine when the `validation` feature is off.
 //!
 //! The public surface stays the same so downstream code compiles without `jsonschema`; building
 //! an engine returns the same error a failed compilation would, naming the feature to enable.
@@ -23,7 +23,7 @@ impl std::error::Error for SchemaError {}
 
 fn feature_error() -> SchemaError {
     SchemaError {
-        message: "schema execution is disabled; enable the `schema-engine` feature".to_string(),
+        message: "schema execution is disabled; enable the `validation` feature".to_string(),
     }
 }
 

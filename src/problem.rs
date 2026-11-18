@@ -8,14 +8,14 @@
 use axum::body::Body;
 use axum::response::{IntoResponse, Response};
 use http::{StatusCode, header};
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use roundhouse_schema::schema;
 use roundhouse_schema::{ValidationError, ValidationErrors};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use utoipa::openapi::RefOr;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use utoipa::openapi::schema::{ArrayBuilder, ObjectBuilder, Schema, SchemaFormat, Type};
 
 /// The one error body the framework produces.
@@ -169,7 +169,7 @@ impl IntoResponse for Problem {
 }
 
 /// The Problem body as an OpenAPI schema, for the document builder.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn problem_schema_ref() -> RefOr<Schema> {
     let error = ObjectBuilder::new()
         .schema_type(Type::Object)
@@ -209,7 +209,7 @@ pub fn problem_schema_ref() -> RefOr<Schema> {
 ///
 /// It is the serialized [`problem_schema_ref`], so the document and the standalone schema cannot
 /// drift apart.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn problem_schema() -> Value {
     serde_json::to_value(problem_schema_ref()).expect("the Problem schema serializes")
 }
@@ -218,7 +218,7 @@ pub fn problem_value(status: u16, title: &str) -> Value {
     serde_json::json!({ "status": status, "title": title })
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 impl crate::doc::DocumentedResponse for Problem {
     /// `Problem` is the framework's default error body, not a required error type. It contributes
     /// the OpenAPI `default` response with the `application/problem+json` schema, so a
@@ -229,7 +229,7 @@ impl crate::doc::DocumentedResponse for Problem {
     }
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 impl crate::doc::DocumentedError for Problem {
     fn responses(_context: &mut dyn crate::doc::SchemaContext) -> Vec<crate::doc::ResponseDoc> {
         vec![crate::doc::ResponseDoc::problem_default()]

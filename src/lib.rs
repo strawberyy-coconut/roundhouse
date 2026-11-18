@@ -18,15 +18,15 @@
 //!
 //! ```toml
 //! [dependencies]
-//! roundhouse = { version = "0.4", features = ["contract-runtime"] }
+//! roundhouse = { version = "0.4", default-features = false, features = ["contract", "server", "swagger-ui"] }
 //! serde = { version = "1", features = ["derive"] }
 //! tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 //!
 //! [dev-dependencies]
-//! roundhouse = { version = "0.4", features = ["contract"] }
+//! roundhouse = { version = "0.4", default-features = false, features = ["build"] }
 //! ```
 //!
-//! `contract-runtime` is the production feature. Contract generation uses the
+//! `contract` is the production feature. Contract generation uses the
 //! `roundhouse-build` build-dependency and guarded `build.rs` added by `cargo roundhouse new`
 //! (or `cargo roundhouse init` in an existing package). Both follow Cargo's conventions:
 //! `init` initializes in place, `new` creates the directory first.
@@ -132,7 +132,7 @@
 //!
 //! The derive macros, `#[roundhouse::schema]` and `routes!` are re-exported at the crate root;
 //! [`prelude`] is the usual import for application code. Schema derivation and the document
-//! builder are behind the `contract` feature, so a production build has no utoipa dependency. Use
+//! builder are behind the `build` feature, so a production build has no utoipa dependency. Use
 //! the `interop` module (also `contract`-only) when sharing types with another utoipa project. The
 //! repository's `docs/design/` notes explain the architecture, declaration and contract-build
 //! phases, runtime and validation behavior, document assembly, extension points and design
@@ -142,16 +142,16 @@
 //!
 //! | Feature | Enables |
 //! |---|---|
-//! | `schema-engine` | Execute the emitted JSON Schema for request and response validation (default) |
-//! | `serve` | `App::serve`/`App::serve_with`, axum's `ConnectInfo<T>`, and the tokio server runtime (default) |
-//! | `swagger` | Vendored Swagger UI assets for `App::docs()` and `App::swagger()` (default) |
-//! | `contract-runtime` | `ContractBundle`, `include_contract!`, contract-backed request validation, verification and verbatim `openapi.json` serving |
-//! | `contract` | Schema derivation, `DocumentedResponse`, the document builder and the `target/roundhouse` contract harness (implies `contract-runtime`) |
+//! | `build` | Schema derivation, the document builder and the `target/roundhouse` contract harness (default; implies `contract`) |
+//! | `validation` | Execute the emitted JSON Schema for request and response validation (default) |
+//! | `server` | `App::serve`/`App::serve_with`, axum's `ConnectInfo<T>`, and the tokio server runtime (default) |
+//! | `swagger-ui` | Vendored Swagger UI assets for `App::docs()` and `App::swagger()` (default) |
+//! | `contract` | `ContractBundle`, `include_contract!`, contract-backed request validation, verification and verbatim `openapi.json` serving; no utoipa |
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 //! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | schema support for those types |
 //!
-//! `use roundhouse::prelude::*;` is the normal import. utoipa names are `contract`-only
+//! `use roundhouse::prelude::*;` is the normal import. utoipa names are `build`-only
 //! plumbing; the supported integration surface is `interop`. Response documentation is public:
 //! implement `doc::DocumentedResponse` for a custom success type and `doc::DocumentedError` for a
 //! custom error type. Request validation uses the
@@ -172,9 +172,9 @@ mod arg;
 pub mod attachment;
 pub mod auth;
 pub mod build_error;
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 mod contract_bundle;
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 pub mod contract_response;
 pub mod doc;
 pub mod extract;
@@ -188,13 +188,13 @@ pub mod extract;
 /// Integration tests use this to exercise the runtime-only contract path without guessing at
 /// Cargo feature unification.
 #[doc(hidden)]
-pub const CONTRACT_COMPILED: bool = cfg!(feature = "contract");
+pub const CONTRACT_COMPILED: bool = cfg!(feature = "build");
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub mod interop;
 #[cfg(feature = "multipart")]
 pub mod multipart;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub mod openapi;
 #[doc(hidden)]
 pub mod prefix;
@@ -210,13 +210,13 @@ pub(crate) mod shim;
 /// caller. The public extension points are the domain traits re-exported from the crate root.
 #[doc(hidden)]
 pub mod __private {
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub use crate::doc::probe::*;
     pub use crate::extract::ValidationContext;
     pub use crate::probe::*;
     pub use crate::shim::{Authed, Plain, ShimPolicy, ShimPolicyFor, SubstateOf};
     /// Internal path for generated code. Application code should use [`crate::interop`].
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub use utoipa;
 
     /// Whether `module_path!()` names the crate root.
@@ -246,12 +246,12 @@ pub use attachment::{Attachment, AttachmentType, File};
 pub use auth::{Auth, AuthDoc, AuthScheme, Authenticate, NoScopes, Scopes, SecuritySchemeKind};
 pub use axum::response::sse::{Event, KeepAlive, Sse};
 pub use build_error::{BuildError, Source};
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 pub use contract_bundle::ContractBundle;
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 pub use contract_response::ContractResponseValidator;
 pub use doc::Params;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use doc::{ApiSchema, validate_document};
 pub use extract::{
     Extension, Form, Json, Mapped, Path, Query, Rejection, RepeatedQuery, Strict, Validation,
@@ -263,22 +263,24 @@ pub use multipart::{FilePart, Multipart, MultipartForm};
 pub use problem::Problem;
 pub use registry::Module;
 pub use response::{Created, NoContent};
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use roundhouse_schema::Param;
 pub use roundhouse_schema::{ParamIn, ValidationError, ValidationErrors};
 pub use router::{App, Built, DocumentRejections, Fragment, MergeRecord, ResolvedRoute};
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use router::{BuiltContract, Contract};
 
 pub use axum;
 pub use http;
-#[cfg(feature = "schema-engine")]
+#[cfg(feature = "validation")]
 pub use regex;
 pub use serde_json;
 
 #[cfg(feature = "multipart")]
 pub use roundhouse_macros::Multipart;
-pub use roundhouse_macros::{ApiSchema, PathParams, QueryParams, api, handler, routes, schema};
+pub use roundhouse_macros::{
+    ApiSchema, PathParams, QueryParams, api, build_only, handler, routes, schema,
+};
 
 /// Implement `roundhouse::doc::ApiSchema` for a type that already implements utoipa's `ToSchema`.
 ///
@@ -372,32 +374,32 @@ macro_rules! app {
     };
 }
 
-/// Emit contract-only generated code.
+/// Emit build-only generated code.
 ///
 /// The derives and attribute macros wrap their documentation impls in this macro so a production
-/// build without the `contract` feature does not compile any schema machinery. With the feature
+/// build without the `build` feature does not compile any schema machinery. With the feature
 /// on it expands to the tokens unchanged.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __roundhouse_contract_code {
+macro_rules! __roundhouse_build_code {
     ($($tokens:tt)*) => {
         $($tokens)*
     };
 }
 
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __roundhouse_contract_code {
+macro_rules! __roundhouse_build_code {
     ($($tokens:tt)*) => {};
 }
 
 /// Attach the schema derives injected by `#[roundhouse::schema]`.
 ///
-/// The derive tokens are parsed only in the expanding crate, so without the `contract` feature
+/// The derive tokens are parsed only in the expanding crate, so without the `build` feature
 /// the attributes are dropped before `utoipa` is ever resolved.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __roundhouse_schema_item {
@@ -407,7 +409,7 @@ macro_rules! __roundhouse_schema_item {
     };
 }
 
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __roundhouse_schema_item {
@@ -417,8 +419,8 @@ macro_rules! __roundhouse_schema_item {
     };
 }
 
-/// Wrap a generated doc-hook pointer so it disappears without the `contract` feature.
-#[cfg(feature = "contract")]
+/// Wrap a generated doc-hook pointer so it disappears without the `build` feature.
+#[cfg(feature = "build")]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __roundhouse_doc_value {
@@ -427,7 +429,7 @@ macro_rules! __roundhouse_doc_value {
     };
 }
 
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __roundhouse_doc_value {
@@ -484,7 +486,7 @@ macro_rules! include_contract {
 /// The utoipa re-exports here are hidden plumbing for the injected derive; use `interop` for
 /// supported integration.
 pub mod prelude {
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub use crate::ApiSchema;
     #[cfg(feature = "multipart-tempfile")]
     pub use crate::TempFile;
@@ -499,15 +501,15 @@ pub mod prelude {
     pub use crate::validate::{ValidationError, ValidationErrors};
     #[cfg(feature = "multipart")]
     pub use crate::{FilePart, Multipart};
-    pub use crate::{PathParams, QueryParams, handler, routes};
+    pub use crate::{PathParams, QueryParams, build_only, handler, routes};
     pub use crate::{app, app_state};
     pub use axum::response::sse::{Event, KeepAlive, Sse};
     /// Implementation details used by `#[roundhouse::schema]` and existing derives; do not
     /// import them directly. Use [`crate::interop`] for supported utoipa integration.
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     #[doc(hidden)]
     pub use utoipa;
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     #[doc(hidden)]
     pub use utoipa::{PartialSchema, ToSchema};
 

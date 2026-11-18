@@ -2,7 +2,7 @@
 //!
 //! [`Params`] is what `Path<T>`, `Query<T>` and `RepeatedQuery<T>` require at runtime: the
 //! capture names and the value that the contract-backed validation engine sees. Schema
-//! descriptions live in the contract-only [`schema::ParamsDoc`](crate::schema::ParamsDoc)
+//! descriptions live in the build-only [`schema::ParamsDoc`](crate::schema::ParamsDoc)
 //! trait, so a production build does not compile any schema derivation.
 
 use crate::validate::ValidationErrors;
@@ -30,7 +30,7 @@ pub trait ValidateHook {
 /// A path, query or form type: its capture names and its wire value.
 ///
 /// The runtime engine only needs these two facts. Documentation and JSON Schema derivation are
-/// supplied by the contract-only `ParamsDoc` trait.
+/// supplied by the build-only `ParamsDoc` trait.
 pub trait Params {
     /// Capture names declared by the type, in template order.
     const NAMES: &'static [&'static str] = &[];

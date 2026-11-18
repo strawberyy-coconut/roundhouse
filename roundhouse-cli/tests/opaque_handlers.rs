@@ -68,7 +68,7 @@ edition = "2024"
 [workspace]
 
 [dependencies]
-roundhouse = {{ path = {root:?}, features = ["contract"] }}
+roundhouse = {{ path = {root:?}, default-features = false, features = ["build"] }}
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 "#,

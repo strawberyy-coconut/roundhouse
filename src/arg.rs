@@ -1,8 +1,8 @@
 //! The runtime extractor contract used by the route shim.
 //!
 //! `#[handler]` asks each extractor whether it consumes the body and whether the shim should
-//! re-validate it. Documentation is a separate, contract-only trait (`doc::ExtractDoc`), so a
-//! production build with the `contract` feature off compiles no schema machinery.
+//! re-validate it. Documentation is a separate, build-only trait (`doc::ExtractDoc`), so a
+//! production build with the `build` feature off compiles no schema machinery.
 
 use crate::auth::{Auth, AuthScheme, Scopes};
 use crate::doc::ValidateHook;
@@ -135,7 +135,7 @@ impl<T> ExtractArg for axum::extract::Extension<T> {}
 
 impl<S> ExtractArg for axum::extract::State<S> {}
 
-#[cfg(feature = "serve")]
+#[cfg(feature = "server")]
 impl<T> ExtractArg for axum::extract::ConnectInfo<T> {}
 
 macro_rules! no_op_extractor {

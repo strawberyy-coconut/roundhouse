@@ -22,10 +22,10 @@ uuid = { version = "1", optional = true, features = ["serde"] }
 [features]
 default = []
 # Compile and execute the emitted JSON Schema. Adds the `jsonschema` dependency.
-schema-engine = ["dep:jsonschema"]
+validation = ["dep:jsonschema"]
 # Schema derivation and OpenAPI shape support. Build-time only; the runtime uses `Params` and
 # `ValidateHook` from this crate without it.
-contract = ["dep:utoipa"]
+build = ["dep:utoipa"]
 uuid = ["dep:uuid", "utoipa?/uuid"]
 chrono = ["dep:chrono", "utoipa?/chrono"]
 time = ["dep:time", "utoipa?/time"]

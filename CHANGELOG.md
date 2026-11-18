@@ -4,6 +4,12 @@
 
 ### Breaking
 
+- Feature names are capability-first: `build` (build the contract and OpenAPI document),
+  `contract` (consume the committed contract at runtime), `validation` (execute JSON Schema),
+  `server` (the axum runtime) and `swagger-ui` (vendored assets). The defaults are `build`,
+  `validation`, `server` and `swagger-ui`. The old `schema-engine` is `validation`; the old
+  `contract-runtime` is `contract`; the old build-time `contract` is `build`.
+  `#[roundhouse::contract_only]` is now `#[roundhouse::build_only]`.
 - The contract generator moved out of `roundhouse-cli` into a new `roundhouse-build` crate;
   `roundhouse-cli` is now only the `cargo-roundhouse` binary. `roundhouse-build` exposes only
   `prepare`/`prepare_to` for `build.rs`; `check`, `explain`, `verify`, `diff` and `init` live in
@@ -18,7 +24,7 @@
   operation with no success is still a strict-build failure.
 - `Result<T, E>` now requires `E: DocumentedError`, not `E: DocumentedResponse`. `Problem`
   implements both, but a custom error type needs a `DocumentedError` impl. The impl is
-  contract-only, like `DocumentedResponse`.
+  build-only, like `DocumentedResponse`.
 - `.into_response()` is not documented automatically. It erases the response type; use
   `.into_documented_response()` on a documented value or an explicit `#[handler(response(..))]`
   declaration.
@@ -38,6 +44,10 @@
   value and asks the analyzer to document the receiver's type.
 - `#[handler(response(status, Type))]` accepts a `DocumentedError`-only type: the declaration
   probe tries `DocumentedResponse` first and falls back to `DocumentedError`.
+- `#[roundhouse::build_only]` emits an item only when the `build` feature is compiled. It is
+  the supported way to write a custom `DocumentedResponse` / `DocumentedError` impl in an app that
+  serves with `contract`: the documentation impl disappears from the production build
+  instead of failing on a missing trait.
 
 ## 0.4.0 — 2026-11-16
 

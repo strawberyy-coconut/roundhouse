@@ -9,16 +9,16 @@ use axum::response::IntoResponse;
 use axum::routing::Route;
 use tower::{Layer, Service};
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use crate::openapi::{Info, OpenApi};
 use crate::registry::Module;
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use super::fragment::DocumentRejections;
 use super::fragment::{Fragment, PendingMerge};
 
 pub(crate) type RouterLayer = Box<dyn Fn(Router<()>) -> Router<()> + Send + Sync>;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub(crate) type DocumentHook = Box<dyn Fn(&mut OpenApi) + Send + Sync>;
 
 /// Request-scoped validation configuration installed once for the whole app.
@@ -39,35 +39,35 @@ pub struct App<S> {
     pub(crate) state: S,
     pub(crate) roots: Vec<&'static Module>,
     pub(crate) global_layers: Vec<RouterLayer>,
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub(crate) global_layer_docs: Vec<fn() -> crate::doc::layer::LayerDoc>,
     pub(crate) fallback: Option<RouterLayer>,
     pub(crate) merges: Vec<PendingMerge>,
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub(crate) info: Option<Box<dyn Fn() -> Info + Send + Sync>>,
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub(crate) servers: Vec<utoipa::openapi::Server>,
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub(crate) document_hooks: Vec<DocumentHook>,
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub(crate) openapi_route: Option<&'static str>,
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub(crate) docs_route: Option<&'static str>,
     /// Load the docs UI from unpkg instead of the vendored assets.
-    #[cfg(feature = "contract-runtime")]
-    pub(crate) docs_cdn: bool,
-    #[cfg(feature = "swagger")]
-    #[cfg(feature = "contract-runtime")]
-    pub(crate) swagger_route: Option<&'static str>,
     #[cfg(feature = "contract")]
+    pub(crate) docs_cdn: bool,
+    #[cfg(feature = "swagger-ui")]
+    #[cfg(feature = "contract")]
+    pub(crate) swagger_route: Option<&'static str>,
+    #[cfg(feature = "build")]
     pub(crate) document_rejections: DocumentRejections,
     /// When set, the OpenAPI route serves this build-time artifact. The runtime never assembles
     /// a document.
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub(crate) contract_bundle: Option<crate::ContractBundle>,
     pub(crate) validation_status: axum::http::StatusCode,
     /// Verify actual responses against the committed contract (tests, `cargo roundhouse verify`).
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub(crate) verify_responses: bool,
     pub(crate) max_body: Option<usize>,
     #[cfg(feature = "multipart")]
@@ -85,31 +85,31 @@ where
             state,
             roots: Vec::new(),
             global_layers: Vec::new(),
-            #[cfg(feature = "contract")]
+            #[cfg(feature = "build")]
             global_layer_docs: Vec::new(),
             fallback: None,
             merges: Vec::new(),
-            #[cfg(feature = "contract")]
+            #[cfg(feature = "build")]
             info: None,
-            #[cfg(feature = "contract")]
+            #[cfg(feature = "build")]
             servers: Vec::new(),
-            #[cfg(feature = "contract")]
+            #[cfg(feature = "build")]
             document_hooks: Vec::new(),
-            #[cfg(feature = "contract-runtime")]
-            openapi_route: None,
-            #[cfg(feature = "contract-runtime")]
-            docs_route: None,
-            #[cfg(feature = "contract-runtime")]
-            docs_cdn: false,
-            #[cfg(feature = "contract-runtime")]
-            #[cfg(feature = "swagger")]
-            swagger_route: None,
             #[cfg(feature = "contract")]
+            openapi_route: None,
+            #[cfg(feature = "contract")]
+            docs_route: None,
+            #[cfg(feature = "contract")]
+            docs_cdn: false,
+            #[cfg(feature = "contract")]
+            #[cfg(feature = "swagger-ui")]
+            swagger_route: None,
+            #[cfg(feature = "build")]
             document_rejections: DocumentRejections::Auto,
-            #[cfg(feature = "contract-runtime")]
+            #[cfg(feature = "contract")]
             contract_bundle: None,
             validation_status: axum::http::StatusCode::BAD_REQUEST,
-            #[cfg(feature = "contract-runtime")]
+            #[cfg(feature = "contract")]
             verify_responses: false,
             max_body: Some(crate::extract::DEFAULT_MAX_BODY),
             #[cfg(feature = "multipart")]
@@ -152,7 +152,7 @@ where
     }
 
     /// Apply a tower layer globally and document what it guarantees.
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn layer_documented<L>(self, layer: L, doc: fn() -> crate::doc::layer::LayerDoc) -> Self
     where
         L: Layer<Route> + Clone + Send + Sync + 'static,
@@ -219,14 +219,14 @@ where
     /// `bundle` is normally produced by [`include_contract!`](crate::include_contract). The
     /// runtime validates the artifact's kind and layout version, compiles its request plans when
     /// schema validation is enabled, and serves `openapi` verbatim.
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub fn contract(mut self, bundle: crate::ContractBundle) -> Self {
         self.contract_bundle = Some(bundle);
         self
     }
 
     /// Enable `/openapi.json` and set the document info.
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn openapi<F, I>(mut self, info: F) -> Self
     where
         F: Fn() -> I + Send + Sync + 'static,
@@ -241,14 +241,14 @@ where
     ///
     /// Servers are deployment facts, so they come from the app rather than from a route
     /// declaration.
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn server(mut self, server: impl Into<utoipa::openapi::Server>) -> Self {
         self.servers.push(server.into());
         self
     }
 
     /// Add several `servers` entries to the document.
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn servers<I, T>(mut self, servers: I) -> Self
     where
         I: IntoIterator<Item = T>,
@@ -265,7 +265,7 @@ where
     ///
     /// Hooks are metadata-only: the schema engine is compiled from the route declarations, so a
     /// hook must not change request or response validation schemas.
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn document<F>(mut self, hook: F) -> Self
     where
         F: Fn(&mut OpenApi) + Send + Sync + 'static,
@@ -275,7 +275,7 @@ where
     }
 
     /// Choose a different path for the generated document.
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub fn openapi_route(mut self, path: &'static str) -> Self {
         self.openapi_route = Some(path);
         self
@@ -287,7 +287,7 @@ where
     /// `swagger` feature (enabled by default), the CSS, JavaScript and OAuth assets are served by
     /// this app, so the page works in an air-gapped deployment. Use [`App::docs_cdn`] to load the
     /// pinned unpkg assets instead.
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub fn docs(mut self) -> Self {
         self.docs_route = Some("/docs");
         if self.openapi_route.is_none() {
@@ -297,7 +297,7 @@ where
     }
 
     /// Serve the docs UI at a custom path. Implies the document route.
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub fn docs_route(mut self, path: &'static str) -> Self {
         self.docs_route = Some(path);
         if self.openapi_route.is_none() {
@@ -310,7 +310,7 @@ where
     ///
     /// The unpkg assets are pinned and SRI-checked, but the browser needs network access. Without
     /// the `swagger` feature this is the only available mode, so the call is a no-op there.
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub fn docs_cdn(mut self) -> Self {
         self.docs_cdn = true;
         self
@@ -321,8 +321,8 @@ where
     /// Unlike [`App::docs`], the page loads its CSS, JavaScript and OAuth redirect assets from
     /// routes served by this app, so it works without browser network access. This implies the
     /// document route and can be used alongside [`App::docs`].
-    #[cfg(feature = "swagger")]
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "swagger-ui")]
+    #[cfg(feature = "contract")]
     pub fn swagger(mut self) -> Self {
         self.swagger_route = Some("/docs/swagger");
         if self.openapi_route.is_none() {
@@ -332,8 +332,8 @@ where
     }
 
     /// Serve the self-hosted Swagger UI at a custom path. Implies the document route.
-    #[cfg(feature = "swagger")]
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "swagger-ui")]
+    #[cfg(feature = "contract")]
     pub fn swagger_route(mut self, path: &'static str) -> Self {
         self.swagger_route = Some(path);
         if self.openapi_route.is_none() {
@@ -364,7 +364,7 @@ where
     }
 
     /// Add or suppress extractor rejection responses (`Auto` by default).
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     pub fn document_rejections(mut self, mode: impl Into<DocumentRejections>) -> Self {
         self.document_rejections = mode.into();
         self
@@ -403,7 +403,7 @@ where
     /// Intended for tests and `cargo roundhouse verify`: a response whose status, content type or
     /// JSON body does not match `contract.json` becomes a `500 Problem`. The
     /// `ROUNDHOUSE_VERIFY` environment variable enables the same check without a code change.
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     pub fn verify_responses(mut self) -> Self {
         self.verify_responses = true;
         self

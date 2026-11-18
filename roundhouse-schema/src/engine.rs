@@ -169,7 +169,7 @@ impl SchemaEngine {
 }
 
 /// Compile one type's schema. Useful for tests and the conformance harness.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn compile<T: crate::schema::ApiSchema>() -> Result<jsonschema::Validator, SchemaError> {
     let mut components = utoipa::openapi::schema::Components::new();
     T::register(&mut components);
@@ -185,7 +185,7 @@ pub fn compile_value(schema: &Value, defs: &Value) -> Result<jsonschema::Validat
 }
 
 /// The component table as `$defs`, with references rewritten.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn defs_from_components(
     components: &utoipa::openapi::schema::Components,
 ) -> Result<Map<String, Value>, SchemaError> {

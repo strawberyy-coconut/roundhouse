@@ -7,7 +7,7 @@ description = "A roundhouse example for global, module and entry layers, fallbac
 
 [dependencies]
 axum = "0.8"
-roundhouse = { path = "../..", features = ["contract-runtime"] }
+roundhouse = { path = "../..", default-features = false, features = ["contract", "server", "swagger-ui"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

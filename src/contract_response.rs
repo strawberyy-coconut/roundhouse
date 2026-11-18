@@ -3,7 +3,7 @@
 //! Requests are validated in production from `contract.json`. Tests use the same response table
 //! to check that a handler's actual status, content type and JSON body match what was documented.
 //! This module has no `utoipa` dependency, so `cargo roundhouse verify` works in a
-//! `contract-runtime`-only build.
+//! `contract`-only build.
 
 use std::collections::HashMap;
 use std::sync::Arc;

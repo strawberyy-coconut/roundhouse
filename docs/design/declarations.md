@@ -141,9 +141,9 @@ The full response-description precedence is owned by [The document](document.md)
 
 ## Schemas and parameter types
 
-`#[roundhouse::schema]` is the one-annotation form. With `contract` it derives the schema and the
+`#[roundhouse::schema]` is the one-annotation form. With `build` it derives the schema and the
 roundhouse adapter, and constraints use the `#[roundhouse(..)]` namespace. The explicit
-`#[derive(ToSchema, ApiSchema)]` form is still supported; with `contract` enabled, import utoipa's
+`#[derive(ToSchema, ApiSchema)]` form is still supported; with `build` enabled, import utoipa's
 `ToSchema` and `PartialSchema` from `roundhouse::interop`.
 
 - `#[derive(ApiSchema)]` adds a named component (`$ref`), `#[roundhouse(unique_items)]`, the
@@ -155,7 +155,7 @@ roundhouse adapter, and constraints use the `#[roundhouse(..)]` namespace. The e
   represent them.
 - With the `multipart` feature, `#[derive(Multipart)]` generates the field table and extraction.
 
-Without `contract`, `#[roundhouse::schema]` keeps the runtime `ValidateHook` impl and compiles
+Without `build`, `#[roundhouse::schema]` keeps the runtime `ValidateHook` impl and compiles
 out the schema tokens, so a production build resolves no utoipa paths. Automatic `Json<T>` and
 JSON response documentation require `ApiSchema` when the contract build is present. A type that
 only implements utoipa's `ToSchema` can be adapted with
@@ -187,7 +187,7 @@ compatibility and the shim plumbing.
 ## `api!`
 
 `api!` is the crate-root configuration macro. It emits
-`__roundhouse_contract() -> Contract<State>` under `contract`; without the feature the function
+`__roundhouse_contract() -> Contract<State>` under `build`; without the feature the function
 is compiled out. It validates option names and requires `title`, `version` and `root`.
 
 | Option | Meaning |

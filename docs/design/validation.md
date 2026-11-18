@@ -31,13 +31,13 @@ document builder or the response probes. See [Contract build](contract-build.md)
 | `Validation::Schema` | Execute the emitted schema, then the `validate_with` hooks. |
 | `Validation::Off` | Do not validate. |
 
-With the `schema-engine` feature (default), the app defaults to `Schema`. Without the feature the
+With the `validation` feature (default), the app defaults to `Schema`. Without the feature the
 default is `Off`; the document is still built and extractors still reject malformed input, but the
 emitted schema is not executed. `App::validation(Validation::Off)` disables it for the whole app.
 
-A runtime contract is required for `Schema` mode. A `contract-runtime` build without
+A runtime contract is required for `Schema` mode. A `contract` build without
 `App::contract(include_contract!())` fails with `BuildError::MissingContract`; use
-`Validation::Off` for a router-only build. A `contract` build without a bundle builds the
+`Validation::Off` for a router-only build. A build with the `build` feature without a bundle builds the
 contract in-process for tests and checks.
 
 Per-route policy is declared on the `routes!` entry:
@@ -268,7 +268,7 @@ checks the actual status, content type and JSON body against `.roundhouse/contra
 - the body is buffered up to 32 MiB.
 
 `cargo roundhouse verify` runs `cargo test` with `ROUNDHOUSE_VERIFY=1`, which installs the same
-middleware without a code change. It requires `contract-runtime` + `schema-engine` and is not
+middleware without a code change. It requires `contract` + `validation` and is not
 intended for production traffic. The standalone `ContractResponseValidator` exposes the same
 checks to tests that already have the response in hand.
 
@@ -291,5 +291,5 @@ checks to tests that already have the response in hand.
 - `jsonschema` is the only engine. `validator`, `garde`, `axum-valid` and `validify` are not
   supported: their rules are a runtime DSL, not a schema, and a bridge would make the document a
   lossy projection. `validate_with` is the escape hatch for non-schema rules.
-- `schema-engine` off means no declarative enforcement. The code still compiles and the document
+- `validation` off means no declarative enforcement. The code still compiles and the document
   is still honest about its shape, but the checks are not executed.

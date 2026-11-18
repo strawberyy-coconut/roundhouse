@@ -8,7 +8,7 @@
 //!
 //! The first number is the full `contract` build (`App::build` with no bundle): schema
 //! derivation, the document builder and route resolution. The second is the production
-//! `contract-runtime` path: route resolution plus contract compilation. Both are measured on the
+//! `contract` path: route resolution plus contract compilation. Both are measured on the
 //! same tiny route table, so the difference is documentation work the deployed binary does not
 //! perform.
 
@@ -90,7 +90,7 @@ fn main() {
     let bundle_startup = start.elapsed() / ITERATIONS;
 
     println!("contract build (App::build, no bundle): {contract_build:?}");
-    println!("committed bundle startup (contract-runtime): {bundle_startup:?}");
+    println!("committed bundle startup (contract): {bundle_startup:?}");
     println!(
         "documentation overhead: {:.2}x",
         contract_build.as_secs_f64() / bundle_startup.as_secs_f64()

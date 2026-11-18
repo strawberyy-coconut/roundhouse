@@ -1,6 +1,6 @@
 //! Route validation policy: whole-route opt-out, body-only opt-out and acknowledgement.
 
-#![cfg(feature = "schema-engine")]
+#![cfg(feature = "validation")]
 
 use axum::http::StatusCode;
 use roundhouse::interop::ToSchema;

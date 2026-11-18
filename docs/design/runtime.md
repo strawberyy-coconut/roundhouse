@@ -181,8 +181,8 @@ expansion can name.
 - `router()` — the ready `axum::Router<()>`;
 - `routes()` — the resolved table, sorted by path then method, with each declaration's source;
 - `openapi_json()` — the embedded `openapi.json` string;
-- `document()` — a lazily parsed `OpenApi` view, available under `contract`;
-- `openapi_30()` / `openapi_30_json()` — a best-effort 3.0.3 shape, available under `contract`;
+- `document()` — a lazily parsed `OpenApi` view, available under `build`;
+- `openapi_30()` / `openapi_30_json()` — a best-effort 3.0.3 shape, available under `build`;
 - `merges()` and `diagnostics()` — what the build had to work around;
 - `oneshot*()` — request helpers for tests.
 
@@ -200,7 +200,7 @@ routing and UI:
 - `App::docs_cdn()` opts back into the pinned unpkg assets instead of the vendored ones.
 - `App::swagger()` serves the local UI at `/docs/swagger`; `App::swagger_route(path)` moves it.
 
-With the default `swagger` feature, the CSS, JavaScript and OAuth assets are embedded, so `/docs`
+With the default `swagger-ui` feature, the CSS, JavaScript and OAuth assets are embedded, so `/docs`
 works in an air-gapped deployment. `App::openapi(..)`, `App::document(..)`,
 `App::layer_documented(..)` and `App::server(s)(..)` are contract-build APIs; a production build
 does not run them.

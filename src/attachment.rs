@@ -9,10 +9,10 @@ use axum::body::Body;
 use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use utoipa::openapi::schema::{KnownFormat, SchemaFormat};
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use crate::doc::{self, HeaderDoc, ResponseDoc};
 
 /// Content type implied by an attachment body.
@@ -117,7 +117,7 @@ impl IntoResponse for File {
     }
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn attachment_response<T: AttachmentType>(status: u16) -> ResponseDoc {
     ResponseDoc {
         status,
@@ -133,7 +133,7 @@ pub fn attachment_response<T: AttachmentType>(status: u16) -> ResponseDoc {
     }
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn file_response(status: u16) -> ResponseDoc {
     ResponseDoc {
         status,
@@ -149,7 +149,7 @@ pub fn file_response(status: u16) -> ResponseDoc {
     }
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub fn sse_response(status: u16) -> ResponseDoc {
     ResponseDoc {
         status,

@@ -1,32 +1,32 @@
 use std::any::TypeId;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use std::sync::OnceLock;
 
 use axum::Router;
 use axum::routing::MethodRouter;
 
 use crate::build_error::BuildError;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use crate::doc;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use crate::openapi::{Info, OpenApi};
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 use crate::prefix;
 use crate::problem::Problem;
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 use crate::registry::Method;
 use crate::registry::{Module, RouteRecord};
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use super::app::DocumentHook;
 use super::app::{App, ValidationDefaults};
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 use super::assemble::add_get_route;
-#[cfg(all(feature = "swagger", feature = "contract-runtime"))]
+#[cfg(all(feature = "swagger-ui", feature = "contract"))]
 use super::assemble::add_swagger_routes;
-#[cfg(feature = "contract-runtime")]
+#[cfg(feature = "contract")]
 use super::assemble::docs_html;
 use super::assemble::{build_method_router, build_module, inject_validation_config, merge_router};
 use super::built::{Built, ResolvedRoute};
@@ -38,7 +38,7 @@ use super::resolve::resolve_tree;
 ///
 /// This is the shared half of `App::build` used by the state-less contract builder. It does not
 /// know about application state, routers or merges.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub(crate) struct DocumentConfig<'a> {
     pub(crate) include_rejections: bool,
     pub(crate) strict: bool,
@@ -49,7 +49,7 @@ pub(crate) struct DocumentConfig<'a> {
     pub(crate) hooks: &'a [DocumentHook],
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub(crate) fn build_openapi(
     info: Info,
     resolved: &[ResolvedRoute],
@@ -104,11 +104,11 @@ where
     #[allow(unused_mut)]
     pub fn try_build(mut self) -> Result<Built, BuildError> {
         let mut diagnostics = Vec::new();
-        #[cfg(not(feature = "contract"))]
+        #[cfg(not(feature = "build"))]
         {
-            #[cfg(feature = "contract-runtime")]
+            #[cfg(feature = "contract")]
             let has_contract = self.contract_bundle.is_some();
-            #[cfg(not(feature = "contract-runtime"))]
+            #[cfg(not(feature = "contract"))]
             let has_contract = false;
             if self.validation != crate::extract::Validation::Off && !has_contract {
                 return Err(BuildError::MissingContract);
@@ -119,19 +119,19 @@ where
         self.check_reserved_paths(serve_openapi, &resolved)?;
         self.report_merges(&mut diagnostics)?;
 
-        #[cfg(feature = "contract")]
+        #[cfg(feature = "build")]
         if self.contract_bundle.is_none() {
             let (bundle, contract_diagnostics) = self.build_contract_bundle()?;
             self.contract_bundle = Some(bundle);
             diagnostics.extend(contract_diagnostics);
         }
-        #[cfg(feature = "contract-runtime")]
+        #[cfg(feature = "contract")]
         if let Some(bundle) = self.contract_bundle {
             bundle
                 .validate()
                 .map_err(|message| BuildError::InvalidContract { message })?;
         }
-        #[cfg(feature = "contract")]
+        #[cfg(feature = "build")]
         let (schema_engine, contract_openapi) = {
             let bundle = self
                 .contract_bundle
@@ -139,7 +139,7 @@ where
             let schema_engine = self.compile_contract_schema_engine(bundle)?;
             (schema_engine, Some(bundle.openapi))
         };
-        #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+        #[cfg(all(feature = "contract", not(feature = "build")))]
         let (schema_engine, contract_openapi) = if let Some(bundle) = self.contract_bundle {
             (
                 self.compile_contract_schema_engine(bundle)?,
@@ -148,30 +148,30 @@ where
         } else {
             (None, None)
         };
-        #[cfg(not(feature = "contract-runtime"))]
+        #[cfg(not(feature = "contract"))]
         let (schema_engine, contract_openapi): (
             Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
             Option<&'static str>,
         ) = (None, None);
-        #[cfg(not(feature = "contract-runtime"))]
+        #[cfg(not(feature = "contract"))]
         let _ = contract_openapi;
 
         let merge_ledger = self.merge_ledger();
-        #[cfg(feature = "contract")]
+        #[cfg(feature = "build")]
         let document = Arc::new(OnceLock::new());
-        #[cfg(feature = "contract")]
+        #[cfg(feature = "build")]
         let router = self.assemble_app(&resolved, schema_engine)?;
-        #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+        #[cfg(all(feature = "contract", not(feature = "build")))]
         let router = self.assemble_app(&resolved, schema_engine)?;
-        #[cfg(not(feature = "contract-runtime"))]
+        #[cfg(not(feature = "contract"))]
         let router = self.assemble_app(&resolved, schema_engine)?;
 
         Ok(Built {
             router,
             routes: resolved,
-            #[cfg(feature = "contract")]
+            #[cfg(feature = "build")]
             document,
-            #[cfg(feature = "contract-runtime")]
+            #[cfg(feature = "contract")]
             contract_openapi,
             merges: merge_ledger,
             diagnostics,
@@ -179,24 +179,24 @@ where
     }
 
     fn serves_openapi(&self) -> bool {
-        #[cfg(not(feature = "contract-runtime"))]
+        #[cfg(not(feature = "contract"))]
         {
             return false;
         }
-        #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+        #[cfg(all(feature = "contract", not(feature = "build")))]
         {
-            #[cfg(feature = "swagger")]
+            #[cfg(feature = "swagger-ui")]
             let swagger = self.swagger_route.is_some();
-            #[cfg(not(feature = "swagger"))]
+            #[cfg(not(feature = "swagger-ui"))]
             let swagger = false;
             self.contract_bundle.is_some()
                 && (self.openapi_route.is_some() || self.docs_route.is_some() || swagger)
         }
-        #[cfg(feature = "contract")]
+        #[cfg(feature = "build")]
         {
-            #[cfg(feature = "swagger")]
+            #[cfg(feature = "swagger-ui")]
             let swagger = self.swagger_route.is_some();
-            #[cfg(not(feature = "swagger"))]
+            #[cfg(not(feature = "swagger-ui"))]
             let swagger = false;
 
             self.info.is_some()
@@ -231,7 +231,7 @@ where
     ///
     /// Tests and apps that do not pass an artifact still get the same strict contract checks,
     /// but the runtime no longer assembles a separate document or schema engine.
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     fn build_contract_bundle(
         &mut self,
     ) -> Result<(crate::ContractBundle, Vec<crate::build_error::Diagnostic>), BuildError> {
@@ -286,7 +286,7 @@ where
         ))
     }
 
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     fn compile_contract_schema_engine(
         &self,
         bundle: crate::ContractBundle,
@@ -311,7 +311,7 @@ where
             .collect()
     }
 
-    #[cfg(feature = "contract")]
+    #[cfg(feature = "build")]
     fn assemble_app(
         self,
         resolved: &[ResolvedRoute],
@@ -346,7 +346,7 @@ where
 
         if serve_openapi && let Some(docs_path) = self.docs_route {
             let spec_path = self.openapi_route.unwrap_or("/openapi.json");
-            #[cfg(feature = "swagger")]
+            #[cfg(feature = "swagger-ui")]
             {
                 if !self.docs_cdn {
                     router = add_swagger_routes(router, spec_path, docs_path)?;
@@ -363,7 +363,7 @@ where
                     )?;
                 }
             }
-            #[cfg(not(feature = "swagger"))]
+            #[cfg(not(feature = "swagger-ui"))]
             {
                 let _ = self.docs_cdn;
                 let html = docs_html(spec_path);
@@ -379,7 +379,7 @@ where
             }
         }
 
-        #[cfg(feature = "swagger")]
+        #[cfg(feature = "swagger-ui")]
         if serve_openapi && let Some(swagger_path) = self.swagger_route {
             let spec_path = self.openapi_route.unwrap_or("/openapi.json");
             router = add_swagger_routes(router, spec_path, swagger_path)?;
@@ -403,7 +403,7 @@ where
         self.finish(router, schema_engine)
     }
 
-    #[cfg(all(feature = "contract-runtime", not(feature = "contract")))]
+    #[cfg(all(feature = "contract", not(feature = "build")))]
     fn assemble_app(
         self,
         resolved: &[ResolvedRoute],
@@ -436,7 +436,7 @@ where
 
         if let Some(docs_path) = self.docs_route {
             let spec_path = self.openapi_route.unwrap_or("/openapi.json");
-            #[cfg(feature = "swagger")]
+            #[cfg(feature = "swagger-ui")]
             {
                 if !self.docs_cdn {
                     router = add_swagger_routes(router, spec_path, docs_path)?;
@@ -453,7 +453,7 @@ where
                     )?;
                 }
             }
-            #[cfg(not(feature = "swagger"))]
+            #[cfg(not(feature = "swagger-ui"))]
             {
                 let _ = self.docs_cdn;
                 let html = docs_html(spec_path);
@@ -469,7 +469,7 @@ where
             }
         }
 
-        #[cfg(feature = "swagger")]
+        #[cfg(feature = "swagger-ui")]
         if let Some(swagger_path) = self.swagger_route {
             let spec_path = self.openapi_route.unwrap_or("/openapi.json");
             router = add_swagger_routes(router, spec_path, swagger_path)?;
@@ -490,7 +490,7 @@ where
         self.finish(router, schema_engine)
     }
 
-    #[cfg(not(feature = "contract-runtime"))]
+    #[cfg(not(feature = "contract"))]
     fn assemble_app(
         self,
         resolved: &[ResolvedRoute],
@@ -524,7 +524,7 @@ where
         mut router: Router<()>,
         schema_engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
     ) -> Result<Router<()>, BuildError> {
-        #[cfg(feature = "contract-runtime")]
+        #[cfg(feature = "contract")]
         if let Some(bundle) = self.contract_bundle
             && (self.verify_responses || std::env::var_os("ROUNDHOUSE_VERIFY").is_some())
         {
@@ -581,7 +581,7 @@ where
     /// Use [`App::serve_with`] to stop accepting connections and let in-flight requests finish
     /// when the supplied shutdown future resolves. This method is available with the `serve`
     /// feature, which is enabled by default.
-    #[cfg(feature = "serve")]
+    #[cfg(feature = "server")]
     pub async fn serve(self, addr: impl Into<String>) -> std::io::Result<()> {
         self.serve_with(addr, std::future::pending()).await
     }
@@ -595,7 +595,7 @@ where
     /// ```
     ///
     /// This method is available with the `serve` feature, which is enabled by default.
-    #[cfg(feature = "serve")]
+    #[cfg(feature = "server")]
     pub async fn serve_with<F>(self, addr: impl Into<String>, shutdown: F) -> std::io::Result<()>
     where
         F: std::future::Future<Output = ()> + Send + 'static,
@@ -607,7 +607,7 @@ where
         serve_listener(listener, built.router, shutdown).await
     }
 
-    #[cfg(feature = "contract-runtime")]
+    #[cfg(feature = "contract")]
     fn check_reserved_paths(
         &self,
         serve_openapi: bool,
@@ -625,7 +625,7 @@ where
                 crate::build_error::Source::new("App::openapi_route", "<app>", 0),
             ));
         }
-        #[cfg(feature = "contract-runtime")]
+        #[cfg(feature = "contract")]
         {
             if let Some(path) = self.docs_route {
                 let docs = prefix::join("", path);
@@ -634,7 +634,7 @@ where
                     "the documentation UI",
                     crate::build_error::Source::new("App::docs_route", "<app>", 0),
                 ));
-                #[cfg(feature = "swagger")]
+                #[cfg(feature = "swagger-ui")]
                 if !self.docs_cdn {
                     let asset_root = prefix::join(&docs, "assets");
                     for asset in super::assemble::SWAGGER_ASSETS {
@@ -646,7 +646,7 @@ where
                     }
                 }
             }
-            #[cfg(feature = "swagger")]
+            #[cfg(feature = "swagger-ui")]
             if let Some(path) = self.swagger_route {
                 let swagger = prefix::join("", path);
                 reserved.push((
@@ -697,7 +697,7 @@ where
         Ok(())
     }
 
-    #[cfg(not(feature = "contract-runtime"))]
+    #[cfg(not(feature = "contract"))]
     fn check_reserved_paths(
         &self,
         _serve_openapi: bool,
@@ -710,9 +710,9 @@ where
         &self,
         diagnostics: &mut Vec<crate::build_error::Diagnostic>,
     ) -> Result<Vec<ResolvedRoute>, BuildError> {
-        #[cfg(feature = "contract")]
+        #[cfg(feature = "build")]
         let global_layer_docs = &self.global_layer_docs[..];
-        #[cfg(not(feature = "contract"))]
+        #[cfg(not(feature = "build"))]
         let global_layer_docs = &[][..];
         resolve_tree(
             &self.roots,
@@ -771,7 +771,7 @@ where
 /// `axum::serve(listener, router)` does not insert `ConnectInfo`; the
 /// `into_make_service_with_connect_info` wrapper is required for handlers that take
 /// `ConnectInfo<T>`.
-#[cfg(feature = "serve")]
+#[cfg(feature = "server")]
 async fn serve_listener<F>(
     listener: tokio::net::TcpListener,
     router: Router<()>,
@@ -788,7 +788,7 @@ where
     .await
 }
 
-#[cfg(all(test, feature = "serve"))]
+#[cfg(all(test, feature = "server"))]
 mod tests {
     use super::*;
     use axum::extract::ConnectInfo;

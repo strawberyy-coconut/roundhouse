@@ -282,7 +282,7 @@ impl<S> ExtractDoc for axum::extract::State<S> {
     }
 }
 
-#[cfg(feature = "serve")]
+#[cfg(feature = "server")]
 impl<T> ExtractDoc for axum::extract::ConnectInfo<T> {
     fn document(_context: &mut DocContext<'_>) -> ArgDoc {
         ArgDoc::default()

@@ -35,29 +35,29 @@ keywords = ["axum", "openapi", "web", "framework", "router"]
 categories = ["web-programming::http-server"]
 
 [features]
-default = ["schema-engine", "serve", "swagger"]
-# Schema derivation, document building and the build-time contract API. Disable it for a
-# production build that only serves handlers and validates requests from a committed contract.
+default = ["build", "validation", "server", "swagger-ui"]
+# Build the contract: schema derivation, OpenAPI document building and the build-time API.
+# Implies the runtime consumer. Disable it for a production build that only serves handlers and
+# validates requests from a committed contract.
+build = [
+    "contract",
+    "dep:utoipa",
+    "roundhouse-schema/build",
+]
 # Consume a committed contract at runtime: request validation from contract.json and verbatim
 # openapi.json serving. No utoipa.
-contract-runtime = ["schema-engine"]
-# Build the contract: schema derivation and the document builder. Implies the runtime consumer.
-contract = [
-    "contract-runtime",
-    "dep:utoipa",
-    "roundhouse-schema/contract",
-]
+contract = ["validation"]
 # Typed multipart extraction, plus axum's multipart body support.
 multipart = ["axum/multipart"]
 # `TempFile` parts, streamed to an already-unlinked temporary file.
 multipart-tempfile = ["multipart", "dep:tempfile"]
 # Execute the emitted JSON Schema for request/response validation (default).
-schema-engine = ["roundhouse-schema/schema-engine", "dep:regex"]
+validation = ["roundhouse-schema/validation", "dep:regex"]
 # `App::serve` and `App::serve_with`, plus the tokio server runtime and its log line.
-serve = ["axum/http1", "axum/tokio", "dep:tokio", "dep:tracing"]
+server = ["axum/http1", "axum/tokio", "dep:tokio", "dep:tracing"]
 # Serve the vendored Swagger UI assets with `App::docs()` (local by default) and
 # `App::swagger()`. Disable this feature to keep the binary small and use the unpkg UI.
-swagger = []
+swagger-ui = []
 uuid = ["roundhouse-schema/uuid"]
 chrono = ["roundhouse-schema/chrono"]
 time = ["roundhouse-schema/time"]
@@ -90,7 +90,7 @@ utoipa = { version = "6", features = ["non_strict_integers"], optional = true }
 
 [dev-dependencies]
 # Tests exercise the document builder and schema derives.
-roundhouse = { path = ".", features = ["contract"] }
+roundhouse = { path = ".", features = ["build"] }
 futures-util = "0.3"
 http-body-util = "0.1"
 jiff = { version = "0.2", features = ["serde"] }
@@ -107,7 +107,7 @@ harness = false
 [[bench]]
 name = "build"
 harness = false
-required-features = ["contract"]
+required-features = ["build"]
 
 [[test]]
 name = "files"
@@ -117,7 +117,7 @@ required-features = ["multipart", "multipart-tempfile"]
 [[test]]
 name = "swagger"
 path = "tests/swagger.rs"
-required-features = ["swagger"]
+required-features = ["swagger-ui"]
 
 [package.metadata.docs.rs]
 all-features = true

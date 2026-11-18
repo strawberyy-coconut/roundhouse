@@ -5,27 +5,27 @@
 //! imports normally use `roundhouse::...`.
 //!
 //! `ApiSchema` supplies the document shape and custom validation hooks. `Params` is the single
-//! bound for path, query and form types. The `schema-engine` feature compiles the emitted JSON
+//! bound for path, query and form types. The `validation` feature compiles the emitted JSON
 //! Schema and executes it to produce [`ValidationErrors`].
 
-#[cfg(feature = "schema-engine")]
+#[cfg(feature = "validation")]
 pub mod engine;
-#[cfg(not(feature = "schema-engine"))]
+#[cfg(not(feature = "validation"))]
 #[path = "engine_disabled.rs"]
 pub mod engine;
 pub mod params;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub mod schema;
 pub mod validate;
 
-#[cfg(feature = "schema-engine")]
+#[cfg(feature = "validation")]
 pub use jsonschema;
 pub use params::{Params, ValidateHook};
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use schema::{ApiSchema, Claim, Components, ParamsDoc, PartsDoc, RefOr, Schema, SchemaContext};
 
 /// OpenAPI parameter serialization style.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub type ParamStyle = schema::ParameterStyle;
 pub use validate::{ValidationError, ValidationErrors, pointer};
 
@@ -50,7 +50,7 @@ impl ParamIn {
 }
 
 /// One documented request parameter.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 #[derive(Clone)]
 pub struct Param {
     pub name: String,
@@ -64,7 +64,7 @@ pub struct Param {
     pub explode: Option<bool>,
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 impl Param {
     pub fn new(
         name: impl Into<String>,

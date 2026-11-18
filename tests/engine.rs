@@ -1,6 +1,6 @@
 //! Schema execution and the conformance checks behind it.
 
-#![cfg(feature = "schema-engine")]
+#![cfg(feature = "validation")]
 
 use axum::http::StatusCode;
 use roundhouse::interop::ToSchema;

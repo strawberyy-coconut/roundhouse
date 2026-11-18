@@ -1,6 +1,6 @@
 //! Reusable response wrappers for the common created/no-content cases.
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 use crate::doc::{DocumentedResponse, ResponseDoc, SchemaContext, json_response};
 use axum::Json;
 use axum::http::StatusCode;
@@ -30,7 +30,7 @@ impl<T: serde::Serialize> IntoResponse for Created<T> {
     }
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 impl<T: crate::doc::ApiSchema> DocumentedResponse for Created<T> {
     fn responses(context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         json_response::<T>(context, 201)
@@ -49,7 +49,7 @@ impl IntoResponse for NoContent {
     }
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 impl DocumentedResponse for NoContent {
     fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         vec![ResponseDoc::new(204, "No Content")]

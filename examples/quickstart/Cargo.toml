@@ -6,9 +6,9 @@ publish = false
 description = "The smallest roundhouse application: one file, one route table, one schema."
 
 [dependencies]
-roundhouse = { path = "../..", features = ["contract-runtime"] }
+roundhouse = { path = "../..", default-features = false, features = ["contract", "server", "swagger-ui"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]
-roundhouse = { path = "../..", features = ["contract"] }
+roundhouse = { path = "../..", features = ["build"] }

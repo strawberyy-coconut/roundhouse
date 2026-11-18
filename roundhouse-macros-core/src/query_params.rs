@@ -126,7 +126,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
         }
 
-        #krate::__roundhouse_contract_code! {
+        #krate::__roundhouse_build_code! {
             #[allow(non_snake_case)]
             fn #fn_name(
                 context: &mut dyn #krate::doc::SchemaContext,

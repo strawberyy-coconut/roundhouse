@@ -28,21 +28,21 @@
 //! `DocumentedResponse` impl. Component names follow utoipa: unique names stay
 //! simple, and a collision is disambiguated with `#[schema(as = module::Type)]`.
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub mod build;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub mod downgrade;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub mod validity;
-#[cfg(all(feature = "contract", feature = "schema-engine"))]
+#[cfg(all(feature = "build", feature = "validation"))]
 pub use crate::contract_response::ContractResponseValidator;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use build::{build, build_with_options};
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use validity::validate_document;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub mod layer;
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 pub mod layer {
     //! Documentation-only layer metadata (compiled out without `contract`).
 
@@ -52,43 +52,43 @@ pub mod layer {
 }
 
 /// Schema derivation and constraint helpers, re-exported from `roundhouse-schema`.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use roundhouse_schema::schema;
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use roundhouse_schema::{ApiSchema, Claim, Param, ParamsDoc, PartsDoc, SchemaContext};
 pub use roundhouse_schema::{ParamIn, Params, ValidateHook};
 use std::any::TypeId;
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 mod arg;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 mod body;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 mod context;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 mod model;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 mod params;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub(crate) mod probe;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 #[doc(hidden)]
 pub mod registration;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub(crate) mod response_doc;
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use arg::*;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use body::*;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use context::*;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use model::*;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use params::*;
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub use response_doc::*;
 
 /// Identity marker for a response that can be served and, in a contract build, documented.
@@ -97,7 +97,7 @@ pub use response_doc::*;
 /// to document the receiver type. The method is a no-op: the value and its `IntoResponse` shape
 /// are unchanged. Under `contract` the trait also requires [`DocumentedResponse`]; production
 /// builds only require `IntoResponse`, so a handler can call the method in any build.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub trait DocumentedIntoResponse: axum::response::IntoResponse + DocumentedResponse {
     fn into_documented_response(self) -> Self
     where
@@ -107,12 +107,12 @@ pub trait DocumentedIntoResponse: axum::response::IntoResponse + DocumentedRespo
     }
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 impl<T: axum::response::IntoResponse + DocumentedResponse> DocumentedIntoResponse for T {}
 
 /// Production-build form of [`DocumentedIntoResponse`]: the documentation bound is compiled out,
 /// but the marker method stays available so handler source does not need `cfg`.
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 pub trait DocumentedIntoResponse: axum::response::IntoResponse {
     fn into_documented_response(self) -> Self
     where
@@ -122,7 +122,7 @@ pub trait DocumentedIntoResponse: axum::response::IntoResponse {
     }
 }
 
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 impl<T: axum::response::IntoResponse> DocumentedIntoResponse for T {}
 
 /// Split public prose into an operation summary and description.
@@ -149,7 +149,7 @@ pub fn split_prose(text: &'static str) -> (Option<&'static str>, Option<&'static
 ///
 /// Keeping these together means a caller cannot accidentally treat "the body was verified" and
 /// "the body is unverified" as independent facts; the builder owns the transitions.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 #[derive(Clone, Debug, Default)]
 pub struct Verification {
     body: bool,
@@ -159,7 +159,7 @@ pub struct Verification {
     unbounded_file_fields: Vec<&'static str>,
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 impl Verification {
     /// A body extractor the framework cannot verify at runtime.
     pub fn body(&self) -> bool {
@@ -222,7 +222,7 @@ impl Verification {
 /// builder methods below, so the operation's invariants do not depend on a caller remembering
 /// which fields may be written together. Read accessors back
 /// [`ResolvedRoute::docs`](crate::ResolvedRoute::docs).
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 #[derive(Clone, Default)]
 pub struct OperationDoc {
     /// Operation summary from the handler's `@summary:` tag, unless the route entry overrides it.
@@ -256,7 +256,7 @@ pub struct OperationDoc {
     pub(crate) body_type_name: Option<fn() -> &'static str>,
 }
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 impl OperationDoc {
     /// Set the operation summary. A `doc` hook can use this to override the handler's tag.
     pub fn set_summary(&mut self, summary: impl Into<String>) {
@@ -544,7 +544,7 @@ pub trait HandlerSpec: Send + Sync + 'static {
 }
 
 /// The operation documentation a `#[handler]` marker produces.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub trait DocSource {
     fn operation(context: &mut DocContext<'_>) -> OperationDoc;
 }
@@ -554,32 +554,32 @@ pub trait DocSource {
 /// Without `contract`, no operation is ever described, but `routes!` still constructs a
 /// `RouteSpec`. These stubs keep that record's shape identical while every doc-building body is
 /// compiled out.
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 #[derive(Clone, Copy)]
 pub struct DocContext<'a>(std::marker::PhantomData<&'a ()>);
 
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct OperationDoc;
 
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 pub trait DocSource {
     fn operation(_context: &mut DocContext<'_>) -> OperationDoc {
         OperationDoc
     }
 }
 
-#[cfg(not(feature = "contract"))]
+#[cfg(not(feature = "build"))]
 impl<T: ?Sized> DocSource for T {}
 
 /// Marker for a type that is both a handler spec and a documentation source.
 ///
 /// The blank implementation means `#[handler]` only emits [`HandlerSpec`] and [`DocSource`];
 /// downstream bounds can still name the combined marker.
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 pub trait HandlerMeta: HandlerSpec + DocSource {}
 
-#[cfg(feature = "contract")]
+#[cfg(feature = "build")]
 impl<T: HandlerSpec + DocSource> HandlerMeta for T {}
 
 pub fn handler_state<M: HandlerSpec>() -> Option<TypeId> {

@@ -77,7 +77,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
         }
 
-        #krate::__roundhouse_contract_code! {
+        #krate::__roundhouse_build_code! {
             impl #impl_generics #krate::doc::ApiSchema for #ident #ty_generics #where_clause {
                 fn schema() -> #krate::__private::utoipa::openapi::RefOr<
                     #krate::__private::utoipa::openapi::schema::Schema,

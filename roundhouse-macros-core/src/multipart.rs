@@ -341,7 +341,7 @@ pub fn expand(input: DeriveInput) -> Result<TokenStream> {
             }
         }
 
-        #krate::__roundhouse_contract_code! {
+        #krate::__roundhouse_build_code! {
             impl #krate::multipart::MultipartDoc for #ident {
                 fn schema(
                     context: &mut dyn #krate::doc::SchemaContext,

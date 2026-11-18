@@ -15,7 +15,7 @@ anyone deciding whether the design fits their application.
   and no runtime `add_route`.
 - **Production does not build documentation.** Schema derivation and the document builder run in
   the contract build under `target/roundhouse`; a production binary consumes the committed
-  contract. A `contract` build without a bundle builds one in-process for tests.
+  contract. A build with the `build` feature without a bundle builds one in-process for tests.
 - **Strict builds are the default.** A missing success response, an unverified body or an
   unacknowledged merged router is an error. Opt-outs are explicit and stay visible in the
   document.
