@@ -7,22 +7,28 @@ route set.
 
 ## Install
 
-```sh
-cargo new hello-api --lib
-cd hello-api
-cargo add roundhouse --features contract-runtime
-cargo add axum tokio --features tokio/macros,tokio/rt-multi-thread
-cargo add serde --features derive
-```
-
-`contract-runtime` is the production feature: it embeds the committed contract, validates requests
-and serves `openapi.json` without utoipa. Contract generation needs the CLI:
+Contract generation needs the CLI:
 
 ```sh
 cargo install roundhouse-cli
 # or, from a checkout:
 cargo install --path roundhouse-cli
 ```
+
+`cargo roundhouse new` creates a package with a library target, a thin binary, the runtime and
+build dependencies, `.roundhouse/` and a guarded `build.rs`:
+
+```sh
+cargo roundhouse new hello-api
+cd hello-api
+cargo run
+```
+
+Run `cargo roundhouse init` instead to adopt an existing package in the current directory. It uses
+`cargo init --lib` when there is no manifest, so `init` and `new` follow Cargo's conventions.
+
+`contract-runtime` is the production feature: it embeds the committed contract, validates requests
+and serves `openapi.json` without utoipa.
 
 Rust 1.88 or newer is required. The default features are `schema-engine`, `serve` and `swagger`.
 
@@ -91,11 +97,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Run `cargo roundhouse init` once. It adds `roundhouse-build` as a build-dependency and generates a
-guarded `build.rs`. From then on, `cargo build` and `cargo test` refresh `.roundhouse/`
-automatically before `include_contract!` expands. `cargo roundhouse prepare` remains available for
-an explicit run, and `cargo roundhouse check` verifies the committed artifacts in CI. No
-`src/bin` file is generated; the contract harness lives under `target/roundhouse`.
+A package created with `cargo roundhouse new`, or adopted with `cargo roundhouse init`, has
+`roundhouse-build` as a build-dependency and a guarded `build.rs`. From then on, `cargo build` and
+`cargo test` refresh `.roundhouse/` automatically before `include_contract!` expands. Missing
+artifacts are seeded with empty placeholders during the contract build, so a new package builds
+before its first contract exists. `cargo roundhouse prepare` remains available for an explicit run,
+and `cargo roundhouse check` verifies the committed artifacts in CI. No `src/bin` file is
+generated; the contract harness lives under `target/roundhouse`.
 
 The generated `.roundhouse/openapi.json` documents `GET /v1/hello/world`, including the `name`
 path parameter that `Path<String>` cannot name by itself, and is served verbatim at

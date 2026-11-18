@@ -10,6 +10,10 @@
 //! Inspection commands (`check`, `explain`, `verify`, `diff`) belong to developers and CI, and
 //! live in the `roundhouse-cli` binary.
 //!
+//! Missing artifacts are seeded with empty placeholders before the harness runs. The harness
+//! compiles the application as a dependency first, so `include_contract!` must be readable even
+//! on a clean checkout; successful generation replaces the placeholders.
+//!
 //! A `build.rs` should call [`prepare`] so the artifacts are refreshed before rustc reads
 //! `include_contract!`:
 //!
@@ -47,6 +51,28 @@ use serde_json::Value;
 /// The directory `prepare` writes to by default.
 pub const ARTIFACT_DIR: &str = ".roundhouse";
 
+/// A runtime-shaped contract used while the application compiles for the first time.
+const PLACEHOLDER_CONTRACT: &str = r#"{
+  "kind": "roundhouse.contract",
+  "contract_version": 1,
+  "generator_version": "pending",
+  "openapi": "openapi.json",
+  "operations": [],
+  "validation": {
+    "defs": {},
+    "bodies": { "ops": {}, "types": {} },
+    "parts": { "types": {} }
+  },
+  "diagnostics": []
+}"#;
+
+/// A minimal OpenAPI document used with [`PLACEHOLDER_CONTRACT`].
+const PLACEHOLDER_OPENAPI: &str = r#"{
+  "openapi": "3.1.0",
+  "info": { "title": "pending", "version": "0" },
+  "paths": {}
+}"#;
+
 /// Generate the contract into `.roundhouse` in the current directory.
 ///
 /// This is the `build.rs` entry point. It never edits `src/` or `Cargo.toml`.
@@ -58,9 +84,35 @@ pub fn prepare() -> Result<(), Box<dyn Error>> {
 ///
 /// A `build.rs` can call this directly; Cargo runs build scripts with the package root as the
 /// working directory.
+///
+/// Before the harness runs, missing artifacts are seeded with empty placeholders. The harness
+/// compiles the application as a dependency first, so `include_contract!` must be able to read
+/// its files even on a clean checkout. The real artifacts replace the placeholders once the
+/// contract build succeeds.
 pub fn prepare_to(out: PathBuf) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&out)?;
+    ensure_artifacts(&out)?;
+    // The application normally reads `.roundhouse/` relative to its manifest. Keep that readable
+    // too when `prepare --out` targets another directory.
+    let default = PathBuf::from(ARTIFACT_DIR);
+    if out != default {
+        fs::create_dir_all(&default)?;
+        ensure_artifacts(&default)?;
+    }
     generate(&out)
+}
+
+/// Write empty, valid artifacts when they do not exist yet.
+fn ensure_artifacts(out: &Path) -> Result<(), Box<dyn Error>> {
+    let contract = out.join("contract.json");
+    if !contract.exists() {
+        fs::write(&contract, format!("{PLACEHOLDER_CONTRACT}\n"))?;
+    }
+    let openapi = out.join("openapi.json");
+    if !openapi.exists() {
+        fs::write(&openapi, format!("{PLACEHOLDER_OPENAPI}\n"))?;
+    }
+    Ok(())
 }
 
 /// Run the strict contract build once.
@@ -297,5 +349,39 @@ mod tests {
         assert!(!bin.contains("discovery"));
         assert!(bin.contains("contract.build()?"));
         assert!(bin.contains("built.write_to(output)?"));
+    }
+
+    #[test]
+    fn placeholders_are_written_only_when_the_artifacts_are_missing() {
+        let dir = std::env::temp_dir().join(format!(
+            "roundhouse-placeholder-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("create temporary directory");
+
+        ensure_artifacts(&dir).expect("seed placeholders");
+        let contract: Value = serde_json::from_str(
+            &fs::read_to_string(dir.join("contract.json")).expect("read contract"),
+        )
+        .expect("placeholder contract is JSON");
+        assert_eq!(contract["kind"], "roundhouse.contract");
+        assert!(contract["operations"].is_array());
+        serde_json::from_str::<Value>(
+            &fs::read_to_string(dir.join("openapi.json")).expect("read openapi"),
+        )
+        .expect("placeholder openapi is JSON");
+
+        fs::write(dir.join("contract.json"), "{\"real\":true}").expect("write real contract");
+        ensure_artifacts(&dir).expect("keep the real contract");
+        assert_eq!(
+            fs::read_to_string(dir.join("contract.json")).expect("read contract"),
+            "{\"real\":true}"
+        );
+
+        fs::remove_dir_all(&dir).expect("clean temporary directory");
     }
 }

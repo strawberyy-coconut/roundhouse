@@ -23,10 +23,11 @@ pub(crate) fn error(message: impl Into<String>) -> Box<dyn Error> {
     name = "cargo-roundhouse",
     bin_name = "cargo roundhouse",
     version,
-    about = "Build-time contract generation for roundhouse",
-    long_about = "Build-time contract generation for roundhouse.\n\n\
-                  The contract binary is built under `target/roundhouse`, so `cargo roundhouse` \
-                  never writes a bin or otherwise touches the source tree."
+    about = "Scaffold roundhouse applications and generate their contracts",
+    long_about = "Scaffold roundhouse applications and generate their contracts.\n\n\
+                  `cargo roundhouse new` creates a package and `cargo roundhouse init` adopts an \
+                  existing one, following Cargo's conventions. The contract binary is built under \
+                  `target/roundhouse`, so contract generation never writes a source-tree bin."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -35,8 +36,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Create .roundhouse/, install the build script, and print the api! snippet
+    /// Initialize a roundhouse application in an existing directory
     Init {
+        /// Directory to initialize (defaults to the current directory)
+        path: Option<PathBuf>,
+        /// Package name to use when creating a new package
+        #[arg(long)]
+        name: Option<String>,
+        /// Do not create or update build.rs
+        #[arg(long)]
+        no_build_script: bool,
+    },
+    /// Create a new roundhouse application in a new directory
+    New {
+        /// Directory to create
+        path: PathBuf,
+        /// Package name to use instead of the directory name
+        #[arg(long)]
+        name: Option<String>,
         /// Do not create or update build.rs
         #[arg(long)]
         no_build_script: bool,
@@ -81,7 +98,16 @@ fn main() {
 
 fn run(cli: Cli) -> Result<(), Box<dyn Error>> {
     match cli.command {
-        Commands::Init { no_build_script } => init::init(no_build_script),
+        Commands::Init {
+            path,
+            name,
+            no_build_script,
+        } => init::init(path, name, no_build_script),
+        Commands::New {
+            path,
+            name,
+            no_build_script,
+        } => init::new(path, name, no_build_script),
         Commands::Prepare { out } => prepare::prepare(out),
         Commands::Check => check::check(),
         Commands::Explain { operation } => explain::explain(&operation),

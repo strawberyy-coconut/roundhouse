@@ -54,6 +54,14 @@
 
 ### Added
 
+- `cargo roundhouse new <path>` creates a package with `cargo new --lib`; `cargo roundhouse init`
+  now follows `cargo init` and scaffolds a package in place when there is no manifest. Both add
+  the runtime/build dependencies, `.roundhouse/`, a guarded `build.rs`, a starter `src/lib.rs`
+  and a thin `src/main.rs`. Adopting an existing bin-only package fails early with the library
+  guidance instead of failing during the first contract build.
+- Contract builds seed missing `.roundhouse/contract.json` and `openapi.json` with empty
+  placeholders before compiling the application, so a freshly scaffolded package builds before
+  its first contract exists.
 - `contract` / `contract-runtime` features, `tests/fixtures/production` (no-contract compile
   guard), and a CI dependency check that asserts the production fixture graph contains no
   `utoipa`, `multer` or `tempfile`.

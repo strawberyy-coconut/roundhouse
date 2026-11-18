@@ -8,17 +8,28 @@
 //!
 //! ## Install
 //!
+//! ```sh
+//! cargo roundhouse new hello-api
+//! cd hello-api
+//! cargo run
+//! ```
+//!
+//! `new` creates a library target plus a thin binary and adds:
+//!
 //! ```toml
-//! # `cargo new hello-api --lib`
 //! [dependencies]
 //! roundhouse = { version = "0.4", features = ["contract-runtime"] }
-//! axum = "0.8"
 //! serde = { version = "1", features = ["derive"] }
 //! tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+//!
+//! [dev-dependencies]
+//! roundhouse = { version = "0.4", features = ["contract"] }
 //! ```
 //!
 //! `contract-runtime` is the production feature. Contract generation uses the
-//! `roundhouse-build` build-dependency added by `cargo roundhouse init`.
+//! `roundhouse-build` build-dependency and guarded `build.rs` added by `cargo roundhouse new`
+//! (or `cargo roundhouse init` in an existing package). Both follow Cargo's conventions:
+//! `init` initializes in place, `new` creates the directory first.
 //!
 //! ## Quick start
 //!
@@ -84,9 +95,10 @@
 //! }
 //! ```
 //!
-//! Run `cargo roundhouse init` once. It adds `roundhouse-build` as a build-dependency and generates
-//! a guarded `build.rs`, so `cargo build` refreshes `.roundhouse/` before `include_contract!`
-//! expands. `cargo roundhouse check` verifies the committed artifacts in CI.
+//! `cargo roundhouse new` (or `cargo roundhouse init` in an existing package) adds
+//! `roundhouse-build` as a build-dependency and generates a guarded `build.rs`, so `cargo build`
+//! refreshes `.roundhouse/` before `include_contract!` expands. `cargo roundhouse check` verifies
+//! the committed artifacts in CI.
 //!
 //! ## How it fits together
 //!

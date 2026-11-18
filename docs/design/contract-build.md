@@ -114,7 +114,8 @@ it does not gate loading.
 `cargo-roundhouse` binary and owns `init` plus the developer/CI commands.
 
 ```sh
-cargo roundhouse init [--no-build-script]
+cargo roundhouse init [path] [--name <name>] [--no-build-script]
+cargo roundhouse new <path> [--name <name>] [--no-build-script]
 cargo roundhouse prepare [--out <directory>]
 cargo roundhouse check
 cargo roundhouse explain <operation-id | path | "METHOD /path">
@@ -122,10 +123,20 @@ cargo roundhouse verify [-- <cargo test args>...]
 cargo roundhouse diff [--against <contract.json>] [--check]
 ```
 
-- **`init`** creates `.roundhouse/`, adds `roundhouse-build` as a build-dependency, writes a
-  guarded `build.rs` and prints the `api!` snippet. An existing hand-written `build.rs` is never
-  overwritten; the roundhouse block is printed for manual insertion. A `roundhouse-cli`
-  build-dependency from the 0.4.0 layout is replaced.
+- **`init`** follows Cargo's `init` convention: it initializes a package in the current directory
+  (or `path`), running `cargo init --lib` when there is no manifest. **`new`** follows `cargo new`:
+  it creates `path` first. Both scaffold a library target (`src/lib.rs`), a thin `src/main.rs`,
+  `.roundhouse/`, the runtime dependencies and the test-only contract dependency.
+- **Scaffolding** creates `.roundhouse/`, adds `roundhouse-build` as a build-dependency, writes a
+  guarded `build.rs` and prints the `api!` snippet when adopting an existing package. Existing
+  sources are never overwritten. An existing hand-written `build.rs` is never overwritten; the
+  roundhouse block is printed for manual insertion. A `roundhouse-cli` build-dependency from the
+  0.4.0 layout is replaced. An existing package without a library target is refused with the
+  library guidance.
+- **Contract builds seed missing artifacts.** Before the harness compiles the application,
+  `prepare` writes empty, valid `contract.json`/`openapi.json` when they do not exist. This lets
+  `include_contract!` compile on a clean checkout; the real artifacts replace the placeholders
+  after the build succeeds.
 - **`prepare`** runs the harness and reports how many operations were written. `--out` chooses
   another artifact directory.
 - **`check`** requires both committed artifacts, regenerates them into
