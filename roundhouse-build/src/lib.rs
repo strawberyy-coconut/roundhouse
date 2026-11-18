@@ -88,7 +88,7 @@ pub fn prepare() -> Result<(), Box<dyn Error>> {
     let cwd = std::env::current_dir()?;
     prepare_to(PathBuf::from(ARTIFACT_DIR))?;
     // Make the index available to the crate's own compile as well. The generated documentation
-    // code only exists under `contract`, but the env is harmless in a production build and keeps
+    // code only exists under `build`, but the env is harmless in a production build and keeps
     // the macro's lookup consistent between the harness and the normal crate compile.
     let index = cwd
         .join("target")

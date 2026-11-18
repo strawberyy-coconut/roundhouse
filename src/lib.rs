@@ -121,11 +121,11 @@
 //! | [`prelude`] | everything a route module normally imports |
 //! | [`router`] | `App`, `Built`, `ContractBundle`, `Fragment`, `Module` |
 //! | [`extract`] | `Json`, `Form`, `Path`, `Query`, `Strict`, `Mapped`, `Validation` |
-//! | `doc` | `ExtractDoc`, `ApiSchema`, parameter tables, response metadata (`contract`) |
+//! | `doc` | `ExtractDoc`, `ApiSchema`, parameter tables, response metadata (`build`) |
 //! | [`auth`] | `Auth<A>`, `AuthScheme`, `Authenticate`, `Scopes` |
 //! | [`problem`] | the RFC 9457 `Problem` body |
 //! | [`attachment`] | `Attachment`, `File`, SSE responses |
-//! | `openapi` | `Info`, `OpenApi`, `Components` (`contract`) |
+//! | `openapi` | `Info`, `OpenApi`, `Components` (`build`) |
 //! | [`build_error`] | `BuildError` and its source locations |
 //! | [`schema`](mod@schema) | schema derivation and validation without axum |
 //! | `multipart` | `Multipart<F>`, `FilePart`, `TempFile` (feature-gated) |
@@ -133,7 +133,7 @@
 //! The derive macros, `#[roundhouse::schema]` and `routes!` are re-exported at the crate root;
 //! [`prelude`] is the usual import for application code. Schema derivation and the document
 //! builder are behind the `build` feature, so a production build has no utoipa dependency. Use
-//! the `interop` module (also `contract`-only) when sharing types with another utoipa project. The
+//! the `interop` module (also `build`-only) when sharing types with another utoipa project. The
 //! repository's `docs/design/` notes explain the architecture, declaration and contract-build
 //! phases, runtime and validation behavior, document assembly, extension points and design
 //! decisions.
@@ -150,6 +150,24 @@
 //! | `multipart` | `Multipart<F>`, `FilePart` and axum's multipart support |
 //! | `multipart-tempfile` | `TempFile` (implies `multipart`) |
 //! | `uuid`, `chrono`, `time`, `jiff`, `decimal` | schema support for those types |
+//!
+//! The default set is `build`, `validation`, `server` and `swagger-ui`. For a lean production
+//! build, set `default-features = false` and select `contract` (plus `server`/`swagger-ui`);
+//! the build-time `build` feature is only needed by the contract harness.
+//!
+//! A custom `DocumentedResponse` or `DocumentedError` impl uses documentation-only types. Mark
+//! it with `#[roundhouse::build_only]` so a production `contract` build compiles it out:
+//!
+//! ```ignore
+//! #[roundhouse::build_only]
+//! impl roundhouse::doc::DocumentedError for DbError {
+//!     fn responses(
+//!         context: &mut dyn roundhouse::doc::SchemaContext,
+//!     ) -> Vec<roundhouse::doc::ResponseDoc> {
+//!         // ...
+//!     }
+//! }
+//! ```
 //!
 //! `use roundhouse::prelude::*;` is the normal import. utoipa names are `build`-only
 //! plumbing; the supported integration surface is `interop`. Response documentation is public:

@@ -5,8 +5,10 @@
 //! imports normally use `roundhouse::...`.
 //!
 //! `ApiSchema` supplies the document shape and custom validation hooks. `Params` is the single
-//! bound for path, query and form types. The `validation` feature compiles the emitted JSON
-//! Schema and executes it to produce [`ValidationErrors`].
+//! bound for path, query and form types. The `build` feature adds schema derivation and OpenAPI
+//! shape support; the `validation` feature compiles the emitted JSON Schema and executes it to
+//! produce [`ValidationErrors`]. The runtime uses `Params` and `ValidateHook` without either
+//! feature.
 
 #[cfg(feature = "validation")]
 pub mod engine;

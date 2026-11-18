@@ -8,7 +8,7 @@
 //! into a [`Built`]:
 //!
 //! - [`Built::router`] — the ready `axum::Router`;
-//! - `Built::document` and `Built::openapi_json` — the OpenAPI 3.1 document (`document` needs `contract`);
+//! - `Built::document` and `Built::openapi_json` — the OpenAPI 3.1 document (`document` needs `build`);
 //! - [`Built::routes`] — the resolved table, with each declaration's source location.
 //!
 //! A single `routes!` table checks its own duplicate routes and operation ids during expansion,

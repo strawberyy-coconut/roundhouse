@@ -22,6 +22,10 @@
 //! - `ResponseDoc` and `layer` — hand-written responses and documented layer guarantees.
 //! - `validate_document` — the structural check every build runs over the finished document.
 //!
+//! A custom documentation impl depends on types in this module, so it must be compiled only when
+//! the `build` feature is on. Wrap it with `#[roundhouse::build_only]`; a production build that
+//! compiles only `contract` then drops the impl instead of failing to resolve the types.
+//!
 //! `axum::Json<T>`, `Form<T>` and JSON responses require `T: ApiSchema` for automatic
 //! documentation. A plain `ToSchema` type can be adapted with
 //! `roundhouse::interop::impl_from_utoipa!` or documented by an explicit
@@ -44,7 +48,7 @@ pub use validity::validate_document;
 pub mod layer;
 #[cfg(not(feature = "build"))]
 pub mod layer {
-    //! Documentation-only layer metadata (compiled out without `contract`).
+    //! Documentation-only layer metadata (compiled out without `build`).
 
     /// A documented layer guarantee.
     #[derive(Clone, Debug, Default)]
@@ -95,7 +99,7 @@ pub use response_doc::*;
 ///
 /// `#[handler]` recognizes `.into_documented_response()` at a return site as an explicit request
 /// to document the receiver type. The method is a no-op: the value and its `IntoResponse` shape
-/// are unchanged. Under `contract` the trait also requires [`DocumentedResponse`]; production
+/// are unchanged. Under `build` the trait also requires [`DocumentedResponse`]; production
 /// builds only require `IntoResponse`, so a handler can call the method in any build.
 #[cfg(feature = "build")]
 pub trait DocumentedIntoResponse: axum::response::IntoResponse + DocumentedResponse {
@@ -551,7 +555,7 @@ pub trait DocSource {
 
 /// Runtime placeholders for the document types macros name in their generated route records.
 ///
-/// Without `contract`, no operation is ever described, but `routes!` still constructs a
+/// Without `build`, no operation is ever described, but `routes!` still constructs a
 /// `RouteSpec`. These stubs keep that record's shape identical while every doc-building body is
 /// compiled out.
 #[cfg(not(feature = "build"))]

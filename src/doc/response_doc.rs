@@ -109,6 +109,9 @@ pub fn bytes_response(status: u16) -> ResponseDoc {
 ///
 /// A declaration such as `#[handler(response(201, Json<Note>))]` overrides only the status; the
 /// body, content type and headers still come from the type.
+///
+/// A custom impl in an application crate should be marked `#[roundhouse::build_only]` so a
+/// production build that compiles only `contract` drops it.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` does not document a response",
     label = "this return type has no `DocumentedResponse` implementation",
@@ -128,6 +131,9 @@ pub trait DocumentedResponse {
 /// The document describes the type that leaves the handler. If `?` converts a specific error into
 /// a broader one, the broader type's impl is what gets documented; return the specific error type
 /// when its statuses matter.
+///
+/// A custom impl in an application crate should be marked `#[roundhouse::build_only]` so a
+/// production build that compiles only `contract` drops it.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` does not document an error response",
     label = "this error type has no `DocumentedError` implementation",

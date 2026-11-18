@@ -2,8 +2,8 @@
 //!
 //! [`Params`] is what `Path<T>`, `Query<T>` and `RepeatedQuery<T>` require at runtime: the
 //! capture names and the value that the contract-backed validation engine sees. Schema
-//! descriptions live in the build-only [`schema::ParamsDoc`](crate::schema::ParamsDoc)
-//! trait, so a production build does not compile any schema derivation.
+//! descriptions live in the build-only `ParamsDoc` trait, so a production build does not compile
+//! any schema derivation.
 
 use crate::validate::ValidationErrors;
 
