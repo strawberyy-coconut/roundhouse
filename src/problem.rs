@@ -220,9 +220,17 @@ pub fn problem_value(status: u16, title: &str) -> Value {
 
 #[cfg(feature = "contract")]
 impl crate::doc::DocumentedResponse for Problem {
-    /// `Problem` is the framework's default error type, so it contributes a `default` response
-    /// with the `application/problem+json` schema. A `Result<_, Problem>` therefore documents the
-    /// failures it can produce instead of only its success status.
+    /// `Problem` is the framework's default error body, not a required error type. It contributes
+    /// the OpenAPI `default` response with the `application/problem+json` schema, so a
+    /// `Result<_, Problem>` documents a catch-all failure instead of only its success status.
+    /// A handler that needs specific statuses should return a custom `DocumentedError` type.
+    fn responses(_context: &mut dyn crate::doc::SchemaContext) -> Vec<crate::doc::ResponseDoc> {
+        vec![crate::doc::ResponseDoc::problem_default()]
+    }
+}
+
+#[cfg(feature = "contract")]
+impl crate::doc::DocumentedError for Problem {
     fn responses(_context: &mut dyn crate::doc::SchemaContext) -> Vec<crate::doc::ResponseDoc> {
         vec![crate::doc::ResponseDoc::problem_default()]
     }

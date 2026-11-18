@@ -66,21 +66,49 @@ OpenAPI document; a single merged artifact.
 
 ## D5 — Response documentation is trait-driven
 
-**Decision.** A response type implements `DocumentedResponse`. A handler's return type publishes
-its statuses, content types, bodies and headers directly. Explicit declarations supply what the
-type cannot name.
+**Decision.** A success type implements `DocumentedResponse`; an error type implements
+`DocumentedError`. Those impls own statuses, content types, bodies and headers. A named return
+type publishes them directly. An opaque return type (`impl IntoResponse`, `impl
+DocumentedResponse`) is resolved by a build-time source analyzer that selects the type at each
+tail/`return` site; the macro emits typed trait calls and the compiler verifies them. Explicit
+declarations supply what neither path can name.
 
 **Why.** The document should not depend on how a function body happens to spell a return
-expression. Type-name heuristics and source analysis are fragile for aliases, `impl IntoResponse`,
-generated types and changed implementations. A trait is a stable, local contract.
+expression, and it should not depend on a name-based guess. A trait is a stable content contract.
+The analyzer is only a selector: it says *which* documented type leaves the handler, never what
+that type's status or schema is. The generated `<T as DocumentedResponse>` call makes a wrong
+selection a compile error rather than a wrong document. For a named type the compiler already
+knows the type, so no analysis is needed.
 
-**Consequences.** `impl IntoResponse` has no nameable concrete type, so it needs an explicit
-declaration. A type that only implements `ToSchema` is not automatically documented; adapt it
-with `ApiSchema` interop or implement `DocumentedResponse`. A missing success is a strict-build
-error, not a guess.
+**Consequences.** Named returns are exactly trait-driven. Opaque returns are documented from
+their body; a site the analyzer cannot resolve is `x-roundhouse-unverified-response`, and the
+strict build still rejects an operation with no success. A chain ending in `.into_response()`
+stays opaque; `.into_documented_response()` is the explicit opt-in. `Result<T, E>` requires
+`T: DocumentedResponse` and `E: DocumentedError`; `?` documents `E`, not the source of the
+question mark. `Problem` is one `DocumentedError`, not a mandatory error type. A type that only
+implements `ToSchema` is not automatically documented; adapt it with `ApiSchema` interop or
+implement the response trait.
 
-**Rejected.** Semantic response inference; inferring a JSON body from a type name; treating
-`response(200, Note)` as an implicit `Json<Note>`.
+**Rejected.** Inferring a status or schema from syntax; type-name heuristics; a blanket
+`ToSchema` adapter; treating `response(200, Note)` as an implicit `Json<Note>`; documenting an
+opaque `.into_response()` chain.
+
+## D5a — Opaque returns use a verified handler index
+
+**Decision.** `prepare` analyzes the application library before the contract harness runs and
+writes `target/roundhouse/handlers.json`. `#[handler]` reads the index at expansion time and
+emits typed `DocumentedResponse` / `DocumentedError` calls into its generated `DocSource`.
+
+**Why.** An `impl Trait` return hides its concrete type from every item outside the function,
+including the harness. The macro cannot name the type, and a macro-internal file reader would
+break Cargo incrementality and module resolution. A pre-pass index can resolve helper and method
+return types over the whole crate; the typed calls turn a wrong resolution into a compiler error.
+The index is disposable (`target/`), and `check` regenerates it, so it cannot silently drift.
+
+**Consequences.** The analyzer is conservative and only handles opaque success positions. It does
+not trace `From` impls or `?` sources. A missing index entry or an unresolved site sets the
+unverified marker rather than guessing. Named error types are read from the signature and need no
+analysis; opaque error types are a v1 diagnostic.
 
 ## D6 — Strict builds are the default
 

@@ -153,7 +153,8 @@
 //!
 //! `use roundhouse::prelude::*;` is the normal import. utoipa names are `contract`-only
 //! plumbing; the supported integration surface is `interop`. Response documentation is public:
-//! implement [`doc::DocumentedResponse`] for a custom response type. Request validation uses the
+//! implement `doc::DocumentedResponse` for a custom success type and `doc::DocumentedError` for a
+//! custom error type. Request validation uses the
 //! same `#[roundhouse(..)]` annotation that emits the schema; `jsonschema` is the only engine and
 //! no external validation crate is supported.
 //!
@@ -490,6 +491,7 @@ pub mod prelude {
     pub use crate::arg::ExtractArg;
     pub use crate::attachment::{Attachment, File};
     pub use crate::auth::{Auth, AuthScheme, Authenticate, NoScopes, Scopes};
+    pub use crate::doc::DocumentedIntoResponse;
     pub use crate::doc::Params;
     pub use crate::extract::{Extension, Form, Json, Mapped, Path, Query, RepeatedQuery, Strict};
     pub use crate::problem::Problem;

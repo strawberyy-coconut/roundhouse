@@ -19,10 +19,11 @@ src/lib.rs
         │  proc-macro expansion (cargo check)
         ▼
   Module / RouteRecord / HandlerSpec / DocSource
-  ExtractArg + ExtractDoc / DocumentedResponse / ApiSchema
+  ExtractArg + ExtractDoc / DocumentedResponse / DocumentedError / ApiSchema
         │
         ├── contract build ── `contract` feature, `target/roundhouse` harness
-        │      resolve_tree → doc::build → validate_document
+        │      analyze opaque returns → handlers.json → resolve_tree → doc::build
+        │      → validate_document
         │      ▼
         │   .roundhouse/contract.json     runtime plans, response table, shared $defs
         │   .roundhouse/openapi.json      OpenAPI 3.1 document
@@ -37,9 +38,9 @@ src/lib.rs
 There are three distinct times, and they must not be confused:
 
 1. **Compile time** expands the macros and runs the checks a single invocation can make.
-2. **Contract build** evaluates the whole module tree, the response traits and the explicit
-   declarations, then writes the artifacts. It runs in a generated harness, not in the
-   application binary.
+2. **Contract build** analyzes opaque handler bodies, evaluates the whole module tree, the
+   response traits and the explicit declarations, then writes the artifacts. It runs in a
+   generated harness, not in the application binary.
 3. **Runtime build** resolves the same tree again, assembles the `axum::Router`, compiles the
    request plans from `contract.json` and serves the committed `openapi.json`.
 

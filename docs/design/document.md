@@ -44,13 +44,13 @@ that keep the artifact honest. The build pipeline and artifact format are in
 ```
 
 `OperationDoc` is data. The macro emits the code that fills it; the builder owns every merge rule.
-Response documentation is not a separate input: the return type's `DocumentedResponse` impl
-supplies it directly, and an explicit declaration supplies whatever the type cannot name.
-
-`#[handler]` probes the declared return type. When the type implements `DocumentedResponse`, the
-probe calls it. When it does not, the handler still compiles and the strict build reports the
-missing success; the macro never guesses by name. The probe and the unverified markers are
-described in [Extension points](extension-points.md).
+Response documentation is not a separate input. For a named return type, the type's
+`DocumentedResponse` impl supplies it directly. For an opaque return type, `prepare` first runs a
+source analyzer over the library and writes a per-handler index; `#[handler]` reads that index at
+expansion time and emits typed trait calls. The compiler verifies the calls, so a wrong inference
+fails the contract build instead of publishing a wrong document. An explicit declaration supplies
+whatever neither path can name. The probe, the analyzer and the unverified markers are described
+in [Extension points](extension-points.md).
 
 ## Extractors and body documentation
 
@@ -78,8 +78,9 @@ in [Extension points](extension-points.md). Built-ins are ordinary impls:
 | `NoContent` | `204` |
 | `StatusCode`, `(StatusCode, T)`, `Redirect` | `default` |
 | `Option<T>`, `Infallible`, `Response` | none |
-| `Result<T, E>` | `T`'s responses plus `E`'s |
-| `Problem` | `default`, problem+json |
+| `Result<T, E>` | `T`'s responses plus `E`'s (`T: DocumentedResponse`, `E: DocumentedError`) |
+| `Problem` | `default`, problem+json (as a `DocumentedError`) |
+| `impl IntoResponse`, `impl DocumentedResponse` | the body-analyzed success sites |
 
 A custom response type implements the trait once and is documented exactly like a built-in:
 
@@ -99,8 +100,33 @@ impl roundhouse::doc::DocumentedResponse for Csv {
 }
 ```
 
-`impl IntoResponse` has no nameable concrete type, so the macro cannot probe it. A handler with
-that return type needs an explicit declaration:
+Errors are documented by `DocumentedError`. `Result<T, E>` requires `T: DocumentedResponse` and
+`E: DocumentedError`; the builder merges both. `?` contributes nothing on its own: it converts
+into `E`, and the document describes `E`. If `From<DbError> for Problem` maps a specific error to
+the catch-all, return `DbError` (or a union enum) when its statuses matter.
+
+`Problem` is one implementor, not the mandatory error type:
+
+```rust
+impl roundhouse::doc::DocumentedError for NoteMissing {
+    fn responses(_: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
+        vec![ResponseDoc::problem(404, "Note not found")]
+    }
+}
+```
+
+`impl IntoResponse` has no nameable concrete type. The analyzer resolves the body's tail and
+`return` expressions and the macro emits:
+
+```rust
+<Json<Note> as DocumentedResponse>::responses(context)
+<DbError as DocumentedError>::responses(context)
+```
+
+A site the analyzer cannot resolve marks the operation `x-roundhouse-unverified-response`; the
+strict build rejects an operation with no success. `.into_response()` is deliberately opaque and
+is not documented. Call `.into_documented_response()` on a documented value to opt that site in.
+An explicit declaration remains the escape hatch:
 
 ```rust
 #[handler(response(200, Json<Note>), response(404, Problem))]
@@ -110,10 +136,8 @@ pub async fn show(...) -> impl IntoResponse { ... }
 `response(status, Type)` calls `Type::responses(..)` and overrides only the status; a bare
 `response(status)` is status-only. `Type` must implement `DocumentedResponse`; the declaration
 does not accept a `ToSchema`-only type. A typed declaration that contradicts the return type's
-shape needs `override_response(..)`.
-
-`Problem` documents `default`. For exact error codes, use `response(404, Problem)` or a typed
-error enum that implements `DocumentedResponse` with its own statuses.
+shape needs `override_response(..)`. For exact error codes, either return the specific error type
+or declare the status.
 
 ### Response description precedence
 
@@ -151,7 +175,7 @@ A type that only implements utoipa's `ToSchema` can still be documented explicit
 
 - adapt it with `roundhouse::interop::impl_from_utoipa!(Type);`, then use it like any
   `ApiSchema` type;
-- implement `DocumentedResponse` for it and return it;
+- implement `DocumentedResponse` (or `DocumentedError` for a failure) for it and return it;
 - use a `doc = |docs| ..` hook for hand-written response metadata or a one-off schema.
 
 `Json<T>`'s response impl requires `T: ApiSchema`; a plain `ToSchema` type is not automatically
@@ -183,8 +207,9 @@ disambiguates them. The document uses the dotted form (`module.Name`).
 7. **Fill captures.** Every `{capture}` gets a required path parameter. A scalar `Path<T>` can
    supply the schema when the template has one capture; otherwise a string fallback is used with
    a diagnostic. A path parameter with no capture is `BuildError::UnknownPathParameter`.
-8. **Merge responses.** The return type's `DocumentedResponse` output, declared responses,
-   extractor failures and layer responses are merged by status. Identical shapes merge their
+8. **Merge responses.** The return type's `DocumentedResponse` output (or, for an opaque return,
+   the analyzer's typed sites and the handler's `DocumentedError`), declared responses, extractor
+   failures and layer responses are merged by status. Identical shapes merge their
    headers. Two different 4xx/5xx shapes collapse to a `Problem`, because that is what every
    failure path produces. Two different success bodies keep the first and emit a diagnostic.
 9. **Apply typed response declarations.** Declarations add statuses or refine documented ones. A

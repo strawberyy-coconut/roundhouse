@@ -9,7 +9,8 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 | Need | Use |
 |---|---|
 | A custom axum extractor with parameters, a body or auth | `ExtractArg` + `ExtractDoc` |
-| A custom response type with a status, body or headers | `DocumentedResponse` (and `#[handler(response(..))]` for a status override) |
+| A custom success type with a status, body or headers | `DocumentedResponse` (and `#[handler(response(..))]` for a status override) |
+| A custom error type with statuses, bodies or headers | `DocumentedError` (or return `Problem`) |
 | A documented JSON body or response type | `ApiSchema` (or `#[roundhouse::schema]`) |
 | A query or path struct | `#[derive(QueryParams)]`, `#[derive(PathParams)]` |
 | A tower layer that terminates requests | `App::layer_documented` or a `doc = ..` hook |
@@ -23,7 +24,9 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 | Trait | Subject | Implemented by | Used by | Phase |
 |---|---|---|---|---|
 | `ApiSchema` | A body/response JSON shape and its hooks | `#[roundhouse::schema]`, manual impls, primitives | contract build | contract |
-| `DocumentedResponse` | A response type's statuses, content types, bodies and headers | built-ins, custom response types | contract build | contract |
+| `DocumentedResponse` | A success type's statuses, content types, bodies and headers | built-ins, custom response types | contract build | contract |
+| `DocumentedError` | An error type's statuses, content types, bodies and headers | `Problem`, custom error types | contract build | contract |
+| `DocumentedIntoResponse` | Marks a documented value at an opaque return site | blanket for `IntoResponse` | handler body analysis | compile |
 | `Params` | A path/query/form type's runtime value | `PathParams`/`QueryParams` derives, scalars | request validation | request |
 | `ValidateHook` | Custom validation attached to a value | schema derives | runtime validation | request |
 | `ParamsDoc` | Parameter table and parts schema | `PathParams`/`QueryParams` derives | contract build | contract |
@@ -66,11 +69,40 @@ pub trait DocumentedResponse {
 }
 ```
 
-This is the only source of response documentation. A built-in is special only because it
-implements this trait; a custom response type implements it once and is documented the same way.
-The macro probes the declared return type: an impl publishes its responses, and a missing impl
-leaves the operation without a success for the strict build to reject. There is no name-based
-fallback.
+This is the content contract for a success response. A built-in is special only because it
+implements the trait; a custom response type implements it once and is documented the same way.
+For a named return type the macro probes the declared type: an impl publishes its responses, and
+a missing impl leaves the operation without a success for the strict build to reject. For an
+opaque return type the build-time analyzer selects the site and the macro emits a typed call to
+this trait. There is no name-based fallback.
+
+### `DocumentedError`
+
+```rust
+pub trait DocumentedError {
+    fn responses(context: &mut dyn SchemaContext) -> Vec<ResponseDoc>;
+}
+```
+
+The failure counterpart. `Result<T, E>` requires `T: DocumentedResponse` and `E:
+DocumentedError`. `Problem` is one implementor; a custom enum can list every status it can
+produce. `?` documents `E`, not the error it converted, so return the specific error type when
+its statuses matter. The trait is contract-only, like `DocumentedResponse`: custom impls belong
+to the documentation build, and the contract harness compiles the application with `contract`
+unified.
+
+### `DocumentedIntoResponse`
+
+```rust
+pub trait DocumentedIntoResponse: IntoResponse + DocumentedResponse {
+    fn into_documented_response(self) -> Self { self }
+}
+```
+
+An identity marker for an opaque return site. The method changes no value; it tells the analyzer
+that this site is intentionally documentable. Under a non-`contract` build the documentation
+supertrait is compiled out and the method remains available, so handler source does not need
+`cfg`. A bare `.into_response()` is deliberately opaque and is not documented.
 
 ### `Params`, `ParamsDoc`, `ValidateHook`
 
@@ -300,6 +332,24 @@ pub async fn csv() -> Csv {
 }
 ```
 
+An error type implements the same shape under `DocumentedError`, and a handler returning
+`Result<T, E>` documents both sides:
+
+```rust
+impl DocumentedError for NoteMissing {
+    fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
+        vec![ResponseDoc::problem(404, "Note not found")]
+    }
+}
+
+#[handler]
+pub async fn show(...) -> Result<Json<Note>, NoteMissing> { ... }
+```
+
+An `impl IntoResponse` handler is documented from its body. Call `.into_documented_response()`
+on a documented value to mark the site; leave `.into_response()` for an intentionally opaque
+response. A site the analyzer cannot resolve is `x-roundhouse-unverified-response`.
+
 A declaration overrides only the status while keeping the type's body:
 
 ```rust
@@ -450,6 +500,9 @@ These traits are `#[doc(hidden)]` or live in `__private`. They are not extension
 
 - `ProbeResponses` discovers whether a declared return type implements `DocumentedResponse`, so a
   handler whose body type publishes no schema still compiles.
+- The handler index (`target/roundhouse/handlers.json`) is written by the `roundhouse-build`
+  analyzer. `#[handler]` reads it only when `ROUNDHOUSE_HANDLER_INDEX` is set and emits typed
+  trait calls; it is not a public extension point.
 - `ProbeArg`, `ProbeSchema` and the schema probes implement autoref specialization, because the
   macro cannot ask "does this unseen type implement X?" with a normal bound.
 - `ShimPolicy`, `ShimPolicyFor` and `SubstateOf` are the state/auth plumbing behind the generated

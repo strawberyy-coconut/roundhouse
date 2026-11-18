@@ -1,6 +1,7 @@
 //! `#[handler]` expansion: signature metadata, extractor docs and the route shim.
 
 mod args;
+mod index;
 mod response;
 mod signature;
 
@@ -161,7 +162,7 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
         Err(error) => return error.to_compile_error(),
     }
 
-    statements.extend(response_statements(&item.sig.output));
+    statements.extend(response_statements(&item));
 
     let path_names = match &path_type {
         Some(ty) => quote!(<#ty as #krate::doc::Params>::NAMES),
@@ -397,7 +398,11 @@ fn declared_response_statements(args: &HandlerArgs) -> syn::Result<Vec<TokenStre
                 quote! {
                     docs.push_declared_responses(
                         #status,
-                        <#ty as #krate::doc::DocumentedResponse>::responses(context),
+                        {
+                            use #krate::__private::ProbeDeclaredResponses as _;
+                            (&#krate::__private::DeclaredResponseProbe::<#ty>::new())
+                                .probe_declared_responses(context)
+                        },
                     );
                 }
             }

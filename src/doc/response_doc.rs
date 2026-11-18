@@ -100,11 +100,12 @@ pub fn bytes_response(status: u16) -> ResponseDoc {
     }
 }
 
-/// The responses a type can produce.
+/// The responses a success type can produce.
 ///
-/// This is the only source of response documentation. Implement it for a custom response type
+/// This is the content contract for a success response. Implement it for a custom response type
 /// to document it exactly as the built-ins do: the status, content type, body schema and headers
-/// all come from this impl.
+/// all come from this impl. [`DocumentedError`] is the failure counterpart; `Result<T, E>`
+/// combines both.
 ///
 /// A declaration such as `#[handler(response(201, Json<Note>))]` overrides only the status; the
 /// body, content type and headers still come from the type.
@@ -114,6 +115,25 @@ pub fn bytes_response(status: u16) -> ResponseDoc {
     note = "implement `roundhouse::doc::DocumentedResponse` for it, name a documented type such as `Json<T>`, or declare the response with `#[handler(response(status, Type))]`"
 )]
 pub trait DocumentedResponse {
+    fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc>;
+}
+
+/// The responses an error type can produce.
+///
+/// This is the failure counterpart of [`DocumentedResponse`]. A handler that returns
+/// `Result<T, E>` documents `T`'s success responses and `E`'s failures; `E` may be
+/// [`Problem`](crate::Problem), a custom error enum, or any other type that implements
+/// `IntoResponse` and this trait.
+///
+/// The document describes the type that leaves the handler. If `?` converts a specific error into
+/// a broader one, the broader type's impl is what gets documented; return the specific error type
+/// when its statuses matter.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` does not document an error response",
+    label = "this error type has no `DocumentedError` implementation",
+    note = "implement `roundhouse::doc::DocumentedError` for it, return `Problem`, or declare the responses with `#[handler(response(status, Type))]`"
+)]
+pub trait DocumentedError {
     fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc>;
 }
 
@@ -196,7 +216,13 @@ impl DocumentedResponse for std::convert::Infallible {
     }
 }
 
-impl<T: DocumentedResponse, E: DocumentedResponse> DocumentedResponse for Result<T, E> {
+impl DocumentedError for std::convert::Infallible {
+    fn responses(_components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
+        Vec::new()
+    }
+}
+
+impl<T: DocumentedResponse, E: DocumentedError> DocumentedResponse for Result<T, E> {
     fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         let mut responses = T::responses(components);
         responses.extend(E::responses(components));

@@ -7,9 +7,13 @@
 //!
 //! The traits here are the extension points the macros use:
 //!
-//! - `DocumentedResponse` — what a response type documents: status, content type, body schema and
+//! - `DocumentedResponse` — what a success type documents: status, content type, body schema and
 //!   headers. Built-ins implement it, and a custom response type can implement it exactly the same
 //!   way. There is no name-based fallback.
+//! - `DocumentedError` — the failure counterpart. `Result<T, E>` combines both; `Problem` is one
+//!   implementor, not a mandatory error type.
+//! - `DocumentedIntoResponse` — the identity marker behind `.into_documented_response()`, which
+//!   opts an opaque return site into documentation.
 //! - `ExtractDoc` — how an axum extractor contributes parameters, a body, auth or failures.
 //!   Route-level validation lives on [`ExtractArg`](crate::ExtractArg); implement both for a
 //!   custom extractor and no macro change is required.
@@ -86,6 +90,40 @@ pub use model::*;
 pub use params::*;
 #[cfg(feature = "contract")]
 pub use response_doc::*;
+
+/// Identity marker for a response that can be served and, in a contract build, documented.
+///
+/// `#[handler]` recognizes `.into_documented_response()` at a return site as an explicit request
+/// to document the receiver type. The method is a no-op: the value and its `IntoResponse` shape
+/// are unchanged. Under `contract` the trait also requires [`DocumentedResponse`]; production
+/// builds only require `IntoResponse`, so a handler can call the method in any build.
+#[cfg(feature = "contract")]
+pub trait DocumentedIntoResponse: axum::response::IntoResponse + DocumentedResponse {
+    fn into_documented_response(self) -> Self
+    where
+        Self: Sized,
+    {
+        self
+    }
+}
+
+#[cfg(feature = "contract")]
+impl<T: axum::response::IntoResponse + DocumentedResponse> DocumentedIntoResponse for T {}
+
+/// Production-build form of [`DocumentedIntoResponse`]: the documentation bound is compiled out,
+/// but the marker method stays available so handler source does not need `cfg`.
+#[cfg(not(feature = "contract"))]
+pub trait DocumentedIntoResponse: axum::response::IntoResponse {
+    fn into_documented_response(self) -> Self
+    where
+        Self: Sized,
+    {
+        self
+    }
+}
+
+#[cfg(not(feature = "contract"))]
+impl<T: axum::response::IntoResponse> DocumentedIntoResponse for T {}
 
 /// Split public prose into an operation summary and description.
 ///

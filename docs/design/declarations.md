@@ -84,10 +84,12 @@ a `ValidationContext` and the route policy's auth extractor; it validates after 
 then calls the handler. The marker is what lets `routes!` find the static facts without parsing
 the function again, and it is the diagnostic when `#[handler]` is missing.
 
-`#[handler]` reads the signature and doc attributes only. It never parses the function body, so a
-handler's implementation cannot change its documented response. Response structure comes from the
-return type's `DocumentedResponse` impl or an explicit declaration; see
-[The document](document.md).
+`#[handler]` reads the signature and doc attributes. For a named return type it probes the type's
+`DocumentedResponse` impl. For an opaque return type it reads the handler index produced by the
+build-time analyzer; the analyzer selects the type at each tail/`return` site, and the macro emits
+typed trait calls instead of guessing from syntax. A handler's implementation can therefore
+change an opaque handler's documented response, but only by changing the concrete type, and the
+compiler verifies the result. See [The document](document.md).
 
 The shim's extractor classification is syntactic, for wiring only: whether to wrap an argument in
 `Mapped`, the argument order (the auth extractor goes before the body), path names for `Path<T>`
@@ -119,10 +121,16 @@ The handler attribute owns the structured half:
 | `response_description(status, "text")` | Override one response description. |
 | `path(name, "text")` | Describe a path parameter with no field description. |
 
-`Type` must implement `roundhouse::doc::DocumentedResponse`; the declaration calls that impl and
-overrides only the status. Use `Json<T>` for a JSON body, `Problem` for problem+json, or a custom
-response type. A typed declaration that changes the shape of an already documented response needs
-`override_response`. `response(200, Note)` is not an implicit JSON wrapper.
+`Type` must implement `roundhouse::doc::DocumentedResponse` (a success shape) or
+`roundhouse::doc::DocumentedError` (a failure shape); the probe tries the success trait first and
+falls back to the error trait. The declaration calls that impl and overrides only the status. Use
+`Json<T>` for a JSON body, `Problem` for problem+json, or a custom response type. A typed
+declaration that changes the shape of an already documented response needs `override_response`.
+`response(200, Note)` is not an implicit JSON wrapper.
+
+`?` documents the handler's error type, not the expression it converts. A handler returning
+`Result<T, E>` documents `T` and `E`; converting a specific error into `Problem` documents
+`Problem`'s `default`. Return the specific error type when its statuses matter.
 
 `prose = include_str!(..)` on an entry fills summary and description from one string; it only
 fills fields the handler left empty. A `doc = |docs|` hook runs after the handler's contributions

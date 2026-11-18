@@ -10,10 +10,34 @@
   the CLI. A `build.rs` should depend on `roundhouse-build = "0.4"` and call
   `roundhouse_build::prepare()`. `cargo roundhouse init` migrates an existing generated
   `build.rs` and build-dependency; a hand-written build script needs the same two-line edit.
-- Source-level response inference was removed (`roundhouse-cli/src/semantic.rs` is gone).
-  Response documentation now comes from the return type's `DocumentedResponse` impl or an explicit
-  `#[handler(response(..))]` declaration. The contract build no longer inspects handler bodies,
-  and an unclassified outcome is the same strict-build failure as any other missing response.
+- Source-level response inference is no longer the source of response statuses or schemas. A
+  named return type is documented by its `DocumentedResponse` impl. An opaque
+  `impl IntoResponse` return is resolved by a build-time analyzer that only selects the concrete
+  type at each tail/`return` site; the macro emits typed trait calls and the compiler verifies
+  them. A site the analyzer cannot resolve is `x-roundhouse-unverified-response`, and an
+  operation with no success is still a strict-build failure.
+- `Result<T, E>` now requires `E: DocumentedError`, not `E: DocumentedResponse`. `Problem`
+  implements both, but a custom error type needs a `DocumentedError` impl. The impl is
+  contract-only, like `DocumentedResponse`.
+- `.into_response()` is not documented automatically. It erases the response type; use
+  `.into_documented_response()` on a documented value or an explicit `#[handler(response(..))]`
+  declaration.
+
+### Added
+
+- `DocumentedError` documents a failure type's statuses, content types, bodies and headers.
+  `Result<T, E>` combines it with `DocumentedResponse`; `Problem` is one implementor rather than a
+  mandatory error type. `?` documents the handler's error type, not the source of the conversion.
+- Opaque `impl IntoResponse` and `impl DocumentedResponse` handlers are documented from their
+  bodies. `roundhouse-build::prepare` analyzes the library before the harness, writes
+  `target/roundhouse/handlers.json`, and `#[handler]` reads that index at expansion time to emit
+  typed `DocumentedResponse` / `DocumentedError` calls. Helper and method return types are
+  inferred through a witness, so the document does not depend on a type being imported in the
+  handler's module.
+- `.into_documented_response()` is an identity marker for an opaque return site. It keeps the
+  value and asks the analyzer to document the receiver's type.
+- `#[handler(response(status, Type))]` accepts a `DocumentedError`-only type: the declaration
+  probe tries `DocumentedResponse` first and falls back to `DocumentedError`.
 
 ## 0.4.0 — 2026-11-16
 

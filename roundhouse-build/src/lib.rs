@@ -39,6 +39,12 @@
 //! `.roundhouse/` is written. Generation is one strict build: a handler with no documented
 //! success fails `prepare` instead of being guessed. The harness run sets
 //! `ROUNDHOUSE_BUILDING_CONTRACT`, so an application build script does not recurse.
+//!
+//! Before the harness runs, [`analyze`] parses the library and writes
+//! `target/roundhouse/handlers.json`. `#[handler]` reads that index to document opaque
+//! `impl IntoResponse` returns; the generated typed calls are verified by the compiler. [`prepare`]
+//! also exports the index path with `cargo:rustc-env`, so the crate's own compile sees the same
+//! data as the harness. Named return types do not use the index at all.
 
 use std::error::Error;
 use std::ffi::OsString;
@@ -47,6 +53,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::Value;
+
+pub mod analyze;
 
 /// The directory `prepare` writes to by default.
 pub const ARTIFACT_DIR: &str = ".roundhouse";
@@ -77,7 +85,20 @@ const PLACEHOLDER_OPENAPI: &str = r#"{
 ///
 /// This is the `build.rs` entry point. It never edits `src/` or `Cargo.toml`.
 pub fn prepare() -> Result<(), Box<dyn Error>> {
-    prepare_to(PathBuf::from(ARTIFACT_DIR))
+    let cwd = std::env::current_dir()?;
+    prepare_to(PathBuf::from(ARTIFACT_DIR))?;
+    // Make the index available to the crate's own compile as well. The generated documentation
+    // code only exists under `contract`, but the env is harmless in a production build and keeps
+    // the macro's lookup consistent between the harness and the normal crate compile.
+    let index = cwd
+        .join("target")
+        .join("roundhouse")
+        .join(analyze::INDEX_FILE);
+    println!(
+        "cargo:rustc-env=ROUNDHOUSE_HANDLER_INDEX={}",
+        index.display()
+    );
+    Ok(())
 }
 
 /// Generate the contract into `out`, relative to the current directory.
@@ -99,7 +120,10 @@ pub fn prepare_to(out: PathBuf) -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(&default)?;
         ensure_artifacts(&default)?;
     }
-    generate(&out)
+    let cwd = std::env::current_dir()?;
+    let index = analyze::analyze(&cwd)?;
+    let index_path = analyze::write_index(&cwd, &index)?;
+    generate(&out, &index_path, &cwd)
 }
 
 /// Write empty, valid artifacts when they do not exist yet.
@@ -116,10 +140,9 @@ fn ensure_artifacts(out: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 /// Run the strict contract build once.
-fn generate(out: &Path) -> Result<(), Box<dyn Error>> {
-    let cwd = std::env::current_dir()?;
+fn generate(out: &Path, index_path: &Path, cwd: &Path) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(cwd.join("target"))?;
-    run_contract_bin(out)
+    run_contract_harness(out, index_path, cwd)
 }
 
 /// Build and run the contract binary under `target/roundhouse`.
@@ -127,8 +150,7 @@ fn generate(out: &Path) -> Result<(), Box<dyn Error>> {
 /// The harness depends on the application crate and on `roundhouse` with the `contract` feature.
 /// Feature unification makes the application's `api!` block visible for this build only. Nothing
 /// outside `target/` is written.
-fn run_contract_harness(out: &Path) -> Result<(), Box<dyn Error>> {
-    let cwd = std::env::current_dir()?;
+fn run_contract_harness(out: &Path, index_path: &Path, cwd: &Path) -> Result<(), Box<dyn Error>> {
     let package = package_info()?;
     let roundhouse = roundhouse_dependency()?;
     let harness = cwd.join("target").join("roundhouse").join("harness");
@@ -171,7 +193,7 @@ fn run_contract_harness(out: &Path) -> Result<(), Box<dyn Error>> {
         .arg(harness.join("Cargo.toml"))
         .arg("--")
         .arg(out)
-        .current_dir(&cwd)
+        .current_dir(cwd)
         // Keep the harness build inside the application's target directory; `target/` is
         // disposable, and the source tree stays untouched.
         .env("CARGO_TARGET_DIR", cwd.join("target").join("roundhouse"))
@@ -179,6 +201,7 @@ fn run_contract_harness(out: &Path) -> Result<(), Box<dyn Error>> {
         // `prepare()` again. This guard makes contract generation re-entrant-safe.
         .env("ROUNDHOUSE_BUILDING_CONTRACT", "1")
         .env("ROUNDHOUSE_AUTO_CONTRACT", "0")
+        .env("ROUNDHOUSE_HANDLER_INDEX", index_path)
         .status()?;
     if !status.success() {
         return Err(error(
@@ -226,10 +249,6 @@ fn roundhouse_dependency() -> Result<RoundhouseDependency, Box<dyn Error>> {
 struct RoundhouseDependency {
     path: Option<PathBuf>,
     version: String,
-}
-
-fn run_contract_bin(out: &Path) -> Result<(), Box<dyn Error>> {
-    run_contract_harness(out)
 }
 
 fn package_info() -> Result<PackageInfo, Box<dyn Error>> {

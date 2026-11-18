@@ -308,10 +308,16 @@ cannot represent them.
 ### Extending the document
 
 Extractors stay axum's. Implement `roundhouse::ExtractArg` for route-level validation and, under
-`contract`, `roundhouse::doc::ExtractDoc` to document the argument. A custom response type
-implements `roundhouse::doc::DocumentedResponse`; implementing `IntoResponse` alone leaves the
-outcome unknown. An `impl IntoResponse` handler, or a response type with no documentation impl,
-needs an explicit `#[handler(response(..))]` declaration naming documented types.
+`contract`, `roundhouse::doc::ExtractDoc` to document the argument. A custom success type
+implements `roundhouse::doc::DocumentedResponse`; a custom error type implements
+`roundhouse::doc::DocumentedError`. Implementing `IntoResponse` alone leaves the outcome unknown.
+
+An `impl IntoResponse` handler is documented from its body: the build-time analyzer resolves the
+tail and `return` expressions, and the macro emits typed trait calls that the compiler verifies.
+An expression it cannot resolve marks the operation `x-roundhouse-unverified-response` and the
+strict build rejects it unless `#[handler(response(..))]` supplies the missing status. A chain
+ending in `.into_response()` is deliberately opaque; call `.into_documented_response()` on a
+documented value to opt that site in, or use an explicit declaration.
 
 An extractor without an `ExtractDoc` impl (or a body type without `ApiSchema`) is still accepted,
 but the operation is marked `x-roundhouse-unverified-extractor`/`-body` and the strict build
@@ -433,11 +439,13 @@ should verify signatures, expiry, audience and issuer with a maintained library 
 
 ## Errors
 
-`Problem` is the error body for malformed JSON, rejected extractors, failed constraints, unmatched
-routes (`404`) and unsupported methods (`405`).
+`Problem` is the default error body for malformed JSON, rejected extractors, failed constraints,
+unmatched routes (`404`) and unsupported methods (`405`). It is a helper, not a requirement:
+handlers may return any error type that implements `IntoResponse` and
+`roundhouse::doc::DocumentedError`.
 
-Handlers use named response types so the document comes from their traits, and `Problem` is the
-universal error body:
+Named response types come from their traits. The example below returns `Problem`, which documents
+OpenAPI's catch-all `default` response:
 
 ```rust
 /// @response 200: The stored note.
@@ -461,9 +469,17 @@ pub async fn show(
 - A blanket `From<E> for Problem` turns infrastructure errors into `500`; `?` works without an
   `InternalError` enum.
 - `Created<T>` and `NoContent` cover the common created/no-content responses.
-- A custom response type implements `roundhouse::doc::DocumentedResponse`. An
-  `impl IntoResponse` handler needs `#[handler(response(..))]` because its concrete type cannot be
-  named. `doc = |docs|` remains the escape hatch for hand-written prose, headers or metadata.
+- A custom success type implements `roundhouse::doc::DocumentedResponse`; a custom error implements
+  `roundhouse::doc::DocumentedError`. Both compile only under `contract`, like the rest of the
+  documentation surface.
+- `?` documents the handler's error type `E`, not the source of the question mark. If
+  `From<DbError> for Problem` drops a status, the document says `Problem`'s `default`; return
+  `DbError` when its statuses matter.
+- An `impl IntoResponse` handler is documented from its body. A bare `.into_response()` is opaque
+  and is not documented; `.into_documented_response()` opts the receiver in.
+- `#[handler(response(..))]` remains the escape hatch for a response the analyzer cannot resolve or
+  an intentionally undocumented path. `doc = |docs|` handles hand-written prose, headers or
+  metadata.
 
 `App::document_rejections(false)` disables automatic extractor rejection responses, leaving only
 the responses supplied by handlers and declarations.

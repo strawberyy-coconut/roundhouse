@@ -27,6 +27,7 @@ roundhouse::routes! {
     prefix = "/v1",
     "/notes" => { get(list), post(create) },
     "/notes/{id}" => { get(show) },
+    "/opaque" => { get(opaque) },
 }
 
 #[handler]
@@ -44,6 +45,13 @@ pub async fn show(Path(id): Path<u64>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "id": id }))
 }
 
+#[handler]
+pub async fn opaque() -> impl IntoResponse {
+    Json(Note {
+        title: "opaque".to_string(),
+    })
+}
+
 pub fn app() -> roundhouse::Built {
     // No contract artifact ships with this fixture; turn validation off explicitly.
     roundhouse::app!(AppState)
@@ -56,7 +64,7 @@ mod tests {
     #[test]
     fn the_runtime_builds_routes_without_a_contract() {
         let built = super::app();
-        assert_eq!(built.routes().len(), 3);
+        assert_eq!(built.routes().len(), 4);
     }
 
     #[test]

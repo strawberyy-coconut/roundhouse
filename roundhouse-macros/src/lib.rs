@@ -321,17 +321,27 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// - `StatusCode` — the OpenAPI `default` response, because the status is chosen at runtime;
 /// - `(StatusCode, Body)` — the `default` response. Other tuples are not classified; declare
 ///   them with `#[handler(response(..))]`;
-/// - `Result<T, E>` — `T`'s success response plus whatever `E` documents. Use `Problem` (or
-///   declare the error responses with `#[handler(response(..))]`); otherwise the build reports an
-///   undocumented error.
+/// - `Result<T, E>` — `T`'s success response plus `E`'s failures. `E` must implement
+///   `DocumentedError`; `Problem` is one implementation, not a requirement.
 ///
-/// For any other `IntoResponse` type, declare the response on the handler with
-/// `#[handler(response(..))]`. An operation with no documented success response is a build error.
+/// An opaque `impl IntoResponse` return is documented from the handler body. `roundhouse-build`
+/// analyzes the tail and `return` expressions before the contract harness compiles the crate,
+/// and the macro emits typed trait calls that the compiler verifies. A site the analyzer cannot
+/// resolve is marked `x-roundhouse-unverified-response`. A chain ending in `.into_response()` is
+/// deliberately opaque; call `.into_documented_response()` on a documented value to opt that
+/// site in.
+///
+/// Any other response can be declared with `#[handler(response(..))]`. An operation with no
+/// documented success response is a build error.
 ///
 /// # Limitations
 ///
 /// Handlers cannot be generic, and the attribute cannot be applied to a method inside an `impl`
 /// block. Use `#[handler]` on a free function.
+///
+/// Opaque-return analysis needs the `roundhouse-build` pre-pass; a handler compiled without it
+/// contributes no inferred responses and relies on an explicit declaration. Opaque error types
+/// (`Result<T, impl DocumentedError>`) are marked unverified rather than inferred.
 ///
 /// The handler's doc block carries prose: `@summary:` (ends at a blank line) and `@description:`
 /// (keeps paragraphs). Untagged prose stays rustdoc-only; use `prose = include_str!(..)` on the

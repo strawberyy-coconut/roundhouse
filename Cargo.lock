@@ -1314,7 +1314,11 @@ dependencies = [
 name = "roundhouse-build"
 version = "0.4.0"
 dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
  "serde_json",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -1343,6 +1347,8 @@ dependencies = [
  "proc-macro2",
  "quote",
  "roundhouse-path",
+ "serde",
+ "serde_json",
  "syn 2.0.119",
 ]
 
