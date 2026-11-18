@@ -284,7 +284,7 @@ where
     /// Serve a Swagger UI page at `/docs` over the generated document.
     ///
     /// This implies the document route: a UI without a document is a broken page. With the
-    /// `swagger` feature (enabled by default), the CSS, JavaScript and OAuth assets are served by
+    /// `swagger-ui` feature (enabled by default), the CSS, JavaScript and OAuth assets are served by
     /// this app, so the page works in an air-gapped deployment. Use [`App::docs_cdn`] to load the
     /// pinned unpkg assets instead.
     #[cfg(feature = "contract")]
@@ -309,7 +309,7 @@ where
     /// Load the docs UI assets from unpkg instead of serving them locally.
     ///
     /// The unpkg assets are pinned and SRI-checked, but the browser needs network access. Without
-    /// the `swagger` feature this is the only available mode, so the call is a no-op there.
+    /// the `swagger-ui` feature this is the only available mode, so the call is a no-op there.
     #[cfg(feature = "contract")]
     pub fn docs_cdn(mut self) -> Self {
         self.docs_cdn = true;

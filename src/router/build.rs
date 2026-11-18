@@ -178,32 +178,35 @@ where
         })
     }
 
+    #[cfg(not(feature = "contract"))]
     fn serves_openapi(&self) -> bool {
-        #[cfg(not(feature = "contract"))]
-        {
-            return false;
-        }
-        #[cfg(all(feature = "contract", not(feature = "build")))]
-        {
-            #[cfg(feature = "swagger-ui")]
-            let swagger = self.swagger_route.is_some();
-            #[cfg(not(feature = "swagger-ui"))]
-            let swagger = false;
-            self.contract_bundle.is_some()
-                && (self.openapi_route.is_some() || self.docs_route.is_some() || swagger)
-        }
-        #[cfg(feature = "build")]
-        {
-            #[cfg(feature = "swagger-ui")]
-            let swagger = self.swagger_route.is_some();
-            #[cfg(not(feature = "swagger-ui"))]
-            let swagger = false;
+        false
+    }
 
-            self.info.is_some()
-                || self.openapi_route.is_some()
-                || self.docs_route.is_some()
-                || swagger
-        }
+    /// Whether the app serves any generated documentation route.
+    ///
+    /// A `build` app knows its own declarations, so a declared document or docs UI is enough. A
+    /// `contract`-only app can only serve documentation whose artifact it actually embeds.
+    #[cfg(feature = "contract")]
+    fn serves_openapi(&self) -> bool {
+        #[cfg(feature = "swagger-ui")]
+        let swagger = self.swagger_route.is_some();
+        #[cfg(not(feature = "swagger-ui"))]
+        let swagger = false;
+
+        #[cfg(feature = "build")]
+        let declares_info = self.info.is_some();
+        #[cfg(not(feature = "build"))]
+        let declares_info = false;
+
+        let declares_ui = self.openapi_route.is_some() || self.docs_route.is_some() || swagger;
+
+        serves_openapi_rule(
+            cfg!(feature = "build"),
+            self.contract_bundle.is_some(),
+            declares_info,
+            declares_ui,
+        )
     }
 
     fn report_merges(
@@ -311,79 +314,18 @@ where
             .collect()
     }
 
-    #[cfg(feature = "build")]
     fn assemble_app(
         self,
         resolved: &[ResolvedRoute],
         schema_engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
     ) -> Result<Router<()>, BuildError> {
-        let serve_openapi = self.serves_openapi();
         let mut router = self.assemble(resolved, schema_engine.as_ref())?;
 
         for merged in &self.merges {
             router = merge_router(router, merged.router.clone(), merged.source)?;
         }
 
-        if serve_openapi
-            && let Some(path) = self.openapi_route
-            && let Some(bundle) = self.contract_bundle
-        {
-            let body = bundle.openapi;
-            router = add_get_route(
-                router,
-                path,
-                move || async move {
-                    let mut response = axum::response::Response::new(axum::body::Body::from(body));
-                    response.headers_mut().insert(
-                        axum::http::header::CONTENT_TYPE,
-                        axum::http::HeaderValue::from_static("application/json"),
-                    );
-                    response
-                },
-                crate::build_error::Source::new("App::openapi_route", "<app>", 0),
-            )?;
-        }
-
-        if serve_openapi && let Some(docs_path) = self.docs_route {
-            let spec_path = self.openapi_route.unwrap_or("/openapi.json");
-            #[cfg(feature = "swagger-ui")]
-            {
-                if !self.docs_cdn {
-                    router = add_swagger_routes(router, spec_path, docs_path)?;
-                } else {
-                    let html = docs_html(spec_path);
-                    router = add_get_route(
-                        router,
-                        docs_path,
-                        move || {
-                            let html = html.clone();
-                            async move { axum::response::Html(html) }
-                        },
-                        crate::build_error::Source::new("App::docs_route", "<app>", 0),
-                    )?;
-                }
-            }
-            #[cfg(not(feature = "swagger-ui"))]
-            {
-                let _ = self.docs_cdn;
-                let html = docs_html(spec_path);
-                router = add_get_route(
-                    router,
-                    docs_path,
-                    move || {
-                        let html = html.clone();
-                        async move { axum::response::Html(html) }
-                    },
-                    crate::build_error::Source::new("App::docs_route", "<app>", 0),
-                )?;
-            }
-        }
-
-        #[cfg(feature = "swagger-ui")]
-        if serve_openapi && let Some(swagger_path) = self.swagger_route {
-            let spec_path = self.openapi_route.unwrap_or("/openapi.json");
-            router = add_swagger_routes(router, spec_path, swagger_path)?;
-        }
+        router = self.add_document_routes(router)?;
 
         // A served response is part of the contract: a method mismatch uses the same Problem
         // shape as the 404 fallback instead of axum's empty default body. Applying this after
@@ -403,16 +345,16 @@ where
         self.finish(router, schema_engine)
     }
 
-    #[cfg(all(feature = "contract", not(feature = "build")))]
-    fn assemble_app(
-        self,
-        resolved: &[ResolvedRoute],
-        schema_engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
-    ) -> Result<Router<()>, BuildError> {
-        let mut router = self.assemble(resolved, schema_engine.as_ref())?;
-
-        for merged in &self.merges {
-            router = merge_router(router, merged.router.clone(), merged.source)?;
+    /// Register the generated document, the docs UI and the self-hosted Swagger UI.
+    ///
+    /// This is the one block that differs by feature, so it is the seam the `#[cfg]` variants
+    /// patch instead of duplicating the whole assembly step. It honours
+    /// [`App::serves_openapi`]: a route that would point at a document the app does not have is
+    /// not served.
+    #[cfg(feature = "contract")]
+    fn add_document_routes(&self, mut router: Router<()>) -> Result<Router<()>, BuildError> {
+        if !self.serves_openapi() {
+            return Ok(router);
         }
 
         if let Some(path) = self.openapi_route
@@ -475,48 +417,12 @@ where
             router = add_swagger_routes(router, spec_path, swagger_path)?;
         }
 
-        router = router.method_not_allowed_fallback(|| async {
-            Problem::new(
-                axum::http::StatusCode::METHOD_NOT_ALLOWED,
-                "Method Not Allowed",
-            )
-            .detail("this path does not accept the request method")
-        });
-
-        if let Some(max) = self.max_body {
-            router = router.layer(axum::extract::DefaultBodyLimit::max(max));
-        }
-
-        self.finish(router, schema_engine)
+        Ok(router)
     }
 
     #[cfg(not(feature = "contract"))]
-    fn assemble_app(
-        self,
-        resolved: &[ResolvedRoute],
-        schema_engine: Option<Arc<roundhouse_schema::engine::SchemaEngine>>,
-    ) -> Result<Router<()>, BuildError> {
-        let mut router = self.assemble(resolved, schema_engine.as_ref())?;
-
-        for merged in &self.merges {
-            router = merge_router(router, merged.router.clone(), merged.source)?;
-        }
-
-        // A served response is part of the contract: a method mismatch uses the same Problem
-        // shape as the 404 fallback instead of axum's empty default body.
-        router = router.method_not_allowed_fallback(|| async {
-            Problem::new(
-                axum::http::StatusCode::METHOD_NOT_ALLOWED,
-                "Method Not Allowed",
-            )
-            .detail("this path does not accept the request method")
-        });
-
-        if let Some(max) = self.max_body {
-            router = router.layer(axum::extract::DefaultBodyLimit::max(max));
-        }
-
-        self.finish(router, schema_engine)
+    fn add_document_routes(&self, router: Router<()>) -> Result<Router<()>, BuildError> {
+        Ok(router)
     }
 
     fn finish(
@@ -579,7 +485,7 @@ where
     /// Build and serve on `addr`, without a graceful-shutdown signal.
     ///
     /// Use [`App::serve_with`] to stop accepting connections and let in-flight requests finish
-    /// when the supplied shutdown future resolves. This method is available with the `serve`
+    /// when the supplied shutdown future resolves. This method is available with the `server`
     /// feature, which is enabled by default.
     #[cfg(feature = "server")]
     pub async fn serve(self, addr: impl Into<String>) -> std::io::Result<()> {
@@ -594,7 +500,7 @@ where
     /// }).await?;
     /// ```
     ///
-    /// This method is available with the `serve` feature, which is enabled by default.
+    /// This method is available with the `server` feature, which is enabled by default.
     #[cfg(feature = "server")]
     pub async fn serve_with<F>(self, addr: impl Into<String>, shutdown: F) -> std::io::Result<()>
     where
@@ -766,6 +672,26 @@ where
     }
 }
 
+/// The routing rule behind [`App::serves_openapi`].
+///
+/// A `build` app assembles the document in-process, so declaring a document or a docs UI is enough
+/// even before a contract exists. A `contract`-only app can only serve the artifact it embeds: a
+/// docs route without a bundle would render a page pointing at a missing spec, so it is not
+/// registered.
+#[cfg(feature = "contract")]
+fn serves_openapi_rule(
+    build: bool,
+    has_bundle: bool,
+    declares_info: bool,
+    declares_ui: bool,
+) -> bool {
+    if build {
+        declares_info || declares_ui
+    } else {
+        has_bundle && declares_ui
+    }
+}
+
 /// Serve an already-bound listener with connection metadata installed.
 ///
 /// `axum::serve(listener, router)` does not insert `ConnectInfo`; the
@@ -831,5 +757,33 @@ mod tests {
 
         server.abort();
         let _ = server.await;
+    }
+}
+
+#[cfg(all(test, feature = "contract"))]
+mod openapi_rule_tests {
+    use super::serves_openapi_rule;
+
+    #[test]
+    fn a_build_app_serves_declared_documentation_without_a_bundle() {
+        assert!(serves_openapi_rule(true, false, true, false));
+        assert!(serves_openapi_rule(true, false, false, true));
+        assert!(serves_openapi_rule(true, true, false, true));
+    }
+
+    #[test]
+    fn a_build_app_without_a_document_declaration_serves_nothing() {
+        assert!(!serves_openapi_rule(true, true, false, false));
+        assert!(!serves_openapi_rule(true, false, false, false));
+    }
+
+    #[test]
+    fn a_contract_app_serves_only_an_embedded_document() {
+        assert!(serves_openapi_rule(false, true, false, true));
+        // Contract-only + validation off + no bundle: there is no document to show, so a docs
+        // route is not registered instead of rendering a page that points at a missing spec.
+        assert!(!serves_openapi_rule(false, false, false, true));
+        assert!(!serves_openapi_rule(false, false, true, true));
+        assert!(!serves_openapi_rule(false, false, false, false));
     }
 }

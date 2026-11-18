@@ -12,5 +12,7 @@ help: the trait `Authenticate` is not implemented for `NotAScheme`
 note: required by a bound in `AuthGuard::__new`
  --> src/auth.rs
   |
+  | impl AuthGuard {
+...
   |     pub const fn __new<A: Authenticate>() -> Self {
   |                           ^^^^^^^^^^^^ required by this bound in `AuthGuard::__new`

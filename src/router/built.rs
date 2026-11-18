@@ -99,7 +99,6 @@ impl Built {
     }
 
     #[cfg(feature = "build")]
-    #[cfg(feature = "build")]
     pub fn openapi_json(&self) -> String {
         self.contract_openapi.unwrap_or_default().to_string()
     }

@@ -9,7 +9,6 @@ description = "The roundhouse example app: a small notes API declared with route
 axum = "0.8"
 roundhouse = { path = "../..", default-features = false, features = ["contract", "server", "swagger-ui"] }
 serde = { version = "1", features = ["derive"] }
-thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tower-http = { version = "0.7", features = ["trace"] }
 tracing = "0.1"
