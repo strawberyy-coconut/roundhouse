@@ -895,6 +895,7 @@ dependencies = [
  "http",
  "http-body-util",
  "roundhouse",
+ "roundhouse-build",
  "serde",
  "serde_json",
  "tokio",

@@ -101,8 +101,11 @@ impl roundhouse::doc::DocumentedResponse for Csv {
 ```
 
 Errors are documented by `DocumentedError`. `Result<T, E>` requires `T: DocumentedResponse` and
-`E: DocumentedError`; the builder merges both. `?` contributes nothing on its own: it converts
-into `E`, and the document describes `E`. If `From<DbError> for Problem` maps a specific error to
+`E: DocumentedError`; the builder merges both. The distinction is the path, not the status code:
+a normal `return`/tail is a response and uses `DocumentedResponse`; `?` is an error path and uses
+the handler's `E: DocumentedError`. Each trait impl chooses its own statuses; the analyzer never
+infers a code from the expression. `?` contributes nothing on its own: it converts into `E`, and
+the document describes `E`. If `From<DbError> for Problem` maps a specific error to
 the catch-all, return `DbError` (or a union enum) when its statuses matter.
 
 `Problem` is one implementor, not the mandatory error type. A custom documentation impl is
@@ -127,7 +130,9 @@ impl roundhouse::doc::DocumentedError for NoteMissing {
 ```
 
 A site the analyzer cannot resolve marks the operation `x-roundhouse-unverified-response`; the
-strict build rejects an operation with no success. `.into_response()` is deliberately opaque and
+strict build rejects an operation with no success. `examples/notes` is the end-to-end reference:
+`routes/notes.rs` uses `?` on two different error types, and `error.rs` documents both with
+`#[roundhouse::build_only]` `DocumentedError` impls. `.into_response()` is deliberately opaque and
 is not documented. Call `.into_documented_response()` on a documented value to opt that site in.
 An explicit declaration remains the escape hatch:
 

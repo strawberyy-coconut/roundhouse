@@ -588,15 +588,18 @@ Run any example from the repository root:
 | Command | Port | What it demonstrates |
 |---|---|---|
 | `cargo quickstart` | 3000 | The smallest app: one library, one table, schemas and a server |
-| `cargo notes` | 3001 | Multi-file module composition, schemas and errors |
+| `cargo notes` | 3001 | Multi-file composition, response inference, `?` errors and custom `DocumentedError` |
 | `cargo layers` | 3002 | Global, module and entry layers; fallback; embedding |
 | `cargo uploads` | 3003 | Multipart, `TempFile`, attachments, SSE and the docs UI |
 | `cargo auth` | 3004 | Scopes, optional auth, two-scheme AND and the auth guard |
 
 `examples/quickstart` is the smallest starting point; `examples/notes` shows the multi-file
-layout. Each example commits its `.roundhouse/` artifacts and builds production with
-`contract`, so `cargo tree -p <example>` has no utoipa; the examples that read the typed
-document enable `build` in their dev-dependencies. Run `cargo roundhouse check` inside an
+layout and the full response-inference pattern: opaque `impl IntoResponse` successes, `?` on two
+different error types, custom `DocumentedError` impls marked with
+`#[roundhouse::build_only]`, and a build script that generates the handler index. Each example
+commits its `.roundhouse/` artifacts and builds production with `contract`, so
+`cargo tree -p <example>` has no utoipa; the examples that read the typed document enable
+`build` in their dev-dependencies. Run `cargo roundhouse check` inside an
 example after changing handlers.
 Detailed feature coverage lives in the crate's integration tests. The route, schema,
 validation, auth and layering contracts are exercised there without a runnable example for every

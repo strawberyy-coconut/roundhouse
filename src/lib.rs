@@ -155,19 +155,61 @@
 //! build, set `default-features = false` and select `contract` (plus `server`/`swagger-ui`);
 //! the build-time `build` feature is only needed by the contract harness.
 //!
-//! A custom `DocumentedResponse` or `DocumentedError` impl uses documentation-only types. Mark
-//! it with `#[roundhouse::build_only]` so a production `contract` build compiles it out:
+//! ## Response inference
+//!
+//! Opaque response types are documented from the handler body. The build-time analyzer resolves
+//! each tail and `return` expression, and `#[handler]` emits typed trait calls that the compiler
+//! verifies:
 //!
 //! ```ignore
-//! #[roundhouse::build_only]
-//! impl roundhouse::doc::DocumentedError for DbError {
-//!     fn responses(
-//!         context: &mut dyn roundhouse::doc::SchemaContext,
-//!     ) -> Vec<roundhouse::doc::ResponseDoc> {
-//!         // ...
+//! use roundhouse::doc::{DocumentedError, ResponseDoc, SchemaContext};
+//! use roundhouse::prelude::*;
+//!
+//! #[derive(Debug)]
+//! pub struct NoteMissing;
+//!
+//! impl IntoResponse for NoteMissing {
+//!     fn into_response(self) -> Response {
+//!         (StatusCode::NOT_FOUND, "note not found").into_response()
 //!     }
 //! }
+//!
+//! #[roundhouse::build_only]
+//! impl DocumentedError for NoteMissing {
+//!     fn responses(_context: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
+//!         vec![ResponseDoc::problem(404, "Note not found")]
+//!     }
+//! }
+//!
+//! #[handler]
+//! pub async fn show(
+//!     State(app): State<AppState>,
+//!     Path(id): Path<u64>,
+//! ) -> Result<impl IntoResponse, NoteMissing> {
+//!     let note = app.load(id)?;   // `?` propagates NoteMissing; its impl documents 404
+//!     Ok(Json(note))              // inferred as Json<Note>; its impl documents 200
+//! }
 //! ```
+//!
+//! The document contains `200` from `Json<Note>`'s `DocumentedResponse` impl, `400` from the
+//! path extractor, and `404` from `NoteMissing`'s `DocumentedError` impl. A normal return is a
+//! response; a `?` is an error path. The path is the distinction, not the status code: each
+//! trait impl chooses its own statuses. `?` does not add a status of its own; it converts into
+//! the handler's error type `E`, and `E: DocumentedError` supplies the failure response. If a
+//! `?` converts a specific error into `Problem`, the document says `Problem`'s `default`; return
+//! the specific error type when its statuses matter.
+//!
+//! A direct `impl IntoResponse` handler (without `Result`) is inferred the same way for its tail
+//! and `return` expressions. A chain ending in `.into_response()` is deliberately opaque and is
+//! not documented; call `.into_documented_response()` on a documented value to opt that site in.
+//! A site the analyzer cannot resolve marks the operation `x-roundhouse-unverified-response`;
+//! an operation with no success still fails the strict build. `#[handler(response(..))]` remains
+//! the escape hatch.
+//!
+//! `IntoResponse` is compiled in every build. `#[roundhouse::build_only]` drops the
+//! `DocumentedError` impl from a production `contract` build, so the documentation types and
+//! utoipa are not required there. The contract harness compiles it with `build` and fills in the
+//! response.
 //!
 //! `use roundhouse::prelude::*;` is the normal import. utoipa names are `build`-only
 //! plumbing; the supported integration surface is `interop`. Response documentation is public:

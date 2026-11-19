@@ -22,6 +22,10 @@
 //! - `ResponseDoc` and `layer` — hand-written responses and documented layer guarantees.
 //! - `validate_document` — the structural check every build runs over the finished document.
 //!
+//! Opaque handler returns (`impl IntoResponse`, `Result<impl IntoResponse, E>`) are documented
+//! from the body; see [`#[handler]`](macro@crate::handler) for the inference rules and the
+//! `?`/`DocumentedError` pattern.
+//!
 //! A custom documentation impl depends on types in this module, so it must be compiled only when
 //! the `build` feature is on. Wrap it with `#[roundhouse::build_only]`; a production build that
 //! compiles only `contract` then drops the impl instead of failing to resolve the types.

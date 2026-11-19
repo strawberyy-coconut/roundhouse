@@ -187,6 +187,70 @@
             },
             "description": "Bad Request"
           },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "errors": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "limit": {},
+                          "message": {
+                            "type": "string"
+                          },
+                          "pointer": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "pointer",
+                          "code",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "instance": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "maximum": 599,
+                      "minimum": 100,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Note already exists"
+          },
           "415": {
             "content": {
               "application/problem+json": {
@@ -250,6 +314,70 @@
               }
             },
             "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "properties": {
+                    "detail": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "errors": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "limit": {},
+                          "message": {
+                            "type": "string"
+                          },
+                          "pointer": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "pointer",
+                          "code",
+                          "message"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "instance": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "maximum": 599,
+                      "minimum": 100,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Invalid title"
           }
         },
         "summary": "Create a note",
@@ -411,70 +539,6 @@
               }
             },
             "description": "The requested note does not exist."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "properties": {
-                    "detail": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "errors": {
-                      "items": {
-                        "properties": {
-                          "code": {
-                            "type": "string"
-                          },
-                          "limit": {},
-                          "message": {
-                            "type": "string"
-                          },
-                          "pointer": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "pointer",
-                          "code",
-                          "message"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "instance": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "status": {
-                      "maximum": 599,
-                      "minimum": 100,
-                      "type": "integer"
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "type": {
-                      "format": "uri",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "type",
-                    "title",
-                    "status"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error"
           }
         },
         "summary": "Read a note",

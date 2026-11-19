@@ -1,6 +1,7 @@
 use roundhouse::prelude::*;
 
 use crate::domain::{NewNote, Note, NoteId};
+use crate::error::{CreateNoteError, InvalidTitle, MissingNote};
 use crate::state::AppState;
 
 /// @summary: List notes
@@ -11,24 +12,37 @@ pub async fn list(State(app): State<AppState>) -> Json<Vec<Note>> {
 
 /// @summary: Create a note
 #[handler]
-pub async fn create(State(app): State<AppState>, Json(body): Json<NewNote>) -> Created<Note> {
-    let note = app.create(body.title, body.body);
-    Created(note)
+pub async fn create(
+    State(app): State<AppState>,
+    Json(body): Json<NewNote>,
+) -> Result<impl IntoResponse, CreateNoteError> {
+    // Two different `?` sources: the title check and the store's duplicate check. Both convert
+    // into `CreateNoteError`; its `DocumentedError` impl chooses the 422 and 409 responses.
+    // The `?` path is the error path; normal returns are responses.
+    let title = validate_title(body.title)?;
+    let note = app.create(title, body.body)?;
+    Ok(Created(note))
+}
+
+fn validate_title(title: String) -> Result<String, InvalidTitle> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        Err(InvalidTitle)
+    } else {
+        Ok(title)
+    }
 }
 
 /// @summary: Read a note
 /// @response 200: The stored note.
 /// @response 404: The requested note does not exist.
-#[allow(clippy::result_large_err)]
-#[handler(response(404, Problem))]
+#[handler]
 pub async fn show(
     State(app): State<AppState>,
     Path(NoteId { id }): Path<NoteId>,
-) -> Result<Json<Note>, Problem> {
-    match app.get(id) {
-        Some(note) => Ok(Json(note)),
-        None => Err(Problem::not_found("Note not found")
-            .type_uri("https://roundhouse.rs/problems/NoteNotFound")
-            .detail(format!("note {id} was not found"))),
-    }
+) -> Result<impl IntoResponse, MissingNote> {
+    // `?` is the error path: it converts into `MissingNote`, whose `DocumentedError` impl
+    // chooses the 404 response.
+    let note = app.find(id)?;
+    Ok(Json(note))
 }

@@ -132,6 +132,13 @@ pub trait DocumentedResponse {
 /// a broader one, the broader type's impl is what gets documented; return the specific error type
 /// when its statuses matter.
 ///
+/// ```ignore
+/// async fn show(...) -> Result<impl IntoResponse, NoteMissing> {
+///     let note = load(id)?;   // ? propagates NoteMissing; its impl supplies the failures
+///     Ok(Json(note))
+/// }
+/// ```
+///
 /// A custom impl in an application crate should be marked `#[roundhouse::build_only]` so a
 /// production build that compiles only `contract` drops it.
 #[diagnostic::on_unimplemented(

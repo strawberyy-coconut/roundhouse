@@ -167,6 +167,49 @@ async fn outcomes_and_infrastructure_are_documented_separately() {
 }
 
 #[tokio::test]
+async fn both_question_mark_errors_are_documented_and_served() {
+    let app = discovered();
+    let document = serde_json::to_value(app.document()).unwrap();
+    let responses = &document["paths"]["/notes"]["post"]["responses"];
+    assert!(responses["201"].is_object());
+    assert_eq!(responses["422"]["description"], "Invalid title");
+    assert_eq!(responses["409"]["description"], "Note already exists");
+
+    let response = app
+        .oneshot_json(http::Method::POST, "/notes", r#"{"title":"   "}"#)
+        .await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let response = app
+        .oneshot_json(
+            http::Method::POST,
+            "/notes",
+            r#"{"title":"Groceries","body":"milk"}"#,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let response = app
+        .oneshot_json(
+            http::Method::POST,
+            "/notes",
+            r#"{"title":"Groceries","body":"milk"}"#,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn a_missing_note_documents_and_serves_404() {
+    let app = discovered();
+    let document = serde_json::to_value(app.document()).unwrap();
+    assert!(document["paths"]["/notes/{id}"]["get"]["responses"]["404"].is_object());
+
+    let response = app.oneshot_get("/notes/99").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn openapi_is_served() {
     let app = discovered();
     let response = app.oneshot_get("/openapi.json").await;

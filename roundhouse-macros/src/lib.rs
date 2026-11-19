@@ -346,12 +346,36 @@ pub fn routes(input: TokenStream) -> TokenStream {
 /// - `Result<T, E>` — `T`'s success response plus `E`'s failures. `E` must implement
 ///   `DocumentedError`; `Problem` is one implementation, not a requirement.
 ///
-/// An opaque `impl IntoResponse` return is documented from the handler body. `roundhouse-build`
-/// analyzes the tail and `return` expressions before the contract harness compiles the crate,
-/// and the macro emits typed trait calls that the compiler verifies. A site the analyzer cannot
-/// resolve is marked `x-roundhouse-unverified-response`. A chain ending in `.into_response()` is
-/// deliberately opaque; call `.into_documented_response()` on a documented value to opt that
-/// site in.
+/// # Response inference
+///
+/// `impl IntoResponse` and `Result<impl IntoResponse, E>` are documented from the body:
+///
+/// ```ignore
+/// #[handler]
+/// async fn show(
+///     State(app): State<AppState>,
+///     Path(id): Path<u64>,
+/// ) -> Result<impl IntoResponse, NoteMissing> {
+///     let note = app.load(id)?;   // ? propagates NoteMissing; its impl documents 404
+///     Ok(Json(note))              // inferred as Json<Note>; its impl documents 200
+/// }
+/// ```
+///
+/// `?` is inferred through `E`: it converts into the handler's error type, and `E`'s
+/// `DocumentedError` impl supplies the failure responses. The paths, not the status codes, are
+/// the distinction: a normal `return`/tail is a response and uses `DocumentedResponse`; `?` is an
+/// error path and uses `E: DocumentedError`. Each impl chooses its own statuses. The analyzer
+/// does not trace the source of each `?`; returning `Problem` documents `Problem`'s `default`,
+/// while returning a specific error type documents its statuses.
+///
+/// A direct `impl IntoResponse` return is inferred for its tail and `return` expressions. A chain
+/// ending in `.into_response()` is deliberately opaque; call `.into_documented_response()` on a
+/// documented value to opt that site in.
+///
+/// `roundhouse-build` analyzes the body before the contract harness compiles the crate, and the
+/// macro emits typed trait calls, so a wrong selection fails the build instead of publishing a
+/// wrong document. A site the analyzer cannot resolve is marked
+/// `x-roundhouse-unverified-response`.
 ///
 /// Any other response can be declared with `#[handler(response(..))]`. An operation with no
 /// documented success response is a build error.
