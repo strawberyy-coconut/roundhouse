@@ -9,6 +9,9 @@
 //! shape support; the `validation` feature compiles the emitted JSON Schema and executes it to
 //! produce [`ValidationErrors`]. The runtime uses `Params` and `ValidateHook` without either
 //! feature.
+//!
+//! [`status_codes`] embeds the vendored IANA HTTP status catalog shared by the status proc macro
+//! and the build-time analyzer.
 
 #[cfg(feature = "validation")]
 pub mod engine;

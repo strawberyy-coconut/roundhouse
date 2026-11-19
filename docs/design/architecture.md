@@ -69,7 +69,8 @@ roundhouse                 application facade: App, Built, routing, extractors, 
 ├── roundhouse-macros      proc-macro entry point
 ├── roundhouse-macros-core parsing and expansion for the proc macros
 ├── roundhouse-path        path joining and template validation shared with the macros
-├── roundhouse-schema      ApiSchema, Params/ParamsDoc, validation errors, schema engine
+├── roundhouse-schema      ApiSchema, Params/ParamsDoc, HTTP status catalog, validation errors,
+│                          schema engine
 ├── roundhouse-build       contract generation library for build.rs
 └── roundhouse-cli         the `cargo roundhouse` binary
 ```
@@ -84,10 +85,10 @@ crates.
 |---|---|---|
 | `roundhouse` | macros, path, schema; axum, tower, serde, serde_json, serde_html_form, bytes, http | yes |
 | `roundhouse-macros` | `roundhouse-macros-core`, `proc-macro2` | no |
-| `roundhouse-macros-core` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate`, path | no |
+| `roundhouse-macros-core` | `syn`, `quote`, `proc-macro2`, `proc-macro-crate`, path, schema | no |
 | `roundhouse-path` | `matchit` | no |
 | `roundhouse-schema` | serde, serde_json, bytes; `jsonschema` (optional), utoipa (`build` only) | no |
-| `roundhouse-build` | serde_json, Cargo process invocation | no |
+| `roundhouse-build` | serde_json, schema, Cargo process invocation | no |
 | `roundhouse-cli` | clap, serde_json, toml_edit, `roundhouse-build` | no |
 
 The arrows point one way. `roundhouse-schema` has no axum dependency, so it can be used by a build

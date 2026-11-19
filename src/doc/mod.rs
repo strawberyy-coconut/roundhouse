@@ -8,8 +8,9 @@
 //! The traits here are the extension points the macros use:
 //!
 //! - `DocumentedResponse` — what a success type documents: status, content type, body schema and
-//!   headers. Built-ins implement it, and a custom response type can implement it exactly the same
-//!   way. There is no name-based fallback.
+//!   headers. Built-ins implement it, including `Json<T>`, `Status<CODE, T>`, `Empty<CODE>` and
+//!   the generated `roundhouse::status` wrappers. A custom response type can implement it exactly
+//!   the same way. There is no name-based fallback.
 //! - `DocumentedError` — the failure counterpart. `Result<T, E>` combines both; `Problem` is one
 //!   implementor, not a mandatory error type.
 //! - `DocumentedIntoResponse` — the identity marker behind `.into_documented_response()`, which

@@ -349,9 +349,13 @@ pub fn http_status_wrappers(input: TokenStream) -> TokenStream {
 /// - `String` and `&str` — `200` with `text/plain`;
 /// - `Vec<u8>`, `Bytes` and `Body` — a binary response. Use `Json<Vec<T>>` for a JSON array;
 /// - `Attachment<T>`, `File` and `Sse` — the corresponding attachment/file/event-stream response;
+/// - `Status<CODE, T>` — exactly `CODE` with an `application/json` body for `T: ApiSchema`;
+/// - `Empty<CODE>` — exactly `CODE`, no body;
+/// - `Created<T>`, `NoContent` and the generated `roundhouse::status` wrappers — their own exact
+///   codes;
 /// - `StatusCode` — the OpenAPI `default` response, because the status is chosen at runtime;
-/// - `(StatusCode, Body)` — the `default` response. Other tuples are not classified; declare
-///   them with `#[handler(response(..))]`;
+/// - `(StatusCode, Body)` — the `default` response. Use `Status<CODE, T>` for an exact code. Other
+///   tuples are not classified; declare them with `#[handler(response(..))]`;
 /// - `Result<T, E>` — `T`'s success response plus `E`'s failures. `E` must implement
 ///   `DocumentedError`; `Problem` is one implementation, not a requirement.
 ///

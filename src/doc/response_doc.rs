@@ -107,6 +107,10 @@ pub fn bytes_response(status: u16) -> ResponseDoc {
 /// all come from this impl. [`DocumentedError`] is the failure counterpart; `Result<T, E>`
 /// combines both.
 ///
+/// Built-ins include `Json<T>`, [`Status<CODE, T>`](crate::status::Status) for an exact code with
+/// a JSON body, [`Empty<CODE>`](crate::status::Empty) for an exact code with no body, and the
+/// generated named wrappers in [`crate::status`] (`Created`, `NotFound`, …).
+///
 /// A declaration such as `#[handler(response(201, Json<Note>))]` overrides only the status; the
 /// body, content type and headers still come from the type.
 ///
@@ -126,7 +130,9 @@ pub trait DocumentedResponse {
 /// This is the failure counterpart of [`DocumentedResponse`]. A handler that returns
 /// `Result<T, E>` documents `T`'s success responses and `E`'s failures; `E` may be
 /// [`Problem`](crate::Problem), a custom error enum, or any other type that implements
-/// `IntoResponse` and this trait.
+/// `IntoResponse` and this trait. [`Status<CODE, T>`](crate::status::Status),
+/// [`Empty<CODE>`](crate::status::Empty) and the generated wrappers in [`crate::status`] implement
+/// both traits, so they can be either side of `Result`.
 ///
 /// The document describes the type that leaves the handler. If `?` converts a specific error into
 /// a broader one, the broader type's impl is what gets documented; return the specific error type
@@ -243,6 +249,9 @@ impl<T: DocumentedResponse, E: DocumentedError> DocumentedResponse for Result<T,
     }
 }
 
+/// A runtime `StatusCode` is not part of the type, so the document can only describe OpenAPI's
+/// `default`. Use [`Status<CODE, T>`](crate::status::Status) or
+/// [`Empty<CODE>`](crate::status::Empty) when the status is known at compile time.
 impl<T: DocumentedResponse> DocumentedResponse for (axum::http::StatusCode, T) {
     fn responses(components: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
         let mut responses = T::responses(components);

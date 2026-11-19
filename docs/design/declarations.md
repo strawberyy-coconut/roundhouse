@@ -124,7 +124,8 @@ The handler attribute owns the structured half:
 `Type` must implement `roundhouse::doc::DocumentedResponse` (a success shape) or
 `roundhouse::doc::DocumentedError` (a failure shape); the probe tries the success trait first and
 falls back to the error trait. The declaration calls that impl and overrides only the status. Use
-`Json<T>` for a JSON body, `Problem` for problem+json, or a custom response type. A typed
+`Json<T>` for a JSON body, `Status<CODE, T>` for an exact status with a JSON body, `Empty<CODE>`
+for an exact bodyless status, `Problem` for problem+json, or a custom response type. A typed
 declaration that changes the shape of an already documented response needs `override_response`.
 `response(200, Note)` is not an implicit JSON wrapper.
 

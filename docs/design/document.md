@@ -74,13 +74,23 @@ in [Extension points](extension-points.md). Built-ins are ordinary impls:
 |---|---|
 | no `->`, `()` | `200`, empty |
 | `Json<T>`, `Html<T>`, `String`, `&str`, `Vec<u8>`, `Bytes`, `Body`, `Attachment<T>`, `File`, `Sse` | `200` with the type's content type |
+| `Status<CODE, T>` | exactly `CODE`, `application/json` body |
+| `Empty<CODE>` | exactly `CODE`, no body |
 | `Created<T>` | `201` |
 | `NoContent` | `204` |
+| generated wrappers in `roundhouse::status` (`NotFound`, `Conflict`, …) | their exact code; body wrappers are JSON, bodyless wrappers are empty |
 | `StatusCode`, `(StatusCode, T)`, `Redirect` | `default` |
 | `Option<T>`, `Infallible`, `Response` | none |
 | `Result<T, E>` | `T`'s responses plus `E`'s (`T: DocumentedResponse`, `E: DocumentedError`) |
 | `Problem` | `default`, problem+json (as a `DocumentedError`) |
 | `impl IntoResponse`, `impl DocumentedResponse` | the body-analyzed success sites |
+
+`Status<CODE, T>` and `Empty<CODE>` keep the status in the type, so `DocumentedResponse` can see
+it. `(StatusCode, T)` cannot: the trait receives a type, not the runtime value, so it documents
+OpenAPI's `default`. Use `Status<CODE, T>` when the status is known at compile time.
+
+The named wrappers are generated from the IANA registry snapshot at
+`roundhouse-schema/data/status-codes.json`; `tools/status-codes` refreshes it.
 
 A custom response type implements the trait once and is documented exactly like a built-in:
 

@@ -207,6 +207,11 @@
 //! an operation with no success still fails the strict build. `#[handler(response(..))]` remains
 //! the escape hatch.
 //!
+//! For a status known at compile time, use `Status<CODE, T>` for a JSON body or `Empty<CODE>` for
+//! no body; both document the exact code. The named wrappers in `roundhouse::status` (`Created`,
+//! `NoContent`, `NotFound`, …) are generated from the IANA registry. A `(StatusCode, T)` value
+//! can only document OpenAPI's `default`, because the trait sees the type, not the runtime status.
+//!
 //! `IntoResponse` is compiled in every build. `#[roundhouse::build_only]` drops the
 //! `DocumentedError` impl from a production `contract` build, so the documentation types and
 //! utoipa are not required there. The contract harness compiles it with `build` and fills in the

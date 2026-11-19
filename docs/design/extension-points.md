@@ -24,8 +24,8 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 | Trait | Subject | Implemented by | Used by | Phase |
 |---|---|---|---|---|
 | `ApiSchema` | A body/response JSON shape and its hooks | `#[roundhouse::schema]`, manual impls, primitives | contract build | contract |
-| `DocumentedResponse` | A success type's statuses, content types, bodies and headers | built-ins, custom response types | contract build | contract |
-| `DocumentedError` | An error type's statuses, content types, bodies and headers | `Problem`, custom error types | contract build | contract |
+| `DocumentedResponse` | A success type's statuses, content types, bodies and headers | built-ins, `Status<CODE, T>`, `Empty<CODE>`, generated status wrappers, custom response types | contract build | contract |
+| `DocumentedError` | An error type's statuses, content types, bodies and headers | `Problem`, `Status<CODE, T>`, `Empty<CODE>`, generated status wrappers, custom error types | contract build | contract |
 | `DocumentedIntoResponse` | Marks a documented value at an opaque return site | blanket for `IntoResponse` | handler body analysis | compile |
 | `Params` | A path/query/form type's runtime value | `PathParams`/`QueryParams` derives, scalars | request validation | request |
 | `ValidateHook` | Custom validation attached to a value | schema derives | runtime validation | request |
@@ -71,7 +71,9 @@ pub trait DocumentedResponse {
 
 This is the content contract for a success response. A built-in is special only because it
 implements the trait; a custom response type implements it once and is documented the same way.
-A custom impl depends on documentation-only types, so mark it with
+`Status<CODE, T>` and `Empty<CODE>` document an exact status (`Status` with a JSON body, `Empty`
+without one); the named wrappers in `roundhouse::status` are generated from the IANA catalog and
+follow the same rules. A custom impl depends on documentation-only types, so mark it with
 `#[roundhouse::build_only]`: a production build that compiles only the `contract` feature drops the
 item instead of failing to resolve the trait.
 For a named return type the macro probes the declared type: an impl publishes its responses, and
@@ -89,8 +91,10 @@ pub trait DocumentedError {
 
 The failure counterpart. `Result<T, E>` requires `T: DocumentedResponse` and `E:
 DocumentedError`. `Problem` is one implementor; a custom enum can list every status it can
-produce. `?` documents `E`, not the error it converted, so return the specific error type when
-its statuses matter. The trait is build-only, like `DocumentedResponse`: custom impls belong
+produce. `Status<CODE, T>`, `Empty<CODE>` and the generated `roundhouse::status` wrappers
+implement both traits, so they can appear on either side of `Result`. `?` documents `E`, not the
+error it converted, so return the specific error type when its statuses matter. The trait is
+build-only, like `DocumentedResponse`: custom impls belong
 to the documentation build, and the contract harness compiles the application with the `build` feature
 unified.
 
@@ -294,6 +298,11 @@ an impl is not a compile error but is a contract gap CI can catch. The same mech
 unregistered extractor compiling.
 
 ## Custom responses
+
+For a status that is known at compile time, prefer `Status<CODE, T>` (JSON body) or `Empty<CODE>`
+(no body); both document the exact code. The named wrappers in `roundhouse::status` (`Created`,
+`NotFound`, …) are generated from the IANA registry. A custom response type is for a different
+content type, headers, or a shape the built-ins do not express.
 
 A response type implements `IntoResponse` to serve and `DocumentedResponse` to document. The
 documentation impl is marked `build_only` so a lean production build compiles it out:
