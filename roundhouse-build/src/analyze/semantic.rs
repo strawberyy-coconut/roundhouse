@@ -346,6 +346,7 @@ impl Index {
                 syn::Lit::Bool(_) => Some(TypeRef::new("bool")),
                 _ => None,
             },
+            Expr::Tuple(tuple) if tuple.elems.is_empty() => Some(TypeRef::new("()")),
             Expr::Tuple(tuple) if tuple.elems.len() == 1 => {
                 self.infer_type(tuple.elems.first()?, locals)
             }
@@ -524,7 +525,9 @@ impl Index {
         let receiver = receiver.map(|receiver| self.resolve_alias(&receiver));
 
         match method.as_str() {
-            "into_response" => return Some(TypeRef::new("Response")),
+            // Both erasure methods are transparent to the document: the receiver's type is the
+            // source of truth.
+            "into_response" | "into_documented_response" => return receiver,
             "clone" | "to_owned" => return receiver,
             "to_string" => return Some(TypeRef::new("String")),
             "as_str" => return Some(TypeRef::new("str")),
@@ -671,6 +674,21 @@ pub(crate) fn local_binding(
             let init = local.init.as_ref()?;
             let ty = index.infer_type(&init.expr, locals)?;
             Some((ident.ident.to_string(), ty))
+        }
+        // `let Some(note) = .. else { .. }` and `let Ok(note) = .. else { .. }` bind the
+        // success payload; the analyzer needs it to resolve the tail.
+        Pat::TupleStruct(tuple) => {
+            let init = local.init.as_ref()?;
+            let ty = index.infer_type(&init.expr, locals)?;
+            let variant = tuple.path.segments.last()?.ident.to_string();
+            let inner = match (variant.as_str(), ty.name.as_str()) {
+                ("Some", "Option") | ("Ok", "Result") => ty.arg(0)?.clone(),
+                _ => return None,
+            };
+            let Pat::Ident(ident) = tuple.elems.first()? else {
+                return None;
+            };
+            Some((ident.ident.to_string(), inner))
         }
         _ => None,
     }

@@ -198,9 +198,12 @@ impl roundhouse::doc::DocumentedError for NoteMissing {
 A site the analyzer cannot resolve marks the operation `x-roundhouse-unverified-response`; the
 strict build rejects an operation with no success. `examples/notes` is the end-to-end reference:
 `routes/notes.rs` uses `?` on two different error types, and `error.rs` documents both with
-`#[roundhouse::build_only]` `DocumentedError` impls. `.into_response()` is deliberately opaque and
-is not documented. Call `.into_documented_response()` on a documented value to opt that site in.
-An explicit declaration remains the escape hatch:
+`#[roundhouse::build_only]` `DocumentedError` impls. `.into_response()` keeps the receiver's
+documented type, so `Json<Note>.into_response()` still documents `Json<Note>`; only a receiver that
+is itself erased — a bare `Response`, a trait object, or a helper returning `Response` — stays
+opaque. `.into_documented_response()` additionally erases the value to `Documented`, so branches
+with different documented types can share one return type. An explicit declaration remains the
+escape hatch:
 
 ```rust
 #[handler(response(200, Json<Note>), response(404, Problem))]

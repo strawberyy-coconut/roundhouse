@@ -26,7 +26,7 @@ support for a custom type is one impl in the crate that owns it, not a macro cha
 | `ApiSchema` | A body/response JSON shape and its hooks | `#[roundhouse::schema]`, manual impls, primitives | contract build | contract |
 | `DocumentedResponse` | A success type's statuses, content types, bodies and headers | built-ins, `Status<CODE, T>`, `Empty<CODE>`, generated status wrappers, custom response types | contract build | contract |
 | `DocumentedError` | An error type's statuses, content types, bodies and headers | `Problem`, `Status<CODE, T>`, `Empty<CODE>`, generated status wrappers, custom error types | contract build | contract |
-| `DocumentedIntoResponse` | Marks a documented value at an opaque return site | blanket for `IntoResponse` | handler body analysis | compile |
+| `DocumentedIntoResponse` | Marks and erases a documented value at an opaque return site | blanket for `IntoResponse` (plus `DocumentedResponse` under `build`) | handler body analysis | compile |
 | `Params` | A path/query/form type's runtime value | `PathParams`/`QueryParams` derives, scalars | request validation | request |
 | `ValidateHook` | Custom validation attached to a value | schema derives | runtime validation | request |
 | `ParamsDoc` | Parameter table and parts schema | `PathParams`/`QueryParams` derives | contract build | contract |
@@ -102,14 +102,20 @@ unified.
 
 ```rust
 pub trait DocumentedIntoResponse: IntoResponse + DocumentedResponse {
-    fn into_documented_response(self) -> Self { self }
+    fn into_documented_response(self) -> Documented {
+        Documented(self.into_response())
+    }
 }
 ```
 
-An identity marker for an opaque return site. The method changes no value; it tells the analyzer
-that this site is intentionally documentable. Under a non-`build` build the documentation
-supertrait is compiled out and the method remains available, so handler source does not need
-`cfg`. A bare `.into_response()` is deliberately opaque and is not documented.
+A marker for an opaque return site. It erases the receiver to `Documented`, so branches with
+different documented types can share one `impl IntoResponse` return type. The method does not
+change the response; it only erases it. The build-time analyzer records the receiver's type at
+each `.into_documented_response()` call site, so the erased value itself needs no static response
+shape. Under a non-`build` build the documentation supertrait is compiled out and the method
+remains available, so handler source does not need `cfg`. `.into_response()` without the marker is
+also transparent to a statically documented receiver; only a receiver that is itself erased stays
+opaque.
 
 ### `Params`, `ParamsDoc`, `ValidateHook`
 
@@ -360,9 +366,10 @@ impl DocumentedError for NoteMissing {
 pub async fn show(...) -> Result<Json<Note>, NoteMissing> { ... }
 ```
 
-An `impl IntoResponse` handler is documented from its body. Call `.into_documented_response()`
-on a documented value to mark the site; leave `.into_response()` for an intentionally opaque
-response. A site the analyzer cannot resolve is `x-roundhouse-unverified-response`.
+An `impl IntoResponse` handler is documented from its body. `.into_response()` keeps the
+receiver's documented type; `.into_documented_response()` additionally erases the value so
+branches with different documented types can unify. A receiver that is itself erased (`Response`,
+a trait object, a helper returning `Response`) is `x-roundhouse-unverified-response`.
 
 A declaration overrides only the status while keeping the type's body:
 

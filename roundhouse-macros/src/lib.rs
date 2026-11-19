@@ -381,9 +381,11 @@ pub fn http_status_wrappers(input: TokenStream) -> TokenStream {
 /// does not trace the source of each `?`; returning `Problem` documents `Problem`'s `default`,
 /// while returning a specific error type documents its statuses.
 ///
-/// A direct `impl IntoResponse` return is inferred for its tail and `return` expressions. A chain
-/// ending in `.into_response()` is deliberately opaque; call `.into_documented_response()` on a
-/// documented value to opt that site in.
+/// A direct `impl IntoResponse` return is inferred for its tail and `return` expressions.
+/// `.into_response()` keeps the receiver's documented type; only a receiver that is itself erased
+/// (a bare `Response`, a trait object, or a helper returning `Response`) stays opaque.
+/// `.into_documented_response()` additionally erases the value to `Documented`, so branches with
+/// different documented types can share one `impl IntoResponse` return type.
 ///
 /// `roundhouse-build` analyzes the body before the contract harness compiles the crate, and the
 /// macro emits typed trait calls, so a wrong selection fails the build instead of publishing a

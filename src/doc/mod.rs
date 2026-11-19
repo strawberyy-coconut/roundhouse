@@ -13,8 +13,8 @@
 //!   the same way. There is no name-based fallback.
 //! - `DocumentedError` — the failure counterpart. `Result<T, E>` combines both; `Problem` is one
 //!   implementor, not a mandatory error type.
-//! - `DocumentedIntoResponse` — the identity marker behind `.into_documented_response()`, which
-//!   opts an opaque return site into documentation.
+//! - `DocumentedIntoResponse` — the marker behind `.into_documented_response()`, which opts an
+//!   opaque return site into documentation and erases it to [`Documented`].
 //! - `ExtractDoc` — how an axum extractor contributes parameters, a body, auth or failures.
 //!   Route-level validation lives on [`ExtractArg`](crate::ExtractArg); implement both for a
 //!   custom extractor and no macro change is required.
@@ -100,19 +100,42 @@ pub use params::*;
 #[cfg(feature = "build")]
 pub use response_doc::*;
 
-/// Identity marker for a response that can be served and, in a contract build, documented.
+/// A documented response whose concrete type has been erased.
+///
+/// [`DocumentedIntoResponse::into_documented_response`] returns this type, so every branch of an
+/// `impl IntoResponse` handler can unify on one concrete value while the build-time analyzer still
+/// records the receiver's [`DocumentedResponse`] type at the call site. The wrapper owns the
+/// already-built [`axum::response::Response`] and only forwards it.
+pub struct Documented(axum::response::Response);
+
+impl Documented {
+    /// Wrap an already-built response.
+    pub fn new(response: axum::response::Response) -> Self {
+        Self(response)
+    }
+}
+
+impl axum::response::IntoResponse for Documented {
+    fn into_response(self) -> axum::response::Response {
+        self.0
+    }
+}
+
+/// Documents a response and erases it to one concrete type.
 ///
 /// `#[handler]` recognizes `.into_documented_response()` at a return site as an explicit request
-/// to document the receiver type. The method is a no-op: the value and its `IntoResponse` shape
-/// are unchanged. Under `build` the trait also requires [`DocumentedResponse`]; production
+/// to document the receiver type. The method erases the receiver to [`Documented`], so branches
+/// returning different documented responses can share one `impl IntoResponse` return type. The
+/// analyzer records the receiver's type at the call site; the erased value itself does not need a
+/// static response shape. Under `build` the trait also requires [`DocumentedResponse`]; production
 /// builds only require `IntoResponse`, so a handler can call the method in any build.
 #[cfg(feature = "build")]
 pub trait DocumentedIntoResponse: axum::response::IntoResponse + DocumentedResponse {
-    fn into_documented_response(self) -> Self
+    fn into_documented_response(self) -> Documented
     where
         Self: Sized,
     {
-        self
+        Documented(axum::response::IntoResponse::into_response(self))
     }
 }
 
@@ -123,11 +146,11 @@ impl<T: axum::response::IntoResponse + DocumentedResponse> DocumentedIntoRespons
 /// but the marker method stays available so handler source does not need `cfg`.
 #[cfg(not(feature = "build"))]
 pub trait DocumentedIntoResponse: axum::response::IntoResponse {
-    fn into_documented_response(self) -> Self
+    fn into_documented_response(self) -> Documented
     where
         Self: Sized,
     {
-        self
+        Documented(axum::response::IntoResponse::into_response(self))
     }
 }
 

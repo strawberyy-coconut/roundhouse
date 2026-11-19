@@ -82,8 +82,10 @@ knows the type, so no analysis is needed.
 
 **Consequences.** Named returns are exactly trait-driven. Opaque returns are documented from
 their body; a site the analyzer cannot resolve is `x-roundhouse-unverified-response`, and the
-strict build still rejects an operation with no success. A chain ending in `.into_response()`
-stays opaque; `.into_documented_response()` is the explicit opt-in. `Result<T, E>` requires
+strict build still rejects an operation with no success. `.into_response()` is transparent to a
+statically documented receiver; only a receiver that is itself erased (`Response`, a trait object,
+a helper returning `Response`) stays opaque. `.into_documented_response()` additionally erases the
+value to `Documented`, so branches with different documented types unify. `Result<T, E>` requires
 `T: DocumentedResponse` and `E: DocumentedError`; `?` documents `E`, not the source of the
 question mark. `Problem` is one `DocumentedError`, not a mandatory error type. A type that only
 implements `ToSchema` is not automatically documented; adapt it with `ApiSchema` interop or
@@ -91,7 +93,7 @@ implement the response trait.
 
 **Rejected.** Inferring a status or schema from syntax; type-name heuristics; a blanket
 `ToSchema` adapter; treating `response(200, Note)` as an implicit `Json<Note>`; documenting an
-opaque `.into_response()` chain.
+already-erased `Response` or trait object.
 
 ## D5a — Opaque returns use a verified handler index
 

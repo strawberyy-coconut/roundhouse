@@ -201,10 +201,12 @@
 //! the specific error type when its statuses matter.
 //!
 //! A direct `impl IntoResponse` handler (without `Result`) is inferred the same way for its tail
-//! and `return` expressions. A chain ending in `.into_response()` is deliberately opaque and is
-//! not documented; call `.into_documented_response()` on a documented value to opt that site in.
-//! A site the analyzer cannot resolve marks the operation `x-roundhouse-unverified-response`;
-//! an operation with no success still fails the strict build. `#[handler(response(..))]` remains
+//! and `return` expressions. `.into_response()` keeps the receiver's documented type; only a
+//! receiver that is itself erased (a bare `Response`, a trait object, or a helper returning
+//! `Response`) stays opaque. `.into_documented_response()` additionally erases the value to
+//! `Documented`, so branches with different documented types can share one return type. A site
+//! the analyzer cannot resolve marks the operation `x-roundhouse-unverified-response`; an
+//! operation with no success still fails the strict build. `#[handler(response(..))]` remains
 //! the escape hatch.
 //!
 //! For a status known at compile time, use `Status<CODE, T>` for a JSON body or `Empty<CODE>` for
@@ -317,9 +319,9 @@ pub use build_error::{BuildError, Source};
 pub use contract_bundle::ContractBundle;
 #[cfg(feature = "contract")]
 pub use contract_response::ContractResponseValidator;
-pub use doc::Params;
 #[cfg(feature = "build")]
 pub use doc::{ApiSchema, validate_document};
+pub use doc::{Documented, Params};
 pub use extract::{
     Extension, Form, Json, Mapped, Path, Query, Rejection, RepeatedQuery, Strict, Validation,
 };
@@ -560,8 +562,8 @@ pub mod prelude {
     pub use crate::arg::ExtractArg;
     pub use crate::attachment::{Attachment, File};
     pub use crate::auth::{Auth, AuthScheme, Authenticate, NoScopes, Scopes};
-    pub use crate::doc::DocumentedIntoResponse;
     pub use crate::doc::Params;
+    pub use crate::doc::{Documented, DocumentedIntoResponse};
     pub use crate::extract::{Extension, Form, Json, Mapped, Path, Query, RepeatedQuery, Strict};
     pub use crate::problem::Problem;
     pub use crate::response::{Created, Empty, NoContent, Status};

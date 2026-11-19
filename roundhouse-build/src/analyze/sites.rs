@@ -70,6 +70,11 @@ impl Context<'_> {
                 }
                 if let Some(init) = &local.init {
                     self.scan_returns(&init.expr);
+                    // `let ... else { return ... }` keeps its divergent branch beside the
+                    // initializer, not in the initializer expression.
+                    if let Some((_, divergent)) = &init.diverge {
+                        self.scan_returns(divergent);
+                    }
                 }
             }
         }
@@ -133,11 +138,10 @@ impl Context<'_> {
     fn method_call(&mut self, whole: &Expr, call: &syn::ExprMethodCall) {
         let method = call.method.to_string();
         match method.as_str() {
-            // The user chose the erased response; do not pretend to know its shape, but keep the
-            // operation honest when another branch did document a success.
-            "into_response" => {
-                self.unresolved("an opaque `.into_response()` chain");
-            }
+            // `.into_response()` erases the type for the compiler, not for the document. The
+            // receiver is still the source of truth; only a receiver that is itself erased
+            // (`Response`, a trait object, a helper returning `Response`) stays opaque.
+            "into_response" => self.value(&call.receiver),
             // Explicit opt-in: document the receiver's type.
             "into_documented_response" => self.value(&call.receiver),
             _ => {
@@ -314,6 +318,7 @@ impl Context<'_> {
             .segments
             .last()
             .is_some_and(|segment| segment.ident == "Response")
+            && !self.index.has_local_type("Response")
         {
             // A bare `Response` has no recoverable shape.
             self.unresolved("a bare `Response` value");
@@ -409,6 +414,11 @@ impl Context<'_> {
     }
 
     fn push_type_ref(&mut self, ty: TypeRef) {
+        if !self.index.has_local_type("Response") && ty.is("Response") {
+            // An already-erased response has no recoverable shape.
+            self.unresolved("a bare `Response` value");
+            return;
+        }
         let status_type = !self.index.has_local_type(&ty.name) && is_status_type(&ty.name);
         match format_type(&ty) {
             Some(ty) => {
@@ -606,12 +616,147 @@ mod tests {
     }
 
     #[test]
-    fn into_response_is_opaque() {
+    fn into_response_documents_the_receiver() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            #[handler]
+            async fn show() -> impl IntoResponse {
+                Json(Note { id: 1 }).into_response()
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn into_response_on_a_status_tuple_keeps_the_body() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            #[handler]
+            async fn show() -> impl IntoResponse {
+                (StatusCode::CREATED, Json(Note { id: 1 })).into_response()
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::StatusTuple {
+                inner: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn let_else_returns_are_documented() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            fn find(id: u64) -> Option<Note> { (id != 0).then_some(Note { id }) }
+            #[handler]
+            async fn show() -> impl IntoResponse {
+                let Some(note) = find(1) else {
+                    return NotFound(()).into_response();
+                };
+                Json(note).into_response()
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![
+                ResponseSite::StatusType {
+                    ty: "NotFound<()>".to_string()
+                },
+                ResponseSite::Type {
+                    ty: "Json<Note>".to_string()
+                },
+            ]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn let_else_through_a_fallible_async_find_documents_both() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            struct DbError;
+            async fn find(id: u64) -> Result<Option<Note>, DbError> { todo!() }
+            async fn page_state(note: &Note) -> Result<Note, DbError> { todo!() }
+            #[handler]
+            async fn show() -> Result<impl IntoResponse, DbError> {
+                let Some(note) = find(1).await? else {
+                    return Ok(NotFound(()).into_response());
+                };
+                Ok(Json(page_state(&note).await?).into_response())
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![
+                ResponseSite::StatusType {
+                    ty: "NotFound<()>".to_string()
+                },
+                ResponseSite::Type {
+                    ty: "Json<Note>".to_string()
+                },
+            ]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn into_response_through_a_binding_documents_the_receiver() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            #[handler]
+            async fn show() -> impl IntoResponse {
+                let response = Json(Note { id: 1 }).into_response();
+                response
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn into_response_on_a_bare_response_stays_opaque() {
+        let analysis = analyze(
+            r#"
+            fn make() -> Response { todo!() }
+            #[handler]
+            async fn show() -> impl IntoResponse { make().into_response() }
+            "#,
+        );
+        assert!(analysis.sites.is_empty());
+        assert!(!analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn into_response_on_a_response_local_stays_opaque() {
         let analysis = analyze(
             r#"
             #[handler]
             async fn show() -> impl IntoResponse {
-                (StatusCode::CREATED, "x").into_response()
+                let response: Response = todo!();
+                response.into_response()
             }
             "#,
         );
@@ -776,6 +921,25 @@ mod tests {
                 ty: "NotFound<Note>".to_string()
             }]
         );
+    }
+
+    #[test]
+    fn unit_body_status_wrappers_are_resolved() {
+        let analysis = analyze(
+            r#"
+            #[handler]
+            async fn missing() -> impl IntoResponse {
+                NotFound(()).into_response()
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::StatusType {
+                ty: "NotFound<()>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
     }
 
     #[test]

@@ -315,9 +315,12 @@ implements `roundhouse::doc::DocumentedResponse`; a custom error type implements
 An `impl IntoResponse` handler is documented from its body: the build-time analyzer resolves the
 tail and `return` expressions, and the macro emits typed trait calls that the compiler verifies.
 An expression it cannot resolve marks the operation `x-roundhouse-unverified-response` and the
-strict build rejects it unless `#[handler(response(..))]` supplies the missing status. A chain
-ending in `.into_response()` is deliberately opaque; call `.into_documented_response()` on a
-documented value to opt that site in, or use an explicit declaration.
+strict build rejects it unless `#[handler(response(..))]` supplies the missing status.
+`.into_response()` keeps the receiver's documented type (`Json<Note>.into_response()` still
+documents `Json<Note>`); only a receiver that is itself erased — a bare `Response`, a trait object,
+or a helper returning `Response` — stays opaque. `.into_documented_response()` additionally erases
+the value to `Documented`, so branches with different documented response types can share one
+`impl IntoResponse` return type. An explicit declaration remains the escape hatch.
 
 An extractor without an `ExtractDoc` impl (or a body type without `ApiSchema`) is still accepted,
 but the operation is marked `x-roundhouse-unverified-extractor`/`-body` and the strict build
@@ -479,8 +482,10 @@ pub async fn show(
 - `?` documents the handler's error type `E`, not the source of the question mark. If
   `From<DbError> for Problem` drops a status, the document says `Problem`'s `default`; return
   `DbError` when its statuses matter.
-- An `impl IntoResponse` handler is documented from its body. A bare `.into_response()` is opaque
-  and is not documented; `.into_documented_response()` opts the receiver in.
+- An `impl IntoResponse` handler is documented from its body. `.into_response()` preserves the
+  receiver's documentation; only an already-erased `Response` stays opaque.
+  `.into_documented_response()` additionally erases the value to `Documented`, so different
+  documented branches can share one return type.
 - `#[handler(response(..))]` remains the escape hatch for a response the analyzer cannot resolve or
   an intentionally undocumented path. `doc = |docs|` handles hand-written prose, headers or
   metadata.

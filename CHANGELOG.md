@@ -25,9 +25,12 @@
 - `Result<T, E>` now requires `E: DocumentedError`, not `E: DocumentedResponse`. `Problem`
   implements both, but a custom error type needs a `DocumentedError` impl. The impl is
   build-only, like `DocumentedResponse`.
-- `.into_response()` is not documented automatically. It erases the response type; use
-  `.into_documented_response()` on a documented value or an explicit `#[handler(response(..))]`
-  declaration.
+- `.into_response()` now keeps the receiver's documented type (`Json<Note>.into_response()` still
+  documents `Json<Note>`); only a receiver that is itself erased (`Response`, a trait object, or a
+  helper returning `Response`) stays opaque. `.into_documented_response()` erases the value to
+  `Documented`, so branches with different documented types can share one `impl IntoResponse`
+  return type. `DocumentedIntoResponse::into_documented_response` therefore returns `Documented`
+  instead of `Self`. Explicit `#[handler(response(..))]` declarations remain the escape hatch.
 
 ### Added
 
@@ -45,8 +48,9 @@
   typed `DocumentedResponse` / `DocumentedError` calls. Helper and method return types are
   inferred through a witness, so the document does not depend on a type being imported in the
   handler's module.
-- `.into_documented_response()` is an identity marker for an opaque return site. It keeps the
-  value and asks the analyzer to document the receiver's type.
+- `.into_documented_response()` is a marker for an opaque return site. It asks the analyzer to
+  document the receiver's type and erases the value to `Documented`, so different documented
+  branches can share one return type.
 - `#[handler(response(status, Type))]` accepts a `DocumentedError`-only type: the declaration
   probe tries `DocumentedResponse` first and falls back to `DocumentedError`.
 - `#[roundhouse::build_only]` emits an item only when the `build` feature is compiled. It is
