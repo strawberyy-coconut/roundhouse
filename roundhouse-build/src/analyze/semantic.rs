@@ -10,15 +10,19 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use quote::ToTokens;
 use syn::{
     Expr, Fields, ImplItem, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStatic, ItemStruct,
     ItemType, Pat, ReturnType, Type,
 };
 
-/// A syntactically resolved type: its outer name and any type arguments.
+use roundhouse_schema::status_codes::{self as status_catalog, StatusKind};
+
+/// A syntactically resolved type: its outer name, any const arguments and any type arguments.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TypeRef {
     pub name: String,
+    pub consts: Vec<String>,
     pub args: Vec<TypeRef>,
 }
 
@@ -26,6 +30,7 @@ impl TypeRef {
     pub(crate) fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
+            consts: Vec::new(),
             args: Vec::new(),
         }
     }
@@ -33,6 +38,19 @@ impl TypeRef {
     pub(crate) fn with_args(name: impl Into<String>, args: Vec<TypeRef>) -> Self {
         Self {
             name: name.into(),
+            consts: Vec::new(),
+            args,
+        }
+    }
+
+    pub(crate) fn with_consts(
+        name: impl Into<String>,
+        consts: Vec<String>,
+        args: Vec<TypeRef>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            consts,
             args,
         }
     }
@@ -48,15 +66,24 @@ impl TypeRef {
 
 impl std::fmt::Display for TypeRef {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.args.is_empty() {
+        if self.consts.is_empty() && self.args.is_empty() {
             return formatter.write_str(&self.name);
         }
         write!(formatter, "{}<", self.name)?;
-        for (index, argument) in self.args.iter().enumerate() {
-            if index > 0 {
+        let mut first = true;
+        for constant in &self.consts {
+            if !first {
+                formatter.write_str(", ")?;
+            }
+            formatter.write_str(constant)?;
+            first = false;
+        }
+        for argument in &self.args {
+            if !first {
                 formatter.write_str(", ")?;
             }
             write!(formatter, "{argument}")?;
+            first = false;
         }
         formatter.write_str(">")
     }
@@ -199,6 +226,16 @@ impl Index {
         self.methods.get(&key).cloned()
     }
 
+    /// Whether the crate defines a type with this name.
+    ///
+    /// The analyzer only sees names, not imports. A local definition takes precedence over the
+    /// generated wrappers when an opaque return type happens to share a name such as `Conflict`.
+    pub(crate) fn has_local_type(&self, name: &str) -> bool {
+        self.structs.contains_key(name)
+            || self.enums.contains_key(name)
+            || self.aliases.contains_key(name)
+    }
+
     /// A named struct field's type.
     pub(crate) fn field_type(&self, type_name: &str, field: &str) -> Option<TypeRef> {
         let structure = self.structs.get(type_name)?;
@@ -240,7 +277,18 @@ impl Index {
                         return Some(TypeRef::new(name));
                     }
                 }
-                let name = path.path.segments.last()?.ident.to_string();
+                let last = path.path.segments.last()?;
+                // Const-generic values such as `Empty::<204>` are response types in their own
+                // right. Other generic paths (constructor functions) are left to the caller.
+                if let syn::PathArguments::AngleBracketed(arguments) = &last.arguments
+                    && arguments
+                        .args
+                        .iter()
+                        .any(|argument| matches!(argument, syn::GenericArgument::Const(_)))
+                {
+                    return Some(type_ref_from_segment(last));
+                }
+                let name = last.ident.to_string();
                 match name.as_str() {
                     "None" => Some(TypeRef::with_args("Option", vec![TypeRef::new("Unknown")])),
                     "true" | "false" => Some(TypeRef::new("bool")),
@@ -371,7 +419,58 @@ impl Index {
             return Some(TypeRef::new("String"));
         }
 
-        if matches!(name, "Json" | "Created" | "Html") {
+        // Generated named wrappers: `Created(value)`, `Created::new(value)`, and the empty
+        // variants. The catalog is the same data that generated the types.
+        if let Some(spec) = status_catalog::by_ident(&segments[0])
+            && !self.has_local_type(&segments[0])
+            && (name == "new" || name == spec.ident)
+        {
+            return match spec.kind {
+                StatusKind::Body => {
+                    let inner = named_segment(&function.path, &spec.ident)
+                        .and_then(type_argument)
+                        .or_else(|| {
+                            call.args
+                                .first()
+                                .and_then(|argument| self.infer_type(argument, locals))
+                        })
+                        .unwrap_or_else(|| TypeRef::new("Unknown"));
+                    Some(TypeRef::with_args(&spec.ident, vec![inner]))
+                }
+                StatusKind::Empty => Some(TypeRef::new(&spec.ident)),
+            };
+        }
+
+        // `Status::<201, _>::new(value)` and `Empty::<204>::new()` carry their code in the
+        // turbofish; the return type cannot be named by inference alone because the code is a
+        // const parameter.
+        if segments[0] == "Status" && !self.has_local_type("Status") {
+            let segment = function
+                .path
+                .segments
+                .iter()
+                .find(|segment| segment.ident == "Status")?;
+            let consts = const_argument(segment)?;
+            let inner = type_argument(segment)
+                .or_else(|| {
+                    call.args
+                        .first()
+                        .and_then(|argument| self.infer_type(argument, locals))
+                })
+                .unwrap_or_else(|| TypeRef::new("Unknown"));
+            return Some(TypeRef::with_consts("Status", vec![consts], vec![inner]));
+        }
+        if segments[0] == "Empty" && !self.has_local_type("Empty") {
+            let segment = function
+                .path
+                .segments
+                .iter()
+                .find(|segment| segment.ident == "Empty")?;
+            let consts = const_argument(segment)?;
+            return Some(TypeRef::with_consts("Empty", vec![consts], Vec::new()));
+        }
+
+        if matches!(name, "Json" | "Html") {
             let inner = call
                 .args
                 .first()
@@ -382,10 +481,8 @@ impl Index {
 
         if let Some(type_ref) = function_type_ref(&function.path, &self.aliases) {
             // `Json::<T>(value)` carries the schema in its turbofish.
-            if matches!(
-                type_ref.name.as_str(),
-                "Json" | "Created" | "Vec" | "Option"
-            ) && type_ref.arg(0).is_some_and(|arg| !arg.is("Unknown"))
+            if matches!(type_ref.name.as_str(), "Json" | "Vec" | "Option")
+                && type_ref.arg(0).is_some_and(|arg| !arg.is("Unknown"))
             {
                 return Some(type_ref);
             }
@@ -396,6 +493,12 @@ impl Index {
             let receiver = &segments[segments.len() - 2];
             if let Some(method) = self.method(receiver, name) {
                 return return_type(&method, &self.aliases);
+            }
+            if receiver == "Problem" {
+                // `Problem`'s associated constructors (`not_found`, `bad_request`, …) live in
+                // the roundhouse crate, which this local index does not parse, and every one
+                // returns `Problem`.
+                return Some(TypeRef::new("Problem"));
             }
             if let Some(item_enum) = self.enums.get(receiver)
                 && item_enum
@@ -685,22 +788,7 @@ pub(crate) fn normalize_type(ty: &Type, aliases: &HashMap<String, ItemType>) -> 
 
 fn type_ref(ty: &Type) -> Option<TypeRef> {
     match ty {
-        Type::Path(path) => {
-            let segment = path.path.segments.last()?;
-            let args = match &segment.arguments {
-                syn::PathArguments::None => Vec::new(),
-                syn::PathArguments::AngleBracketed(arguments) => arguments
-                    .args
-                    .iter()
-                    .filter_map(|argument| match argument {
-                        syn::GenericArgument::Type(ty) => type_ref(ty),
-                        _ => None,
-                    })
-                    .collect(),
-                syn::PathArguments::Parenthesized(_) => Vec::new(),
-            };
-            Some(TypeRef::with_args(segment.ident.to_string(), args))
-        }
+        Type::Path(path) => Some(type_ref_from_segment(path.path.segments.last()?)),
         Type::Reference(reference) => type_ref(&reference.elem),
         Type::Paren(paren) => type_ref(&paren.elem),
         Type::Group(group) => type_ref(&group.elem),
@@ -711,6 +799,51 @@ fn type_ref(ty: &Type) -> Option<TypeRef> {
     }
 }
 
+fn type_ref_from_segment(segment: &syn::PathSegment) -> TypeRef {
+    let mut consts = Vec::new();
+    let mut args = Vec::new();
+    if let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments {
+        for argument in &arguments.args {
+            match argument {
+                syn::GenericArgument::Type(ty) => {
+                    if let Some(ty) = type_ref(ty) {
+                        args.push(ty);
+                    }
+                }
+                syn::GenericArgument::Const(expression) => {
+                    consts.push(expression.to_token_stream().to_string());
+                }
+                _ => {}
+            }
+        }
+    }
+    TypeRef::with_consts(segment.ident.to_string(), consts, args)
+}
+
+fn named_segment<'a>(path: &'a syn::Path, name: &str) -> Option<&'a syn::PathSegment> {
+    path.segments.iter().find(|segment| segment.ident == name)
+}
+
+pub(crate) fn const_argument(segment: &syn::PathSegment) -> Option<String> {
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    arguments.args.iter().find_map(|argument| match argument {
+        syn::GenericArgument::Const(expression) => Some(expression.to_token_stream().to_string()),
+        _ => None,
+    })
+}
+
+pub(crate) fn type_argument(segment: &syn::PathSegment) -> Option<TypeRef> {
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    arguments.args.iter().find_map(|argument| match argument {
+        syn::GenericArgument::Type(ty) => type_ref(ty),
+        _ => None,
+    })
+}
+
 /// The outer type of a path used as a constructor, including turbofish arguments.
 fn function_type_ref(path: &syn::Path, aliases: &HashMap<String, ItemType>) -> Option<TypeRef> {
     let segment = path.segments.last()?;
@@ -718,18 +851,25 @@ fn function_type_ref(path: &syn::Path, aliases: &HashMap<String, ItemType>) -> O
     match &segment.arguments {
         syn::PathArguments::None => None,
         syn::PathArguments::AngleBracketed(arguments) => {
-            let args: Vec<TypeRef> = arguments
-                .args
-                .iter()
-                .filter_map(|argument| match argument {
-                    syn::GenericArgument::Type(ty) => normalize_type(ty, aliases),
-                    _ => None,
-                })
-                .collect();
-            if args.is_empty() {
+            let mut consts = Vec::new();
+            let mut args = Vec::new();
+            for argument in &arguments.args {
+                match argument {
+                    syn::GenericArgument::Type(ty) => {
+                        if let Some(ty) = normalize_type(ty, aliases) {
+                            args.push(ty);
+                        }
+                    }
+                    syn::GenericArgument::Const(expression) => {
+                        consts.push(expression.to_token_stream().to_string());
+                    }
+                    _ => {}
+                }
+            }
+            if consts.is_empty() && args.is_empty() {
                 return None;
             }
-            Some(TypeRef::with_args(name, args))
+            Some(TypeRef::with_consts(name, consts, args))
         }
         syn::PathArguments::Parenthesized(_) => None,
     }

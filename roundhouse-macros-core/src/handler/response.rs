@@ -175,6 +175,21 @@ fn emit_site(site: &ResponseSite, krate: &TokenStream) -> TokenStream {
                 docs.verification.mark_response();
             },
         },
+        ResponseSite::StatusType { ty } => match syn::parse_str::<Type>(ty) {
+            Ok(ty) => match qualify_status_type(&ty, krate) {
+                Some(ty) => quote! {
+                    docs.extend_responses(
+                        <#ty as #krate::doc::DocumentedResponse>::responses(context),
+                    );
+                },
+                None => quote! {
+                    docs.verification.mark_response();
+                },
+            },
+            Err(_) => quote! {
+                docs.verification.mark_response();
+            },
+        },
         ResponseSite::StatusTuple { inner } => match syn::parse_str::<Type>(inner) {
             Ok(mut inner) => {
                 rewrite_known_types(&mut inner, krate);
@@ -228,6 +243,9 @@ fn emit_site(site: &ResponseSite, krate: &TokenStream) -> TokenStream {
 /// The analyzer records types as they are spelled where it resolved them; a helper's return type
 /// can name `Html` or `Bytes` in a module the handler does not import from. The trait impls live
 /// in known axum/std locations, so qualifying these names makes the generated call robust.
+///
+/// Types generated in `roundhouse::status` arrive as [`ResponseSite::StatusType`] and are
+/// qualified by [`qualify_status_type`] instead; this function does not need the status catalog.
 fn rewrite_known_types(ty: &mut Type, krate: &TokenStream) {
     match ty {
         Type::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
@@ -240,8 +258,6 @@ fn rewrite_known_types(ty: &mut Type, krate: &TokenStream) {
                 "Html" => Some(quote!(#krate::axum::response::Html)),
                 "Sse" => Some(quote!(#krate::axum::response::sse::Sse)),
                 "Json" => Some(quote!(#krate::axum::Json)),
-                "Created" => Some(quote!(#krate::Created)),
-                "NoContent" => Some(quote!(#krate::NoContent)),
                 "Problem" => Some(quote!(#krate::Problem)),
                 "Attachment" => Some(quote!(#krate::Attachment)),
                 "File" => Some(quote!(#krate::File)),
@@ -273,6 +289,20 @@ fn rewrite_known_types(ty: &mut Type, krate: &TokenStream) {
         }
         _ => {}
     }
+}
+
+/// Qualify a type generated in `roundhouse::status` against the actual crate path.
+///
+/// The analyzer records the type as `NotFound<Note>`; the handler module may not import it. The
+/// generated call names the module through the resolved roundhouse crate instead.
+fn qualify_status_type(ty: &Type, krate: &TokenStream) -> Option<Type> {
+    let Type::Path(path) = ty else {
+        return None;
+    };
+    let segment = path.path.segments.last()?;
+    let ident = &segment.ident;
+    let arguments = &segment.arguments;
+    Some(syn::parse_quote!(#krate::status::#ident #arguments))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

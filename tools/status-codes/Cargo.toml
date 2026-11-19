@@ -1,0 +1,20 @@
+[package]
+name = "roundhouse-status-codes"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Refresh the vendored IANA HTTP status-code snapshot used by roundhouse's proc macros."
+
+[[bin]]
+name = "update-status-codes"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+csv = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = "3"

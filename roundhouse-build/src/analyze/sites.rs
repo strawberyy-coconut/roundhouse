@@ -10,8 +10,12 @@ use std::collections::HashMap;
 use quote::ToTokens;
 use syn::{Expr, FnArg, ItemFn, ReturnType, Stmt, Type};
 
+use roundhouse_schema::status_codes::{self as status_catalog, StatusKind};
+
 use super::ResponseSite;
-use super::semantic::{Index, TypeRef, bind_argument, local_binding};
+use super::semantic::{
+    Index, TypeRef, bind_argument, const_argument, local_binding, type_argument,
+};
 
 #[derive(Default)]
 pub(crate) struct Analysis {
@@ -193,17 +197,50 @@ impl Context<'_> {
             .first()
             .map(|segment| segment.ident.to_string())
             .unwrap_or_default();
-        match (root.as_str(), name.as_str()) {
-            ("Created", "new") => {
-                if let Some(ty) = call
-                    .args
+
+        if let Some(spec) = status_catalog::by_ident(&root)
+            && !self.index.has_local_type(&root)
+            && (name == "new" || name == spec.ident)
+        {
+            self.status_wrapper_call(spec, call);
+            return;
+        }
+        if root == "Status"
+            && !self.index.has_local_type("Status")
+            && let Some(segment) = function
+                .path
+                .segments
+                .iter()
+                .find(|segment| segment.ident == "Status")
+            && let Some(code) = const_argument(segment)
+        {
+            let inner = type_argument(segment).or_else(|| {
+                call.args
                     .first()
                     .and_then(|argument| self.index.infer_type(argument, &self.locals))
-                {
-                    self.push_type_ref(TypeRef::with_args("Created", vec![ty]));
-                    return;
+            });
+            match inner {
+                Some(inner) => {
+                    self.push_type_ref(TypeRef::with_consts("Status", vec![code], vec![inner]))
                 }
+                None => self.unresolved("a `Status` whose body cannot be resolved"),
             }
+            return;
+        }
+        if root == "Empty"
+            && !self.index.has_local_type("Empty")
+            && let Some(segment) = function
+                .path
+                .segments
+                .iter()
+                .find(|segment| segment.ident == "Empty")
+            && let Some(code) = const_argument(segment)
+        {
+            self.push_type_ref(TypeRef::with_consts("Empty", vec![code], Vec::new()));
+            return;
+        }
+
+        match (root.as_str(), name.as_str()) {
             ("Redirect", _) => {
                 self.push_site(ResponseSite::Redirect);
                 return;
@@ -223,7 +260,7 @@ impl Context<'_> {
             }
             _ => {}
         }
-        if is_constructor(&name) {
+        if is_constructor(&name) && !self.index.has_local_type(&name) {
             self.type_site(whole);
             return;
         }
@@ -248,6 +285,24 @@ impl Context<'_> {
         }
 
         self.type_site(whole);
+    }
+
+    fn status_wrapper_call(&mut self, spec: &status_catalog::StatusSpec, call: &syn::ExprCall) {
+        match spec.kind {
+            StatusKind::Body => {
+                let inner = call
+                    .args
+                    .first()
+                    .and_then(|argument| self.index.infer_type(argument, &self.locals));
+                match inner {
+                    Some(inner) => self.push_type_ref(TypeRef::with_args(&spec.ident, vec![inner])),
+                    None => {
+                        self.unresolved("a generated status wrapper whose body cannot be resolved")
+                    }
+                }
+            }
+            StatusKind::Empty => self.push_type_ref(TypeRef::new(&spec.ident)),
+        }
     }
 
     fn path_site(&mut self, expression: &Expr, path: &syn::Path) {
@@ -354,8 +409,15 @@ impl Context<'_> {
     }
 
     fn push_type_ref(&mut self, ty: TypeRef) {
+        let status_type = !self.index.has_local_type(&ty.name) && is_status_type(&ty.name);
         match format_type(&ty) {
-            Some(ty) => self.push_type(&ty),
+            Some(ty) => {
+                if status_type {
+                    self.push_site(ResponseSite::StatusType { ty });
+                } else {
+                    self.push_type(&ty);
+                }
+            }
             None => {
                 let message = format!("the response type `{ty}` cannot be documented");
                 self.analysis.unresolved.push(message);
@@ -402,20 +464,23 @@ fn contains_impl_trait(ty: &Type) -> bool {
 }
 
 fn is_constructor(name: &str) -> bool {
-    matches!(
-        name,
-        "Json"
-            | "Html"
-            | "Created"
-            | "NoContent"
-            | "Attachment"
-            | "File"
-            | "Sse"
-            | "Redirect"
-            | "Problem"
-            | "Bytes"
-            | "Body"
-    )
+    status_catalog::by_ident(name).is_some()
+        || matches!(
+            name,
+            "Json"
+                | "Html"
+                | "Attachment"
+                | "File"
+                | "Sse"
+                | "Redirect"
+                | "Problem"
+                | "Bytes"
+                | "Body"
+        )
+}
+
+fn is_status_type(name: &str) -> bool {
+    matches!(name, "Status" | "Empty") || status_catalog::by_ident(name).is_some()
 }
 
 fn is_status_path(path: &syn::Path) -> bool {
@@ -655,6 +720,95 @@ mod tests {
             analysis.sites,
             vec![ResponseSite::StatusTuple {
                 inner: "Json<Note>".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn const_generic_empty_is_resolved() {
+        let analysis = analyze(
+            r#"
+            #[handler]
+            async fn empty() -> impl IntoResponse { Empty::<204> }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::StatusType {
+                ty: "Empty<204>".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn const_generic_status_keeps_the_body() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            #[handler]
+            async fn status() -> impl IntoResponse {
+                Status::<207, _>::new(Note { id: 1 })
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::StatusType {
+                ty: "Status<207, Note>".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn generated_wrappers_are_resolved() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            #[handler]
+            async fn missing() -> impl IntoResponse {
+                NotFound(Note { id: 1 })
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::StatusType {
+                ty: "NotFound<Note>".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn problem_constructors_resolve_to_problem() {
+        let analysis = analyze(
+            r#"
+            #[handler]
+            async fn missing() -> impl IntoResponse {
+                NotFound(Problem::not_found("missing"))
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::StatusType {
+                ty: "NotFound<Problem>".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn a_local_type_wins_over_a_generated_name() {
+        let analysis = analyze(
+            r#"
+            struct Conflict { id: u64 }
+            #[handler]
+            async fn conflict() -> impl IntoResponse { Conflict { id: 1 } }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Conflict".to_string()
             }]
         );
     }

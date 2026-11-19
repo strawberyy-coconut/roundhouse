@@ -124,6 +124,7 @@
 //! | `doc` | `ExtractDoc`, `ApiSchema`, parameter tables, response metadata (`build`) |
 //! | [`auth`] | `Auth<A>`, `AuthScheme`, `Authenticate`, `Scopes` |
 //! | [`problem`] | the RFC 9457 `Problem` body |
+//! | [`status`] | `Status<CODE, T>`, `Empty<CODE>` and the generated status wrappers |
 //! | [`attachment`] | `Attachment`, `File`, SSE responses |
 //! | `openapi` | `Info`, `OpenApi`, `Components` (`build`) |
 //! | [`build_error`] | `BuildError` and its source locations |
@@ -265,6 +266,7 @@ pub mod registry;
 pub mod response;
 pub mod router;
 pub(crate) mod shim;
+pub mod status;
 
 /// Macro plumbing. Nothing in this module is part of the stable API; generated code is the only
 /// caller. The public extension points are the domain traits re-exported from the crate root.
@@ -322,7 +324,7 @@ pub use multipart::TempFile;
 pub use multipart::{FilePart, Multipart, MultipartForm};
 pub use problem::Problem;
 pub use registry::Module;
-pub use response::{Created, NoContent};
+pub use response::{Created, Empty, NoContent, Status};
 #[cfg(feature = "build")]
 pub use roundhouse_schema::Param;
 pub use roundhouse_schema::{ParamIn, ValidationError, ValidationErrors};
@@ -557,7 +559,7 @@ pub mod prelude {
     pub use crate::doc::Params;
     pub use crate::extract::{Extension, Form, Json, Mapped, Path, Query, RepeatedQuery, Strict};
     pub use crate::problem::Problem;
-    pub use crate::response::{Created, NoContent};
+    pub use crate::response::{Created, Empty, NoContent, Status};
     pub use crate::validate::{ValidationError, ValidationErrors};
     #[cfg(feature = "multipart")]
     pub use crate::{FilePart, Multipart};

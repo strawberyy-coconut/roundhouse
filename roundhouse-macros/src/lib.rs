@@ -284,6 +284,15 @@ pub fn routes(input: TokenStream) -> TokenStream {
     roundhouse_macros_core::expand_routes(input.into()).into()
 }
 
+/// Generate the built-in HTTP status response wrappers from the shared JSON catalog.
+///
+/// Internal to `roundhouse`; application code uses the generated types from `roundhouse::status`.
+#[doc(hidden)]
+#[proc_macro]
+pub fn http_status_wrappers(input: TokenStream) -> TokenStream {
+    roundhouse_macros_core::expand_http_status_wrappers(input.into()).into()
+}
+
 /// Derive the routing metadata that [`routes!`](macro@routes) needs from a handler's signature.
 ///
 /// Apply `#[handler]` to a function item. The attribute accepts typed response and path metadata

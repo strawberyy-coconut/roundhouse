@@ -12,6 +12,7 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 proc-macro-crate = "3"
 quote = "1"
 roundhouse-path = { path = "../roundhouse-path", version = "0.4.2" }
+roundhouse-schema = { path = "../roundhouse-schema", version = "0.4.2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 syn = { version = "2", features = ["full", "extra-traits", "parsing"] }

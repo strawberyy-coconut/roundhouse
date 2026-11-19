@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "source": "https://www.iana.org/assignments/http-status-codes/http-status-codes-1.csv",
+  "generated_by": "tools/status-codes",
+  "do_not_edit": "Run `cargo run -p roundhouse-status-codes --bin update-status-codes` to regenerate.",
+  "codes": [
+    {
+      "code": 200,
+      "ident": "Success",
+      "phrase": "OK",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.3.1"
+    },
+    {
+      "code": 201,
+      "ident": "Created",
+      "phrase": "Created",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.3.2"
+    },
+    {
+      "code": 202,
+      "ident": "Accepted",
+      "phrase": "Accepted",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.3.3"
+    },
+    {
+      "code": 203,
+      "ident": "NonAuthoritativeInformation",
+      "phrase": "Non-Authoritative Information",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.3.4"
+    },
+    {
+      "code": 204,
+      "ident": "NoContent",
+      "phrase": "No Content",
+      "kind": "empty",
+      "reference": "RFC 9110, Section 15.3.5"
+    },
+    {
+      "code": 205,
+      "ident": "ResetContent",
+      "phrase": "Reset Content",
+      "kind": "empty",
+      "reference": "RFC 9110, Section 15.3.6"
+    },
+    {
+      "code": 206,
+      "ident": "PartialContent",
+      "phrase": "Partial Content",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.3.7"
+    },
+    {
+      "code": 207,
+      "ident": "MultiStatus",
+      "phrase": "Multi-Status",
+      "kind": "body",
+      "reference": "RFC 4918"
+    },
+    {
+      "code": 208,
+      "ident": "AlreadyReported",
+      "phrase": "Already Reported",
+      "kind": "body",
+      "reference": "RFC 5842"
+    },
+    {
+      "code": 226,
+      "ident": "ImUsed",
+      "phrase": "IM Used",
+      "kind": "body",
+      "reference": "RFC 3229"
+    },
+    {
+      "code": 304,
+      "ident": "NotModified",
+      "phrase": "Not Modified",
+      "kind": "empty",
+      "reference": "RFC 9110, Section 15.4.5"
+    },
+    {
+      "code": 400,
+      "ident": "BadRequest",
+      "phrase": "Bad Request",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.1"
+    },
+    {
+      "code": 401,
+      "ident": "Unauthorized",
+      "phrase": "Unauthorized",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.2"
+    },
+    {
+      "code": 402,
+      "ident": "PaymentRequired",
+      "phrase": "Payment Required",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.3"
+    },
+    {
+      "code": 403,
+      "ident": "Forbidden",
+      "phrase": "Forbidden",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.4"
+    },
+    {
+      "code": 404,
+      "ident": "NotFound",
+      "phrase": "Not Found",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.5"
+    },
+    {
+      "code": 405,
+      "ident": "MethodNotAllowed",
+      "phrase": "Method Not Allowed",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.6"
+    },
+    {
+      "code": 406,
+      "ident": "NotAcceptable",
+      "phrase": "Not Acceptable",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.7"
+    },
+    {
+      "code": 407,
+      "ident": "ProxyAuthenticationRequired",
+      "phrase": "Proxy Authentication Required",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.8"
+    },
+    {
+      "code": 408,
+      "ident": "RequestTimeout",
+      "phrase": "Request Timeout",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.9"
+    },
+    {
+      "code": 409,
+      "ident": "Conflict",
+      "phrase": "Conflict",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.10"
+    },
+    {
+      "code": 410,
+      "ident": "Gone",
+      "phrase": "Gone",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.11"
+    },
+    {
+      "code": 411,
+      "ident": "LengthRequired",
+      "phrase": "Length Required",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.12"
+    },
+    {
+      "code": 412,
+      "ident": "PreconditionFailed",
+      "phrase": "Precondition Failed",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.13"
+    },
+    {
+      "code": 413,
+      "ident": "PayloadTooLarge",
+      "phrase": "Content Too Large",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.14"
+    },
+    {
+      "code": 414,
+      "ident": "UriTooLong",
+      "phrase": "URI Too Long",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.15"
+    },
+    {
+      "code": 415,
+      "ident": "UnsupportedMediaType",
+      "phrase": "Unsupported Media Type",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.16"
+    },
+    {
+      "code": 416,
+      "ident": "RangeNotSatisfiable",
+      "phrase": "Range Not Satisfiable",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.17"
+    },
+    {
+      "code": 417,
+      "ident": "ExpectationFailed",
+      "phrase": "Expectation Failed",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.18"
+    },
+    {
+      "code": 421,
+      "ident": "MisdirectedRequest",
+      "phrase": "Misdirected Request",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.20"
+    },
+    {
+      "code": 422,
+      "ident": "UnprocessableEntity",
+      "phrase": "Unprocessable Content",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.21"
+    },
+    {
+      "code": 423,
+      "ident": "Locked",
+      "phrase": "Locked",
+      "kind": "body",
+      "reference": "RFC 4918"
+    },
+    {
+      "code": 424,
+      "ident": "FailedDependency",
+      "phrase": "Failed Dependency",
+      "kind": "body",
+      "reference": "RFC 4918"
+    },
+    {
+      "code": 425,
+      "ident": "TooEarly",
+      "phrase": "Too Early",
+      "kind": "body",
+      "reference": "RFC 8470"
+    },
+    {
+      "code": 426,
+      "ident": "UpgradeRequired",
+      "phrase": "Upgrade Required",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.5.22"
+    },
+    {
+      "code": 428,
+      "ident": "PreconditionRequired",
+      "phrase": "Precondition Required",
+      "kind": "body",
+      "reference": "RFC 6585"
+    },
+    {
+      "code": 429,
+      "ident": "TooManyRequests",
+      "phrase": "Too Many Requests",
+      "kind": "body",
+      "reference": "RFC 6585"
+    },
+    {
+      "code": 431,
+      "ident": "RequestHeaderFieldsTooLarge",
+      "phrase": "Request Header Fields Too Large",
+      "kind": "body",
+      "reference": "RFC 6585"
+    },
+    {
+      "code": 451,
+      "ident": "UnavailableForLegalReasons",
+      "phrase": "Unavailable For Legal Reasons",
+      "kind": "body",
+      "reference": "RFC 7725"
+    },
+    {
+      "code": 500,
+      "ident": "InternalServerError",
+      "phrase": "Internal Server Error",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.6.1"
+    },
+    {
+      "code": 501,
+      "ident": "NotImplemented",
+      "phrase": "Not Implemented",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.6.2"
+    },
+    {
+      "code": 502,
+      "ident": "BadGateway",
+      "phrase": "Bad Gateway",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.6.3"
+    },
+    {
+      "code": 503,
+      "ident": "ServiceUnavailable",
+      "phrase": "Service Unavailable",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.6.4"
+    },
+    {
+      "code": 504,
+      "ident": "GatewayTimeout",
+      "phrase": "Gateway Timeout",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.6.5"
+    },
+    {
+      "code": 505,
+      "ident": "HttpVersionNotSupported",
+      "phrase": "HTTP Version Not Supported",
+      "kind": "body",
+      "reference": "RFC 9110, Section 15.6.6"
+    },
+    {
+      "code": 506,
+      "ident": "VariantAlsoNegotiates",
+      "phrase": "Variant Also Negotiates",
+      "kind": "body",
+      "reference": "RFC 2295"
+    },
+    {
+      "code": 507,
+      "ident": "InsufficientStorage",
+      "phrase": "Insufficient Storage",
+      "kind": "body",
+      "reference": "RFC 4918"
+    },
+    {
+      "code": 508,
+      "ident": "LoopDetected",
+      "phrase": "Loop Detected",
+      "kind": "body",
+      "reference": "RFC 5842"
+    },
+    {
+      "code": 511,
+      "ident": "NetworkAuthenticationRequired",
+      "phrase": "Network Authentication Required",
+      "kind": "body",
+      "reference": "RFC 6585"
+    }
+  ]
+}

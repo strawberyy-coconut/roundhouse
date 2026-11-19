@@ -80,6 +80,7 @@ serde_json = "1"
         dir.join("src/lib.rs"),
         r#"use roundhouse::doc::{DocumentedError, ResponseDoc, SchemaContext};
 use roundhouse::prelude::*;
+use roundhouse::status::{Empty, NotFound};
 
 #[derive(Clone, Default)]
 pub struct AppState;
@@ -124,6 +125,10 @@ pub mod routes {
         "/fallible" => { get(fallible) },
         "/documented" => { get(documented) },
         "/opaque" => { get(opaque) },
+        "/named-not-found" => { get(named_not_found) },
+        "/not-found" => { get(not_found) },
+        "/status" => { get(status) },
+        "/empty" => { get(empty) },
     }
 
     #[handler]
@@ -163,6 +168,26 @@ pub mod routes {
     pub async fn opaque() -> impl IntoResponse {
         (StatusCode::CREATED, "x").into_response()
     }
+
+    #[handler]
+    pub async fn named_not_found() -> Result<Json<Note>, NotFound<Problem>> {
+        Err(NotFound(Problem::not_found("missing")))
+    }
+
+    #[handler(response(200))]
+    pub async fn not_found() -> impl IntoResponse {
+        NotFound(Problem::not_found("missing"))
+    }
+
+    #[handler]
+    pub async fn status() -> impl IntoResponse {
+        Status::<207, _>::new(Note { id: 1 })
+    }
+
+    #[handler]
+    pub async fn empty() -> impl IntoResponse {
+        Empty::<204>
+    }
 }
 "#,
     )
@@ -198,6 +223,10 @@ pub mod routes {
     assert!(statuses("/fallible").contains(&"404".to_string()));
     assert!(statuses("/documented").contains(&"200".to_string()));
     assert!(statuses("/opaque").contains(&"200".to_string()));
+    assert!(statuses("/named-not-found").contains(&"404".to_string()));
+    assert!(statuses("/not-found").contains(&"404".to_string()));
+    assert!(statuses("/status").contains(&"207".to_string()));
+    assert!(statuses("/empty").contains(&"204".to_string()));
 
     let direct = &operation("/direct")["responses"]["200"]["content"]["application/json"]["schema"];
     assert_eq!(direct["$ref"], "#/components/schemas/Note");

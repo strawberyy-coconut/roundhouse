@@ -6,6 +6,7 @@ members = [
     "roundhouse-schema",
     "roundhouse-build",
     "roundhouse-cli",
+    "tools/status-codes",
     "examples/notes",
     "examples/quickstart",
     "examples/layers",

@@ -205,6 +205,17 @@ pub fn problem_schema_ref() -> RefOr<Schema> {
         .into()
 }
 
+/// `Problem` can also be used as an explicit response body, for example `NotFound<Problem>`.
+///
+/// The schema is inline rather than a named component, matching the `application/problem+json`
+/// default response produced by [`DocumentedError`](crate::doc::DocumentedError).
+#[cfg(feature = "build")]
+impl crate::doc::ApiSchema for Problem {
+    fn schema() -> RefOr<Schema> {
+        problem_schema_ref()
+    }
+}
+
 /// The Problem body as JSON Schema, for callers that emit it directly.
 ///
 /// It is the serialized [`problem_schema_ref`], so the document and the standalone schema cannot

@@ -31,6 +31,11 @@
 
 ### Added
 
+- `Status<CODE, T>` and `Empty<CODE>` document and serve any valid HTTP status code with the
+  status in the type, so the document is exact instead of `default`. The vendored IANA registry
+  also generates named wrappers in `roundhouse::status` (`Created`, `NoContent`, `NotFound`,
+  `Conflict`, …); `tools/status-codes` refreshes the shared JSON catalog, and a proc macro turns
+  it into internal `macro_rules!` invocations in the core crate.
 - `DocumentedError` documents a failure type's statuses, content types, bodies and headers.
   `Result<T, E>` combines it with `DocumentedResponse`; `Problem` is one implementor rather than a
   mandatory error type. `?` documents the handler's error type, not the source of the conversion.

@@ -18,6 +18,7 @@ mod path_params;
 mod query_params;
 mod routes;
 mod serde_shape;
+mod status_wrappers;
 mod util;
 
 pub fn expand_api(input: TokenStream) -> TokenStream {
@@ -32,6 +33,12 @@ pub fn expand_routes(input: TokenStream) -> TokenStream {
         Ok(input) => routes::expand(input),
         Err(error) => error.to_compile_error(),
     }
+}
+
+/// Generate the built-in HTTP status response wrappers from the shared JSON catalog.
+#[doc(hidden)]
+pub fn expand_http_status_wrappers(input: TokenStream) -> TokenStream {
+    status_wrappers::expand(input)
 }
 
 /// Emit an item only when the `build` feature is compiled.

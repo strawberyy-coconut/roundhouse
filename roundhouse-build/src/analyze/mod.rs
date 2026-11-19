@@ -33,6 +33,8 @@ pub const INDEX_FILE: &str = "handlers.json";
 pub enum ResponseSite {
     /// A type that names a `DocumentedResponse` implementation.
     Type { ty: String },
+    /// A type that lives in `roundhouse::status`; the macro qualifies it against the real crate.
+    StatusType { ty: String },
     /// `(StatusCode, T)`, where only `T` contributes a shape; the tuple documents `default`.
     StatusTuple { inner: String },
     /// A free or associated function call. The macro infers its return type with a witness.

@@ -30,6 +30,9 @@ pub(super) enum ResponseSite {
     Type {
         ty: String,
     },
+    StatusType {
+        ty: String,
+    },
     StatusTuple {
         inner: String,
     },

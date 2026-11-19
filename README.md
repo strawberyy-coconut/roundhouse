@@ -468,7 +468,10 @@ pub async fn show(
   `new(status, title)` are the typed error constructors.
 - A blanket `From<E> for Problem` turns infrastructure errors into `500`; `?` works without an
   `InternalError` enum.
-- `Created<T>` and `NoContent` cover the common created/no-content responses.
+- `Created<T>`, `NoContent`, `Status<CODE, T>` and `Empty<CODE>` cover the common and arbitrary
+  status responses. The named wrappers in `roundhouse::status` (`NotFound`, `Conflict`,
+  `Accepted`, …) are generated from the vendored IANA registry; refresh that snapshot with
+  `cargo run -p roundhouse-status-codes --bin update-status-codes`.
 - A custom success type implements `roundhouse::doc::DocumentedResponse`; a custom error implements
   `roundhouse::doc::DocumentedError`. Mark the impl with `#[roundhouse::build_only]` so a
   production build that compiles only `contract` drops it; otherwise the documentation
