@@ -19,8 +19,9 @@ anyone deciding whether the design fits their application.
 - **Strict builds are the default.** A missing success response, an unverified body or an
   unacknowledged merged router is an error. Opt-outs are explicit and stay visible in the
   document.
-- **Response documentation is trait-driven.** A return type publishes its own statuses, media
-  types and schemas. No type name or function body spelling decides a response.
+- **Response documentation is trait-driven, and Rust paths are not status codes.** A normal
+  return or tail is a response (`DocumentedResponse`); `?` is an error path (`DocumentedError`).
+  The traits choose the statuses. The analyzer selects the path, never a status code.
 - **The document is a projection, not a second model.** `openapi.json` is produced from the same
   resolved routes the router uses; it is not a hand-maintained specification.
 

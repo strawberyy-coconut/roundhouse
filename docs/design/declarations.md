@@ -130,7 +130,9 @@ declaration that changes the shape of an already documented response needs `over
 
 `?` documents the handler's error type, not the expression it converts. A handler returning
 `Result<T, E>` documents `T` and `E`; converting a specific error into `Problem` documents
-`Problem`'s `default`. Return the specific error type when its statuses matter.
+`Problem`'s `default`. Return the specific error type when its statuses matter. The distinction is
+the control-flow path, not the status code; see
+[Rust paths are not HTTP status codes](document.md#rust-paths-are-not-http-status-codes).
 
 `prose = include_str!(..)` on an entry fills summary and description from one string; it only
 fills fields the handler left empty. A `doc = |docs|` hook runs after the handler's contributions

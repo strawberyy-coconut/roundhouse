@@ -110,6 +110,27 @@ not trace `From` impls or `?` sources. A missing index entry or an unresolved si
 unverified marker rather than guessing. Named error types are read from the signature and need no
 analysis; opaque error types are a v1 diagnostic.
 
+## D5b — Rust return paths are not HTTP status codes
+
+**Decision.** A normal return or tail expression is a response path, documented by
+`DocumentedResponse`. A `?` is an error path, documented by the handler's `E: DocumentedError`.
+The trait impls choose the statuses; either path may document any status class. The analyzer
+selects by expression position and never by status code.
+
+**Why.** `Result<T, E>` records whether the function continued or took an early return for a
+handled situation. It is control flow, not HTTP semantics. Conflating the two makes a normal
+return documenting 500 look like an error and a `?` documenting 409 look impossible. The wire
+shape is a separate documentation decision.
+
+**Consequences.** A normal return documenting 500 and a `?` documenting 409 are valid; both
+appear in the document. The builder's status-based rules — a required `default` or 2xx/3xx, and
+collapsing two shapes at the same status `>= 400` to `Problem` — are document policies over the
+finished response map, not Rust-path classification. A normal-only 500 still needs a document
+success somewhere; that does not turn the 500 into an error.
+
+**Rejected.** Classifying responses by status range in the analyzer; requiring `?` to be 4xx/5xx;
+assuming a normal return is a 2xx.
+
 ## D6 — Strict builds are the default
 
 **Decision.** Missing successes, unverified bodies, unresolved extractors, undocumented `any`

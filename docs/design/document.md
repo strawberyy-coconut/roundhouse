@@ -108,6 +108,62 @@ infers a code from the expression. `?` contributes nothing on its own: it conver
 the document describes `E`. If `From<DbError> for Problem` maps a specific error to
 the catch-all, return `DbError` (or a union enum) when its statuses matter.
 
+### Rust paths are not HTTP status codes
+
+`Result<T, E>` is Rust control flow. It says whether the function continued or took an early
+return. `?` is an early return for a handled situation: it stops the rest of the handler. Neither
+fact implies an HTTP status.
+
+- A **normal return or tail expression** is the response path. It is documented by
+  `DocumentedResponse`.
+- A **`?`** is an error path. It converts into the handler's `E`, documented by
+  `DocumentedError`.
+- The **status class** is chosen by the trait impl. Either path may document any status; the
+  analyzer does not require a normal return to be 2xx or a `?` to be 4xx/5xx.
+
+A normal return documenting 500 and a `?` documenting 409 are both valid:
+
+```rust
+struct FailureReport;
+
+impl DocumentedResponse for FailureReport {
+    fn responses(_: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
+        vec![ResponseDoc::problem(500, "Report could not be produced")]
+    }
+}
+
+struct Conflict;
+
+impl DocumentedError for Conflict {
+    fn responses(_: &mut dyn SchemaContext) -> Vec<ResponseDoc> {
+        vec![ResponseDoc::problem(409, "Conflict")]
+    }
+}
+
+async fn work(...) -> Result<FailureReport, Conflict> {
+    if something_is_broken() {
+        return Ok(FailureReport);   // response path, 500
+    }
+    let value = check()?;           // early return, 409
+    // ...
+}
+```
+
+The document gets both `500` and `409`. The analyzer selected `FailureReport` because it is on
+the normal path, and `Conflict` because it is the handler's error type; it did not look at either
+status.
+
+The document builder still has two status-shaped rules, and they are document rules rather than
+Rust-path classification:
+
+- **A success somewhere.** An operation must have a `default` or a 2xx/3xx response. If the only
+  normal return documents `500`, the strict build still reports `UndeclaredSuccess` until another
+  response or declaration supplies a document success. That does not reclassify the `500` as an
+  error.
+- **One shape per status.** Two different shapes at the same status are a document conflict;
+  for statuses `>= 400` the builder collapses them to `Problem`. That is an OpenAPI merge rule,
+  not an inference from the Rust path.
+
 `Problem` is one implementor, not the mandatory error type. A custom documentation impl is
 marked `#[roundhouse::build_only]`, so a production build that compiles only
 the `contract` feature drops it instead of failing to resolve the documentation types:
