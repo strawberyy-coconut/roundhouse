@@ -85,7 +85,7 @@ inference: the analyzer names a type, and the traits describe it.
 {
   "kind": "roundhouse.contract",
   "contract_version": 1,
-  "generator_version": "0.4.1",
+  "generator_version": "0.4.2",
   "openapi": "openapi.json"
 }
 ```
