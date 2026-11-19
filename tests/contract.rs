@@ -288,6 +288,28 @@ fn contract_writes_both_artifacts() {
     std::fs::remove_dir_all(directory).expect("cleanup");
 }
 
+#[test]
+fn contract_sources_are_relative_to_the_package_root() {
+    let contract = contract();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let json: serde_json::Value = serde_json::from_str(
+        &contract
+            .contract_json_with_root(Some(root))
+            .expect("contract serializes"),
+    )
+    .expect("contract is JSON");
+
+    for operation in json["operations"].as_array().expect("operations array") {
+        let file = operation["source"]["file"]
+            .as_str()
+            .expect("source file is a string");
+        assert!(
+            !file.starts_with('/'),
+            "source path should be package-relative: {file}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn contract_verification_accepts_a_matching_response() {
     let contract = contract();

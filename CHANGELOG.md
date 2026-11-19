@@ -34,6 +34,17 @@
 
 ### Fixed
 
+- Committed `contract.json` artifacts now write `source.file` relative to the application package
+  root instead of embedding the checkout path. `cargo roundhouse check` is portable across
+  checkout locations again; regenerate committed artifacts once after upgrading.
+- The handler analyzer no longer treats the tail of a nested block, `if` branch, or loop body as a
+  response. A value-producing `if`/`match` used as a `let` initializer or as a loop-body statement
+  no longer adds a spurious response or unresolved diagnostic. `loop { break ... }` values are
+  documented.
+- `roundhouse_build::prepare()` now implements the documented CI and opt-in policy itself:
+  `ROUNDHOUSE_BUILDING_CONTRACT` always skips, `ROUNDHOUSE_AUTO_CONTRACT=0` opts out, and CI skips
+  unless `ROUNDHOUSE_AUTO_CONTRACT=1`. A hand-written build script no longer needs its own guard.
+  `prepare_to()` still always generates, so `cargo roundhouse prepare`/`check` are unaffected.
 - Opaque handler inference substitutes generic type parameters in helper return types and
   generic aliases such as `type ApiResult<T> = Result<T, ApiError>`. A handler no longer emits a
   documented type containing an out-of-scope `T`; a generic helper whose parameters cannot be
@@ -41,6 +52,9 @@
 
 ### Added
 
+- `routes!` accepts a table or module `operation_prefix = "page"` for derived operation ids.
+  Nested groups concatenate their prefix after the inherited one, and an explicit `operation_id`
+  still wins.
 - `Status<CODE, T>` and `Empty<CODE>` document and serve any valid HTTP status code with the
   status in the type, so the document is exact instead of `default`. The vendored IANA registry
   also generates named wrappers in `roundhouse::status` (`Created`, `NoContent`, `NotFound`,

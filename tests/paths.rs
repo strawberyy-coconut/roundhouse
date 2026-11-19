@@ -152,6 +152,52 @@ mod default_ids {
     }
 }
 
+mod prefixed {
+    use super::*;
+
+    routes! {
+        prefix = "/prefixed",
+        operation_prefix = "page",
+        "/list" => { get(list) },
+        "/show" => { get(show, operation_id = "explicit_show") },
+        prefix "/admin" [operation_prefix = "admin"] {
+            "/users" => { get(users) },
+        }
+    }
+
+    #[handler]
+    pub async fn list() -> &'static str {
+        "list"
+    }
+
+    #[handler]
+    pub async fn show() -> &'static str {
+        "show"
+    }
+
+    #[handler]
+    pub async fn users() -> &'static str {
+        "users"
+    }
+}
+
+#[test]
+fn operation_prefix_shortens_derived_ids_and_concatenates() {
+    let app = scoped(&prefixed::MODULE)
+        .try_build()
+        .expect("prefixed routes build");
+    let mut ids: Vec<&str> = app
+        .routes()
+        .iter()
+        .map(|route| route.operation_id.as_str())
+        .collect();
+    ids.sort();
+    assert_eq!(
+        ids,
+        ["explicit_show", "get_page_admin_users", "get_page_list"]
+    );
+}
+
 #[test]
 fn default_operation_ids_use_module_and_handler_not_the_url() {
     let app = scoped(&default_ids::MODULE)

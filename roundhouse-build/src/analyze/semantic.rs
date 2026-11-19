@@ -730,7 +730,7 @@ fn closure_or_function_type(
                 return Some(TypeRef::with_args(name, vec![receiver.arg(0)?.clone()]));
             }
             let function = index.function(&name)?;
-            return index.call_return(&function, None, std::iter::empty(), &HashMap::new());
+            index.call_return(&function, None, std::iter::empty(), &HashMap::new())
         }
         _ => index.infer_type(expression, &HashMap::new()),
     }

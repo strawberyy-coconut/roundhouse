@@ -31,7 +31,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/notes/src/routes/mod.rs",
+        "file": "src/routes/mod.rs",
         "line": 11,
         "module": "notes_example::routes"
       },
@@ -69,7 +69,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/notes/src/routes/mod.rs",
+        "file": "src/routes/mod.rs",
         "line": 15,
         "module": "notes_example::routes"
       },
@@ -369,7 +369,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/notes/src/routes/mod.rs",
+        "file": "src/routes/mod.rs",
         "line": 15,
         "module": "notes_example::routes"
       },
@@ -534,7 +534,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/notes/src/routes/mod.rs",
+        "file": "src/routes/mod.rs",
         "line": 20,
         "module": "notes_example::routes"
       },

@@ -105,8 +105,10 @@ By default, a package created with `cargo roundhouse new`, or adopted with
 `cargo test` refresh `.roundhouse/` automatically before `include_contract!` expands. Missing
 artifacts are seeded with empty placeholders during the contract build, so a new package builds
 before its first contract exists. `cargo roundhouse prepare` remains available for an explicit run,
-and `cargo roundhouse check` verifies the committed artifacts in CI. No `src/bin` file is
-generated; the contract harness lives under `target/roundhouse`.
+and `cargo roundhouse check` verifies the committed artifacts in CI. Automatic generation is
+skipped in CI unless `ROUNDHOUSE_AUTO_CONTRACT=1`, so CI checks the committed artifact rather than
+regenerating it. No `src/bin` file is generated; the contract harness lives under
+`target/roundhouse`.
 
 The generated `.roundhouse/openapi.json` documents `GET /v1/hello/world`, including the `name`
 path parameter that `Path<String>` cannot name by itself, and is served verbatim at
@@ -162,7 +164,9 @@ routes! {
 
 Every route entry lives inside a path group, `"/path" => { .. }`; a `prefix "/path" [..] { .. }`
 group nests another table. The supported methods are `get`, `post`, `put`, `patch`, `delete`,
-`head`, `options`, `trace` and `any`. Paths use `{capture}` and `{*rest}` syntax.
+`head`, `options`, `trace` and `any`. Paths use `{capture}` and `{*rest}` syntax. A table can set
+`operation_prefix = "page"` to shorten derived ids (`get_page_list`); a nested group's prefix is
+concatenated after its parent's.
 
 Operation prose comes from doc tags. Structured response and path metadata lives on the handler's
 attribute:
@@ -195,7 +199,7 @@ in [The document](docs/design/document.md).
 
 | Option | Effect |
 |---|---|
-| `operation_id = "..."` | Choose the operation id. Without it, an id is derived from the method, module path and handler name. |
+| `operation_id = "..."` | Choose the operation id. Without it, an id is derived from the method and handler, using the table's `operation_prefix` or the module path. |
 | `tags = ["..."]` | Add tags to the operation. |
 | `security = [Scheme]` | Require a scheme for this operation. The scheme is enforced by the route shim. |
 | `path = "/full/path"` | Assert the final resolved path, including module prefixes. |

@@ -109,6 +109,7 @@ struct SeenRoutes {
 #[derive(Default, Clone)]
 struct Inherited {
     prefix: String,
+    operation_prefix: String,
     tags: Vec<&'static str>,
     guards: Vec<AuthGuard>,
     hidden: bool,
@@ -168,8 +169,19 @@ fn walk_module(
         }
     }
 
+    let operation_prefix = match (
+        inherited.operation_prefix.is_empty(),
+        module.operation_prefix.is_empty(),
+    ) {
+        (true, true) => String::new(),
+        (true, false) => module.operation_prefix.to_string(),
+        (false, true) => inherited.operation_prefix.clone(),
+        (false, false) => format!("{}_{}", inherited.operation_prefix, module.operation_prefix),
+    };
+
     let mut context = Inherited {
         prefix: prefix::join(&inherited.prefix, module.prefix),
+        operation_prefix,
         tags: inherited.tags,
         guards: inherited.guards,
         hidden: inherited.hidden,
@@ -355,7 +367,7 @@ fn emit_route(
     let operation_id = record
         .operation_id
         .map(str::to_string)
-        .unwrap_or_else(|| default_operation_id(record));
+        .unwrap_or_else(|| default_operation_id(record, &context.operation_prefix));
     let key = (record.method, normalised.clone());
     if let Some(previous) = state.seen.by_method.get(&key) {
         return Err(BuildError::DuplicateRoute {
@@ -405,12 +417,19 @@ fn emit_route(
 ///
 /// The id follows the declaration, not the URL, so moving a route under a different prefix does
 /// not rename every generated client method. An explicit `operation_id` always wins.
-fn default_operation_id(record: &RouteRecord) -> String {
+fn default_operation_id(record: &RouteRecord, operation_prefix: &str) -> String {
     let mut parts = vec![record.method.as_str().to_ascii_lowercase()];
-    for segment in record.module_path.split("::") {
-        let segment = sanitize(segment);
-        if !segment.is_empty() {
-            parts.push(segment);
+    if operation_prefix.is_empty() {
+        for segment in record.module_path.split("::") {
+            let segment = sanitize(segment);
+            if !segment.is_empty() {
+                parts.push(segment);
+            }
+        }
+    } else {
+        let prefix = sanitize(operation_prefix);
+        if !prefix.is_empty() {
+            parts.push(prefix);
         }
     }
     let handler = sanitize(record.handler_name);

@@ -94,6 +94,11 @@ use proc_macro::TokenStream;
 /// }
 /// ```
 ///
+/// A table may set `operation_prefix = "page"` to replace the module-path portion of every
+/// derived operation id, so `get(list)` becomes `get_page_list`. Nested groups inherit and
+/// concatenate their own prefix (`page` + `admin` -> `get_page_admin_users`). An explicit
+/// `operation_id` always wins.
+///
 /// The supported verbs are `get`, `post`, `put`, `patch`, `delete`, `head`, `options`, `trace`
 /// and `any`. `any` is served but cannot be represented as one OpenAPI operation, so it is
 /// omitted from the document with a build diagnostic. Commas between entries are optional.

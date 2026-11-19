@@ -20,12 +20,16 @@
 //! ```ignore
 //! fn main() {
 //!     println!("cargo:rerun-if-changed=src");
-//!     if std::env::var_os("ROUNDHOUSE_BUILDING_CONTRACT").is_some() {
-//!         return;
-//!     }
+//!     println!("cargo:rerun-if-env-changed=ROUNDHOUSE_AUTO_CONTRACT");
+//!     println!("cargo:rerun-if-env-changed=CI");
 //!     roundhouse_build::prepare().expect("roundhouse contract generation failed");
 //! }
 //! ```
+//!
+//! [`prepare`] skips generation when the contract harness is already running
+//! (`ROUNDHOUSE_BUILDING_CONTRACT`), when `ROUNDHOUSE_AUTO_CONTRACT=0`, and in CI when `CI` is
+//! set and `ROUNDHOUSE_AUTO_CONTRACT` is unset. Set `ROUNDHOUSE_AUTO_CONTRACT=1` to generate in
+//! CI. [`prepare_to`] is the explicit entry point and never skips.
 //!
 //! Add it as a build-dependency. `cargo roundhouse init`, in the separate `roundhouse-cli`
 //! binary, writes the dependency and the script:
@@ -81,10 +85,43 @@ const PLACEHOLDER_OPENAPI: &str = r#"{
   "paths": {}
 }"#;
 
+/// Whether automatic contract generation should run.
+///
+/// The nested harness build always skips. `ROUNDHOUSE_AUTO_CONTRACT=0` opts out explicitly and
+/// `=1` opts in, including in CI. Without it, CI builds the committed artifact so that
+/// `cargo roundhouse check` can detect drift.
+fn auto_contract_enabled(env: impl Fn(&str) -> Option<OsString>) -> bool {
+    if env("ROUNDHOUSE_BUILDING_CONTRACT").is_some() {
+        return false;
+    }
+    match env("ROUNDHOUSE_AUTO_CONTRACT") {
+        Some(value) if value == "0" => return false,
+        Some(_) => return true,
+        None => {}
+    }
+    env("CI").is_none()
+}
+
 /// Generate the contract into `.roundhouse` in the current directory.
 ///
 /// This is the `build.rs` entry point. It never edits `src/` or `Cargo.toml`.
+///
+/// Generation is skipped while the contract harness is running, when
+/// `ROUNDHOUSE_AUTO_CONTRACT=0`, and in CI when `CI` is set without an explicit
+/// `ROUNDHOUSE_AUTO_CONTRACT`. When generation is skipped, the committed artifact must already
+/// exist. Use [`prepare_to`] for an explicit run that always generates.
 pub fn prepare() -> Result<(), Box<dyn Error>> {
+    if !auto_contract_enabled(|name| std::env::var_os(name)) {
+        let contract = Path::new(ARTIFACT_DIR).join("contract.json");
+        if !contract.exists() {
+            return Err(error(format!(
+                "no committed contract at {}; run `cargo roundhouse prepare` and commit it, or \
+                 set ROUNDHOUSE_AUTO_CONTRACT=1 to generate during this build",
+                contract.display()
+            )));
+        }
+        return Ok(());
+    }
     let cwd = std::env::current_dir()?;
     prepare_to(PathBuf::from(ARTIFACT_DIR))?;
     // Make the index available to the crate's own compile as well. The generated documentation
@@ -152,6 +189,7 @@ fn generate(out: &Path, index_path: &Path, cwd: &Path) -> Result<(), Box<dyn Err
 /// outside `target/` is written.
 fn run_contract_harness(out: &Path, index_path: &Path, cwd: &Path) -> Result<(), Box<dyn Error>> {
     let package = package_info()?;
+    let source_root = package.manifest_dir.clone();
     let roundhouse = roundhouse_dependency()?;
     let harness = cwd.join("target").join("roundhouse").join("harness");
     fs::create_dir_all(harness.join("src"))?;
@@ -193,6 +231,7 @@ fn run_contract_harness(out: &Path, index_path: &Path, cwd: &Path) -> Result<(),
         .arg(harness.join("Cargo.toml"))
         .arg("--")
         .arg(out)
+        .arg(source_root)
         .current_dir(cwd)
         // Keep the harness build inside the application's target directory; `target/` is
         // disposable, and the source tree stays untouched.
@@ -332,9 +371,13 @@ fn generated_bin(lib_name: &str) -> String {
              let output = std::env::args()\n\
                  .nth(1)\n\
                  .unwrap_or_else(|| \"{ARTIFACT_DIR}\".to_string());\n\
+             let root = std::env::args().nth(2);\n\
              let contract = {lib_name}::__roundhouse_contract();\n\
              let built = contract.build()?;\n\
-             built.write_to(output)?;\n\
+             built.write_to_with_root(\n\
+                 output,\n\
+                 root.as_deref().map(::std::path::Path::new),\n\
+             )?;\n\
              Ok(())\n\
          }}\n"
     )
@@ -367,7 +410,26 @@ mod tests {
         assert!(!bin.contains("inference"));
         assert!(!bin.contains("discovery"));
         assert!(bin.contains("contract.build()?"));
-        assert!(bin.contains("built.write_to(output)?"));
+        assert!(bin.contains("write_to_with_root"));
+        assert!(bin.contains("std::env::args().nth(2)"));
+    }
+
+    #[test]
+    fn automatic_generation_obeys_ci_and_the_opt_in() {
+        let enabled = |building: bool, auto: Option<&str>, ci: bool| {
+            auto_contract_enabled(|name| match name {
+                "ROUNDHOUSE_BUILDING_CONTRACT" if building => Some(OsString::from("1")),
+                "ROUNDHOUSE_AUTO_CONTRACT" => auto.map(OsString::from),
+                "CI" if ci => Some(OsString::from("1")),
+                _ => None,
+            })
+        };
+
+        assert!(enabled(false, None, false));
+        assert!(enabled(false, Some("1"), true));
+        assert!(!enabled(false, Some("0"), false));
+        assert!(!enabled(false, None, true));
+        assert!(!enabled(true, Some("1"), false));
     }
 
     #[test]

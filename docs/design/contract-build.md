@@ -31,16 +31,16 @@ fn main() {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-changed=Cargo.lock");
-    if std::env::var_os("ROUNDHOUSE_BUILDING_CONTRACT").is_some() {
-        return;
-    }
+    println!("cargo:rerun-if-env-changed=ROUNDHOUSE_AUTO_CONTRACT");
+    println!("cargo:rerun-if-env-changed=CI");
     roundhouse_build::prepare().expect("roundhouse contract generation failed");
 }
 ```
 
-The generated script additionally handles the CI and opt-in behaviour described below.
-`roundhouse_build::prepare()` writes `.roundhouse/`; `prepare_to(path)` writes the same artifacts
-elsewhere. `ARTIFACT_DIR` is `.roundhouse`.
+`prepare` itself handles the CI and opt-in behaviour described below, so a hand-written script
+does not need its own recursion or CI guard. `roundhouse_build::prepare()` writes `.roundhouse/`;
+`prepare_to(path)` writes the same artifacts elsewhere and never skips. `ARTIFACT_DIR` is
+`.roundhouse`.
 
 `prepare` first runs the handler analyzer over the application library and writes
 `target/roundhouse/handlers.json`. It then creates the harness under `target/roundhouse`, with the
@@ -55,8 +55,8 @@ reads the index when `ROUNDHOUSE_HANDLER_INDEX` is set and emits typed trait cal
 selection is a compiler error. Named return types are documented without the index.
 
 The application's build script depends on `roundhouse-build`; `cargo roundhouse init` installs it
-and writes the build script. A hand-written build script only needs the two-line call and the
-build-dependency.
+and writes the build script. A hand-written build script only needs the call above and the
+build-dependency; `prepare` implements the skip policy, not the script.
 
 ## Build modes
 
@@ -67,11 +67,13 @@ build-dependency.
 | Verify | `cargo roundhouse check` | Regenerates into `target/roundhouse-check-<pid>` and compares the committed files. |
 
 The build script and the CLI share `roundhouse-build`, so there is one generator implementation.
-The harness run sets `ROUNDHOUSE_BUILDING_CONTRACT`, so the application's build script does not
-recurse. The generated script also returns early when `ROUNDHOUSE_AUTO_CONTRACT=0`, and in CI when
-`CI` is set and `ROUNDHOUSE_AUTO_CONTRACT` is unset. That keeps `cargo roundhouse check`
-meaningful: CI builds the committed artifact and the check detects drift. Set
-`ROUNDHOUSE_AUTO_CONTRACT=1` to opt back into automatic generation in CI.
+`prepare` returns early when the harness is already running (`ROUNDHOUSE_BUILDING_CONTRACT`), when
+`ROUNDHOUSE_AUTO_CONTRACT=0`, and in CI when `CI` is set and `ROUNDHOUSE_AUTO_CONTRACT` is unset.
+That keeps `cargo roundhouse check` meaningful: CI builds the committed artifact and the check
+detects drift. Set `ROUNDHOUSE_AUTO_CONTRACT=1` to opt back into automatic generation in CI.
+`prepare_to` does not skip, so `cargo roundhouse prepare` and `cargo roundhouse check` always
+generate. If `prepare` skips and no committed contract exists, it fails with the path to the
+missing artifact.
 
 There is one build, and it is strict. A handler with no documented success response fails
 `prepare`; the error points to the handler. There is no discovery pass and no status/schema
@@ -96,7 +98,8 @@ It also contains:
   `module`, `source` location, `tags`, `deprecated`, `hidden`, `security`, the validation policy
   (`schema`, `parts` or `off`), the request body and the response table. A response is the type's
   documented response, an extractor or layer response, or an explicit declaration; there is no
-  inferred provenance.
+  inferred provenance. `source.file` is relative to the application package root, so the committed
+  artifact is independent of the checkout location.
 - **`validation.defs`** — the shared component schemas, expressed as `#/$defs/..`.
 - **`validation.bodies.ops`** — request body plans keyed by operation id, with content type and
   schema.

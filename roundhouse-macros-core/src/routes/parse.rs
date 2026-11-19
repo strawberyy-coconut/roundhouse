@@ -23,6 +23,8 @@ pub(super) enum LayerMode {
 #[derive(Default)]
 pub(super) struct ModuleOptions {
     pub(super) prefix: Option<LitStr>,
+    /// Default prefix for derived operation ids in this module and below.
+    pub(super) operation_prefix: Option<LitStr>,
     pub(super) state: Option<StateOption>,
     pub(super) tags: Vec<LitStr>,
     pub(super) security: Vec<Type>,
@@ -239,7 +241,14 @@ fn parse_root_options(input: ParseStream<'_>) -> Result<ModuleOptions> {
         let is_flag = name == "hidden" || name == "anonymous";
         let is_key = matches!(
             name.as_str(),
-            "prefix" | "state" | "tags" | "security" | "layer" | "layer_mode" | "doc"
+            "prefix"
+                | "operation_prefix"
+                | "state"
+                | "tags"
+                | "security"
+                | "layer"
+                | "layer_mode"
+                | "doc"
         );
         if !is_flag && !is_key {
             break;
@@ -425,6 +434,23 @@ fn parse_module_key(input: ParseStream<'_>, options: &mut ModuleOptions, key: Id
         "prefix" => {
             input.parse::<Token![=]>()?;
             options.prefix = Some(input.parse()?);
+        }
+        "operation_prefix" => {
+            input.parse::<Token![=]>()?;
+            let value: LitStr = input.parse()?;
+            if value.value().is_empty() {
+                return Err(syn::Error::new(
+                    value.span(),
+                    "`operation_prefix` cannot be empty",
+                ));
+            }
+            if !value.value().chars().any(|ch| ch.is_ascii_alphanumeric()) {
+                return Err(syn::Error::new(
+                    value.span(),
+                    "`operation_prefix` needs at least one ASCII letter or digit",
+                ));
+            }
+            options.operation_prefix = Some(value);
         }
         "state" => {
             input.parse::<Token![=]>()?;

@@ -31,7 +31,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/quickstart/src/lib.rs",
+        "file": "src/lib.rs",
         "line": 92,
         "module": "quickstart_example::routes"
       },
@@ -134,7 +134,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/quickstart/src/lib.rs",
+        "file": "src/lib.rs",
         "line": 96,
         "module": "quickstart_example::routes"
       },
@@ -369,7 +369,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/quickstart/src/lib.rs",
+        "file": "src/lib.rs",
         "line": 96,
         "module": "quickstart_example::routes"
       },
@@ -599,7 +599,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/quickstart/src/lib.rs",
+        "file": "src/lib.rs",
         "line": 101,
         "module": "quickstart_example::routes"
       },
@@ -757,7 +757,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/quickstart/src/lib.rs",
+        "file": "src/lib.rs",
         "line": 101,
         "module": "quickstart_example::routes"
       },

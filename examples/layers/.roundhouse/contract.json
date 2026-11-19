@@ -31,7 +31,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/layers/src/routes/mod.rs",
+        "file": "src/routes/mod.rs",
         "line": 39,
         "module": "layers_example::routes"
       },
@@ -64,7 +64,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/layers/src/routes/mod.rs",
+        "file": "src/routes/mod.rs",
         "line": 24,
         "module": "layers_example::routes"
       },
@@ -97,7 +97,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/layers/src/routes/mod.rs",
+        "file": "src/routes/mod.rs",
         "line": 33,
         "module": "layers_example::routes"
       },

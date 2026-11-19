@@ -248,9 +248,26 @@ impl BuiltContract {
 
     /// The runtime contract manifest as pretty JSON.
     ///
+    /// Source locations are written relative to the current directory, so a committed artifact
+    /// does not depend on where the application was checked out. Use
+    /// [`contract_json_with_root`](Self::contract_json_with_root) when the package root differs
+    /// from the process's working directory.
+    ///
     /// This is deliberately a separate artifact from the OpenAPI document. It is the stable
     /// operation-keyed view the runtime will consume in the next phase.
     pub fn contract_json(&self) -> Result<String, serde_json::Error> {
+        let root = std::env::current_dir().ok();
+        self.contract_json_with_root(root.as_deref())
+    }
+
+    /// The runtime contract manifest with source paths relative to `root`.
+    ///
+    /// `root` is normally the application package root. A path that is already relative, or
+    /// that lies outside `root`, is written unchanged (apart from separator normalization).
+    pub fn contract_json_with_root(
+        &self,
+        root: Option<&Path>,
+    ) -> Result<String, serde_json::Error> {
         let document = serde_json::to_value(self.document.as_utoipa())?;
         let defs = self
             .document
@@ -305,7 +322,7 @@ impl BuiltContract {
                 "module": route.module_path,
                 "source": {
                     "module": source.module_path,
-                    "file": source.file,
+                    "file": source_path(source.file, root),
                     "line": source.line,
                 },
                 "tags": route.tags,
@@ -335,7 +352,7 @@ impl BuiltContract {
                     "message": diagnostic.message,
                     "source": {
                         "module": diagnostic.source.module_path,
-                        "file": diagnostic.source.file,
+                        "file": source_path(diagnostic.source.file, root),
                         "line": diagnostic.source.line,
                     },
                 })
@@ -365,10 +382,25 @@ impl BuiltContract {
     }
 
     /// Write `contract.json` and `openapi.json` into `directory`.
+    ///
+    /// Source locations are relative to the current directory. Use
+    /// [`write_to_with_root`](Self::write_to_with_root) to name the package root explicitly.
     pub fn write_to(&self, directory: impl AsRef<Path>) -> std::io::Result<()> {
+        let root = std::env::current_dir().ok();
+        self.write_to_with_root(directory, root.as_deref())
+    }
+
+    /// Write both artifacts with source paths relative to `root`.
+    pub fn write_to_with_root(
+        &self,
+        directory: impl AsRef<Path>,
+        root: Option<&Path>,
+    ) -> std::io::Result<()> {
         let directory = directory.as_ref();
         std::fs::create_dir_all(directory)?;
-        let contract = self.contract_json().map_err(std::io::Error::other)?;
+        let contract = self
+            .contract_json_with_root(root)
+            .map_err(std::io::Error::other)?;
         std::fs::write(directory.join("contract.json"), format!("{contract}\n"))?;
         std::fs::write(
             directory.join("openapi.json"),
@@ -376,6 +408,30 @@ impl BuiltContract {
         )?;
         Ok(())
     }
+}
+
+/// Render a `file!()` location relative to the package root when possible.
+fn source_path(file: &str, root: Option<&Path>) -> String {
+    let file = file.replace('\\', "/");
+    let Some(root) = root else {
+        return file;
+    };
+    let path = Path::new(&file);
+    if path.is_relative() {
+        return file;
+    }
+    let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    if let Ok(relative) = path.strip_prefix(&root) {
+        return relative.to_string_lossy().replace('\\', "/");
+    }
+    // `file!()` can name a symlinked source tree while the package root is canonical (or the
+    // other way around); retry with the source path canonicalized.
+    if let Ok(canonical) = path.canonicalize()
+        && let Ok(relative) = canonical.strip_prefix(&root)
+    {
+        return relative.to_string_lossy().replace('\\', "/");
+    }
+    file
 }
 
 fn contract_responses(document: &Value, route: &ResolvedRoute) -> Vec<Value> {
@@ -427,5 +483,55 @@ fn patch_encoding_headers(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::source_path;
+
+    #[test]
+    fn source_paths_are_relative_to_the_package_root() {
+        assert_eq!(
+            source_path(
+                "/workspaces/app/src/routes/list.rs",
+                Some(std::path::Path::new("/workspaces/app")),
+            ),
+            "src/routes/list.rs"
+        );
+    }
+
+    #[test]
+    fn relative_source_paths_are_left_alone() {
+        assert_eq!(
+            source_path(
+                "src/routes/list.rs",
+                Some(std::path::Path::new("/workspaces/app/other"))
+            ),
+            "src/routes/list.rs"
+        );
+    }
+
+    #[test]
+    fn sources_outside_the_root_are_kept() {
+        assert_eq!(
+            source_path(
+                "/workspaces/shared/src/lib.rs",
+                Some(std::path::Path::new("/workspaces/app")),
+            ),
+            "/workspaces/shared/src/lib.rs"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_separators_are_normalized() {
+        assert_eq!(
+            source_path(
+                r"C:\workspaces\app\src\routes\list.rs",
+                Some(std::path::Path::new("C:/workspaces/app")),
+            ),
+            "src/routes/list.rs"
+        );
     }
 }

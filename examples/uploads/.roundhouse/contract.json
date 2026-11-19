@@ -269,7 +269,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/uploads/src/routes/uploads.rs",
+        "file": "src/routes/uploads.rs",
         "line": 8,
         "module": "uploads_example::routes::uploads"
       },
@@ -377,7 +377,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/uploads/src/routes/uploads.rs",
+        "file": "src/routes/uploads.rs",
         "line": 9,
         "module": "uploads_example::routes::uploads"
       },
@@ -477,7 +477,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/uploads/src/routes/uploads.rs",
+        "file": "src/routes/uploads.rs",
         "line": 11,
         "module": "uploads_example::routes::uploads"
       },
@@ -585,7 +585,7 @@
       ],
       "security": [],
       "source": {
-        "file": "/workspaces/axum-roundhouse/examples/uploads/src/routes/uploads.rs",
+        "file": "src/routes/uploads.rs",
         "line": 10,
         "module": "uploads_example::routes::uploads"
       },

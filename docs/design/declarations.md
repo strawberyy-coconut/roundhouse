@@ -57,6 +57,8 @@ design-relevant rules are:
 - `prose = ..` fills only prose fields the handler left empty; `doc = ..` runs after the handler's
   contributions. Both are expressions type-checked in the emitted context.
 - `layer_mode = full` uses `Router::layer`; `layer_mode = route` uses `Router::route_layer`.
+- `operation_prefix = "page"` replaces the module-path portion of derived operation ids; nested
+  groups concatenate their prefix after the inherited one. Explicit `operation_id` values win.
 - `unverified = "reason"` acknowledges an intentional marker; it does not remove the marker from
   the document.
 

@@ -44,7 +44,7 @@ pub(crate) fn analyze_handler(function: &ItemFn, index: &Index) -> Analysis {
         locals,
         analysis: &mut analysis,
     };
-    context.block(&function.block);
+    context.block_value(&function.block);
     dedupe(&mut analysis.sites);
     if analysis.sites.is_empty() && analysis.unresolved.is_empty() {
         analysis
@@ -61,21 +61,12 @@ struct Context<'a> {
 }
 
 impl Context<'_> {
-    fn block(&mut self, block: &syn::Block) {
+    /// Walk a block whose value is used (the function body, a block tail, an `if` branch).
+    fn block_value(&mut self, block: &syn::Block) {
         let saved = self.locals.clone();
         for statement in &block.stmts {
             if let Stmt::Local(local) = statement {
-                if let Some((name, ty)) = local_binding(local, self.index, &self.locals) {
-                    self.locals.insert(name, ty);
-                }
-                if let Some(init) = &local.init {
-                    self.scan_returns(&init.expr);
-                    // `let ... else { return ... }` keeps its divergent branch beside the
-                    // initializer, not in the initializer expression.
-                    if let Some((_, divergent)) = &init.diverge {
-                        self.scan_returns(divergent);
-                    }
-                }
+                self.bind_local(local);
             }
         }
         let count = block.stmts.len();
@@ -87,6 +78,35 @@ impl Context<'_> {
             }
         }
         self.locals = saved;
+    }
+
+    /// Walk a block whose value is discarded (a statement block, loop body or `if` branch).
+    ///
+    /// Only explicit `return` sites contribute; a tail expression is a value, not a response.
+    fn block_returns(&mut self, block: &syn::Block) {
+        let saved = self.locals.clone();
+        for statement in &block.stmts {
+            match statement {
+                Stmt::Local(local) => self.bind_local(local),
+                Stmt::Expr(expression, _) => self.scan_returns(expression),
+                _ => {}
+            }
+        }
+        self.locals = saved;
+    }
+
+    fn bind_local(&mut self, local: &syn::Local) {
+        if let Some((name, ty)) = local_binding(local, self.index, &self.locals) {
+            self.locals.insert(name, ty);
+        }
+        if let Some(init) = &local.init {
+            self.scan_returns(&init.expr);
+            // `let ... else { return ... }` keeps its divergent branch beside the initializer,
+            // not in the initializer expression.
+            if let Some((_, divergent)) = &init.diverge {
+                self.scan_returns(divergent);
+            }
+        }
     }
 
     fn value(&mut self, expression: &Expr) {
@@ -118,20 +138,85 @@ impl Context<'_> {
                 }
             }
             Expr::If(if_expression) => {
-                self.block(&if_expression.then_branch);
+                self.block_value(&if_expression.then_branch);
                 match &if_expression.else_branch {
                     Some((_, else_expression)) => self.value(else_expression),
                     // Without an else branch the other path returns `()`.
                     None => self.push_type("()"),
                 }
             }
-            Expr::Block(block) => self.block(&block.block),
-            Expr::Loop(loop_expression) => self.block(&loop_expression.body),
-            Expr::While(while_expression) => self.block(&while_expression.body),
-            Expr::ForLoop(for_loop) => self.block(&for_loop.body),
+            Expr::Block(block) => self.block_value(&block.block),
+            Expr::Loop(loop_expression) => self.loop_value(&loop_expression.body),
+            Expr::While(while_expression) => self.block_returns(&while_expression.body),
+            Expr::ForLoop(for_loop) => self.block_returns(&for_loop.body),
             Expr::Closure(_) => {}
             Expr::Macro(_) => self.unresolved("a macro-generated response"),
             _ => self.unresolved("an unsupported response expression"),
+        }
+    }
+
+    /// Walk a loop body in value position. The loop's value comes from `break`, not its tail.
+    fn loop_value(&mut self, block: &syn::Block) {
+        let saved = self.locals.clone();
+        for statement in &block.stmts {
+            match statement {
+                Stmt::Local(local) => self.bind_local(local),
+                Stmt::Expr(expression, _) => self.loop_value_expr(expression),
+                _ => {}
+            }
+        }
+        self.locals = saved;
+    }
+
+    fn loop_value_expr(&mut self, expression: &Expr) {
+        match expression {
+            Expr::Break(broken) => match &broken.expr {
+                Some(value) => self.value(value),
+                None => self.push_type("()"),
+            },
+            Expr::Return(returned) => match &returned.expr {
+                Some(value) => self.value(value),
+                None => self.push_type("()"),
+            },
+            // A nested loop owns its own `break`s; scan it only for `return`s.
+            Expr::Loop(_) | Expr::While(_) | Expr::ForLoop(_) => self.scan_returns(expression),
+            // A `return` or `break` inside a closure belongs to the closure.
+            Expr::Closure(_) => {}
+            Expr::Block(block) => self.loop_value(&block.block),
+            Expr::If(if_expression) => {
+                self.loop_value(&if_expression.then_branch);
+                if let Some((_, else_expression)) = &if_expression.else_branch {
+                    self.loop_value_expr(else_expression);
+                }
+            }
+            Expr::Match(matched) => {
+                for arm in &matched.arms {
+                    self.loop_value_expr(&arm.body);
+                }
+            }
+            Expr::Try(tried) => self.loop_value_expr(&tried.expr),
+            Expr::Await(awaited) => self.loop_value_expr(&awaited.base),
+            Expr::Paren(paren) => self.loop_value_expr(&paren.expr),
+            Expr::Group(group) => self.loop_value_expr(&group.expr),
+            Expr::Unary(unary) => self.loop_value_expr(&unary.expr),
+            Expr::Reference(reference) => self.loop_value_expr(&reference.expr),
+            Expr::Cast(cast) => self.loop_value_expr(&cast.expr),
+            Expr::Call(call) => {
+                for argument in &call.args {
+                    self.loop_value_expr(argument);
+                }
+            }
+            Expr::MethodCall(call) => {
+                self.loop_value_expr(&call.receiver);
+                for argument in &call.args {
+                    self.loop_value_expr(argument);
+                }
+            }
+            Expr::Binary(binary) => {
+                self.loop_value_expr(&binary.left);
+                self.loop_value_expr(&binary.right);
+            }
+            _ => {}
         }
     }
 
@@ -366,9 +451,9 @@ impl Context<'_> {
                 Some(value) => self.value(value),
                 None => self.push_type("()"),
             },
-            Expr::Block(block) => self.block(&block.block),
+            Expr::Block(block) => self.block_returns(&block.block),
             Expr::If(if_expression) => {
-                self.block(&if_expression.then_branch);
+                self.block_returns(&if_expression.then_branch);
                 if let Some((_, else_expression)) = &if_expression.else_branch {
                     self.scan_returns(else_expression);
                 }
@@ -400,9 +485,9 @@ impl Context<'_> {
                 self.scan_returns(&binary.left);
                 self.scan_returns(&binary.right);
             }
-            Expr::Loop(loop_expression) => self.block(&loop_expression.body),
-            Expr::While(while_expression) => self.block(&while_expression.body),
-            Expr::ForLoop(for_loop) => self.block(&for_loop.body),
+            Expr::Loop(loop_expression) => self.block_returns(&loop_expression.body),
+            Expr::While(while_expression) => self.block_returns(&while_expression.body),
+            Expr::ForLoop(for_loop) => self.block_returns(&for_loop.body),
             // A `return` inside a closure belongs to the closure.
             Expr::Closure(_) => {}
             _ => {}
@@ -1043,5 +1128,166 @@ mod tests {
                 ty: "Conflict".to_string()
             }]
         );
+    }
+
+    #[test]
+    fn an_if_initializer_is_not_a_response() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            #[handler]
+            async fn show(flag: bool) -> impl IntoResponse {
+                let note = if flag { Note { id: 1 } } else { Note { id: 2 } };
+                Json(note)
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn an_if_initializer_does_not_document_helper_calls() {
+        let analysis = analyze(
+            r#"
+            fn count() -> u64 { 1 }
+            #[handler]
+            async fn show(flag: bool) -> impl IntoResponse {
+                let n = if flag { count() } else { count() };
+                Json(n)
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<u64>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn an_if_tail_in_a_loop_is_not_a_response() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            fn tick() {}
+            #[handler]
+            async fn show(flag: bool, notes: Vec<Note>) -> impl IntoResponse {
+                for _ in notes {
+                    if flag { tick() } else { tick() }
+                }
+                Json(Note { id: 1 })
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn a_match_tail_in_a_loop_is_not_a_response() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            enum Choice { A, B }
+            fn tick(choice: Choice) {}
+            #[handler]
+            async fn show(choice: Choice, notes: Vec<Note>) -> impl IntoResponse {
+                for _ in notes {
+                    match choice {
+                        Choice::A => tick(Choice::A),
+                        Choice::B => tick(Choice::B),
+                    }
+                }
+                Json(Note { id: 1 })
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn returns_inside_loop_branches_are_still_documented() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            #[handler]
+            async fn show(flag: bool) -> impl IntoResponse {
+                loop {
+                    if flag {
+                        return Json(Note { id: 1 }).into_response();
+                    }
+                }
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn a_loop_break_value_is_documented() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            #[handler]
+            async fn show() -> impl IntoResponse {
+                loop {
+                    break Json(Note { id: 1 }).into_response();
+                }
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn a_block_value_bound_to_a_local_is_still_documented() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            #[handler]
+            async fn show() -> impl IntoResponse {
+                let note = { Json(Note { id: 1 }) };
+                note
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
     }
 }

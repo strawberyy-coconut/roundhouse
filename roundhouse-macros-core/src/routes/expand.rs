@@ -100,6 +100,12 @@ pub(super) fn emit_module(
 
     let prefix_value = prefix.map(|prefix| prefix.value()).unwrap_or_default();
     let prefix_lit = LitStr::new(&prefix_value, proc_macro2::Span::call_site());
+    let operation_prefix_value = options
+        .operation_prefix
+        .as_ref()
+        .map(LitStr::value)
+        .unwrap_or_default();
+    let operation_prefix_lit = LitStr::new(&operation_prefix_value, proc_macro2::Span::call_site());
     let tags = string_slice(&options.tags);
     let security = auth_slice(&options.security);
     let hidden = options.hidden;
@@ -157,6 +163,7 @@ pub(super) fn emit_module(
                 file: file!(),
                 line: #line,
                 prefix: #prefix_lit,
+                operation_prefix: #operation_prefix_lit,
                 tags: #tags,
                 security: #security,
                 hidden: #hidden,

@@ -269,9 +269,9 @@ generated feature would leak into the application's build. `target/` is disposab
 ignored.
 
 **Consequences.** `cargo build` and `cargo test` refresh `.roundhouse/` before `include_contract!`
-expands. The harness sets `ROUNDHOUSE_BUILDING_CONTRACT`, and the generated build script respects
-CI unless `ROUNDHOUSE_AUTO_CONTRACT=1`. `roundhouse-build` is the build-dependency;
-`roundhouse-cli` is only the binary.
+expands. The harness sets `ROUNDHOUSE_BUILDING_CONTRACT`, and `prepare()` itself respects CI
+unless `ROUNDHOUSE_AUTO_CONTRACT=1`, so a hand-written build script gets the same policy.
+`roundhouse-build` is the build-dependency; `roundhouse-cli` is only the binary.
 
 **Rejected.** A generated `src/bin/roundhouse-contract.rs`; a generated Cargo feature.
 
