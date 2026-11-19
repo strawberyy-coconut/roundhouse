@@ -1382,7 +1382,7 @@ dependencies = [
 
 [[package]]
 name = "roundhouse"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "axum",
  "bytes",
@@ -1411,7 +1411,7 @@ dependencies = [
 
 [[package]]
 name = "roundhouse-build"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1423,7 +1423,7 @@ dependencies = [
 
 [[package]]
 name = "roundhouse-cli"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "clap",
  "roundhouse-build",
@@ -1433,7 +1433,7 @@ dependencies = [
 
 [[package]]
 name = "roundhouse-macros"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "proc-macro2",
  "roundhouse-macros-core",
@@ -1441,7 +1441,7 @@ dependencies = [
 
 [[package]]
 name = "roundhouse-macros-core"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1455,14 +1455,14 @@ dependencies = [
 
 [[package]]
 name = "roundhouse-path"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "matchit",
 ]
 
 [[package]]
 name = "roundhouse-schema"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "bytes",
  "chrono",
