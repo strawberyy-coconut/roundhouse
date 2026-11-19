@@ -961,6 +961,74 @@ mod tests {
     }
 
     #[test]
+    fn generic_result_aliases_are_substituted() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            struct DbError;
+            type ApiResult<T> = Result<T, DbError>;
+            async fn find(id: u64) -> ApiResult<Option<Note>> { todo!() }
+            async fn page_state(note: &Note) -> ApiResult<Note> { todo!() }
+            #[handler]
+            async fn show() -> Result<impl IntoResponse, DbError> {
+                let Some(note) = find(1).await? else {
+                    return Ok(NotFound(()).into_response());
+                };
+                Ok(Json(page_state(&note).await?).into_response())
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![
+                ResponseSite::StatusType {
+                    ty: "NotFound<()>".to_string()
+                },
+                ResponseSite::Type {
+                    ty: "Json<Note>".to_string()
+                },
+            ]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn generic_helpers_are_substituted_from_arguments() {
+        let analysis = analyze(
+            r#"
+            struct Note { id: u64 }
+            fn wrap<T>(value: T) -> T { value }
+            #[handler]
+            async fn show() -> impl IntoResponse {
+                Json(wrap(Note { id: 1 }))
+            }
+            "#,
+        );
+        assert_eq!(
+            analysis.sites,
+            vec![ResponseSite::Type {
+                ty: "Json<Note>".to_string()
+            }]
+        );
+        assert!(analysis.unresolved.is_empty());
+    }
+
+    #[test]
+    fn uninferable_generic_helpers_stay_unresolved() {
+        let analysis = analyze(
+            r#"
+            fn make<T>() -> T { todo!() }
+            #[handler]
+            async fn show() -> impl IntoResponse {
+                Json(make())
+            }
+            "#,
+        );
+        assert!(analysis.sites.is_empty());
+        assert!(!analysis.unresolved.is_empty());
+    }
+
+    #[test]
     fn a_local_type_wins_over_a_generated_name() {
         let analysis = analyze(
             r#"

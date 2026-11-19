@@ -32,6 +32,13 @@
   return type. `DocumentedIntoResponse::into_documented_response` therefore returns `Documented`
   instead of `Self`. Explicit `#[handler(response(..))]` declarations remain the escape hatch.
 
+### Fixed
+
+- Opaque handler inference substitutes generic type parameters in helper return types and
+  generic aliases such as `type ApiResult<T> = Result<T, ApiError>`. A handler no longer emits a
+  documented type containing an out-of-scope `T`; a generic helper whose parameters cannot be
+  inferred is marked unverified instead of guessed.
+
 ### Added
 
 - `Status<CODE, T>` and `Empty<CODE>` document and serve any valid HTTP status code with the

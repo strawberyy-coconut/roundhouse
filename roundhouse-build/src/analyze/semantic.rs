@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 
 use quote::ToTokens;
 use syn::{
-    Expr, Fields, ImplItem, Item, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemStatic, ItemStruct,
-    ItemType, Pat, ReturnType, Type,
+    Expr, Fields, FnArg, GenericArgument, GenericParam, ImplItem, Item, ItemConst, ItemEnum,
+    ItemFn, ItemImpl, ItemStatic, ItemStruct, ItemType, Pat, ReturnType, Type,
 };
 
 use roundhouse_schema::status_codes::{self as status_catalog, StatusKind};
@@ -251,10 +251,69 @@ impl Index {
 
     /// A type alias target, following aliases transitively.
     pub(crate) fn resolve_alias(&self, type_ref: &TypeRef) -> TypeRef {
-        let Some(alias) = self.aliases.get(&type_ref.name) else {
-            return type_ref.clone();
-        };
-        normalize_type(&alias.ty, &self.aliases).unwrap_or_else(|| type_ref.clone())
+        normalize_type_ref(type_ref, &self.aliases).unwrap_or_else(|| type_ref.clone())
+    }
+
+    /// A function or method's return type, with type parameters substituted from explicit
+    /// arguments and the call's argument types.
+    ///
+    /// The analyzer has no compiler session, so a generic helper's return type is only usable when
+    /// every type parameter is known. Anything still generic becomes unresolved instead of leaking
+    /// a name such as `T` into the generated documentation call.
+    fn call_return<'a>(
+        &self,
+        function: &ItemFn,
+        explicit: Option<&syn::PathSegment>,
+        arguments: impl IntoIterator<Item = &'a Expr>,
+        locals: &HashMap<String, TypeRef>,
+    ) -> Option<TypeRef> {
+        let ty = return_type(function, &self.aliases)?;
+        let parameters = generic_type_params(&function.sig.generics);
+        if parameters.is_empty() {
+            return Some(ty);
+        }
+
+        let mut substitutions = HashMap::new();
+        if let Some(segment) = explicit
+            && let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments
+        {
+            let explicit: Vec<&Type> = arguments
+                .args
+                .iter()
+                .filter_map(|argument| match argument {
+                    GenericArgument::Type(ty) => Some(ty),
+                    _ => None,
+                })
+                .collect();
+            for (parameter, ty) in parameters.iter().zip(explicit) {
+                if let Some(ty) = normalize_type(ty, &self.aliases) {
+                    substitutions.insert(parameter.clone(), ty);
+                }
+            }
+        }
+
+        // A method's receiver is not part of `arguments`, so skip it when pairing parameter types.
+        let mut arguments = arguments.into_iter();
+        for input in &function.sig.inputs {
+            let FnArg::Typed(parameter) = input else {
+                continue;
+            };
+            let Some(argument) = arguments.next() else {
+                break;
+            };
+            let Some(argument) = self.infer_type(argument, locals) else {
+                continue;
+            };
+            if let Some(parameter) = normalize_type(&parameter.ty, &self.aliases) {
+                unify_type_ref(&parameter, &argument, &parameters, &mut substitutions);
+            }
+        }
+
+        let substituted = substitute_type_ref(&ty, &substitutions)?;
+        if has_generic_name(&substituted, &parameters) {
+            return None;
+        }
+        Some(substituted)
     }
 
     /// Infer the type of an expression, using the local type environment.
@@ -378,10 +437,10 @@ impl Index {
         call: &syn::ExprCall,
         locals: &HashMap<String, TypeRef>,
     ) -> Option<TypeRef> {
-        let Expr::Path(function) = call.func.as_ref() else {
+        let Expr::Path(callee_path) = call.func.as_ref() else {
             return None;
         };
-        let segments: Vec<String> = function
+        let segments: Vec<String> = callee_path
             .path
             .segments
             .iter()
@@ -428,7 +487,7 @@ impl Index {
         {
             return match spec.kind {
                 StatusKind::Body => {
-                    let inner = named_segment(&function.path, &spec.ident)
+                    let inner = named_segment(&callee_path.path, &spec.ident)
                         .and_then(type_argument)
                         .or_else(|| {
                             call.args
@@ -446,7 +505,7 @@ impl Index {
         // turbofish; the return type cannot be named by inference alone because the code is a
         // const parameter.
         if segments[0] == "Status" && !self.has_local_type("Status") {
-            let segment = function
+            let segment = callee_path
                 .path
                 .segments
                 .iter()
@@ -462,7 +521,7 @@ impl Index {
             return Some(TypeRef::with_consts("Status", vec![consts], vec![inner]));
         }
         if segments[0] == "Empty" && !self.has_local_type("Empty") {
-            let segment = function
+            let segment = callee_path
                 .path
                 .segments
                 .iter()
@@ -480,7 +539,20 @@ impl Index {
             return Some(TypeRef::with_args(name, vec![inner]));
         }
 
-        if let Some(type_ref) = function_type_ref(&function.path, &self.aliases) {
+        // A generic helper's return type is only known after substituting its parameters. Do this
+        // before the constructor-turbofish path so `load::<Note>(..)` resolves like `load(..)`.
+        if let Some(callee) = self.callee(&callee_path.path)
+            && !generic_type_params(&callee.sig.generics).is_empty()
+        {
+            return self.call_return(
+                &callee,
+                callee_path.path.segments.last(),
+                call.args.iter(),
+                locals,
+            );
+        }
+
+        if let Some(type_ref) = function_type_ref(&callee_path.path, &self.aliases) {
             // `Json::<T>(value)` carries the schema in its turbofish.
             if matches!(type_ref.name.as_str(), "Json" | "Vec" | "Option")
                 && type_ref.arg(0).is_some_and(|arg| !arg.is("Unknown"))
@@ -493,7 +565,12 @@ impl Index {
         if segments.len() >= 2 {
             let receiver = &segments[segments.len() - 2];
             if let Some(method) = self.method(receiver, name) {
-                return return_type(&method, &self.aliases);
+                return self.call_return(
+                    &method,
+                    callee_path.path.segments.last(),
+                    call.args.iter(),
+                    locals,
+                );
             }
             if receiver == "Problem" {
                 // `Problem`'s associated constructors (`not_found`, `bad_request`, …) live in
@@ -512,7 +589,12 @@ impl Index {
         }
 
         let function = self.function(name)?;
-        return_type(&function, &self.aliases)
+        self.call_return(
+            &function,
+            callee_path.path.segments.last(),
+            call.args.iter(),
+            locals,
+        )
     }
 
     fn infer_method(
@@ -597,7 +679,7 @@ impl Index {
 
         let receiver = receiver?;
         if let Some(method) = self.method(&receiver.name, &method) {
-            return return_type(&method, &self.aliases);
+            return self.call_return(&method, None, call.args.iter(), locals);
         }
         None
     }
@@ -648,7 +730,7 @@ fn closure_or_function_type(
                 return Some(TypeRef::with_args(name, vec![receiver.arg(0)?.clone()]));
             }
             let function = index.function(&name)?;
-            return_type(&function, &index.aliases)
+            return index.call_return(&function, None, std::iter::empty(), &HashMap::new());
         }
         _ => index.infer_type(expression, &HashMap::new()),
     }
@@ -790,18 +872,100 @@ pub(crate) fn return_type(
 
 /// Normalize a syntax type into a [`TypeRef`], following aliases.
 pub(crate) fn normalize_type(ty: &Type, aliases: &HashMap<String, ItemType>) -> Option<TypeRef> {
-    let mut resolved = type_ref(ty)?;
-    // Follow simple aliases, guarding against a cycle.
+    let resolved = type_ref(ty)?;
+    normalize_type_ref(&resolved, aliases)
+}
+
+/// Follow aliases on an already-normalized type, substituting the alias's type arguments.
+///
+/// `type ApiResult<T> = Result<T, Problem>` used as `ApiResult<Page>` must become
+/// `Result<Page, Problem>`; keeping the alias's own `T` would leak a name the generated
+/// documentation code cannot resolve.
+fn normalize_type_ref(resolved: &TypeRef, aliases: &HashMap<String, ItemType>) -> Option<TypeRef> {
+    let mut resolved = resolved.clone();
+    // Follow aliases, guarding against a cycle.
     for _ in 0..8 {
         let Some(alias) = aliases.get(&resolved.name) else {
             break;
         };
-        let Some(next) = type_ref(&alias.ty) else {
-            break;
-        };
-        resolved = next;
+        let target = type_ref(&alias.ty)?;
+        let parameters = generic_type_params(&alias.generics);
+        if parameters.is_empty() {
+            resolved = target;
+            continue;
+        }
+        let substitutions: HashMap<String, TypeRef> = parameters
+            .iter()
+            .cloned()
+            .zip(resolved.args.iter().cloned())
+            .collect();
+        if parameters
+            .iter()
+            .any(|parameter| !substitutions.contains_key(parameter))
+        {
+            return None;
+        }
+        resolved = substitute_type_ref(&target, &substitutions)?;
     }
     Some(resolved)
+}
+
+/// The type parameter names declared by a function, method, or alias.
+fn generic_type_params(generics: &syn::Generics) -> Vec<String> {
+    generics
+        .params
+        .iter()
+        .filter_map(|parameter| match parameter {
+            GenericParam::Type(parameter) => Some(parameter.ident.to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Replace type parameters in a resolved type.
+fn substitute_type_ref(ty: &TypeRef, substitutions: &HashMap<String, TypeRef>) -> Option<TypeRef> {
+    if let Some(replacement) = substitutions.get(&ty.name) {
+        return Some(replacement.clone());
+    }
+    let args = ty
+        .args
+        .iter()
+        .map(|argument| substitute_type_ref(argument, substitutions))
+        .collect::<Option<Vec<_>>>()?;
+    Some(TypeRef::with_consts(
+        ty.name.clone(),
+        ty.consts.clone(),
+        args,
+    ))
+}
+
+fn has_generic_name(ty: &TypeRef, parameters: &[String]) -> bool {
+    parameters.iter().any(|parameter| parameter == &ty.name)
+        || ty
+            .args
+            .iter()
+            .any(|argument| has_generic_name(argument, parameters))
+}
+
+/// Infer a generic parameter from a declared parameter type and a call argument type.
+fn unify_type_ref(
+    parameter: &TypeRef,
+    argument: &TypeRef,
+    parameters: &[String],
+    substitutions: &mut HashMap<String, TypeRef>,
+) {
+    if parameters.iter().any(|name| name == &parameter.name) {
+        substitutions
+            .entry(parameter.name.clone())
+            .or_insert_with(|| argument.clone());
+        return;
+    }
+    if parameter.name != argument.name {
+        return;
+    }
+    for (parameter, argument) in parameter.args.iter().zip(argument.args.iter()) {
+        unify_type_ref(parameter, argument, parameters, substitutions);
+    }
 }
 
 fn type_ref(ty: &Type) -> Option<TypeRef> {

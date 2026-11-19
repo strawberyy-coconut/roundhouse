@@ -132,6 +132,7 @@ pub mod routes {
         "/empty" => { get(empty) },
         "/branching/{id}" => { get(branching) },
         "/branching-helper/{id}" => { get(branching_helper) },
+        "/alias-helper/{id}" => { get(alias_helper) },
     }
 
     #[handler]
@@ -228,6 +229,21 @@ pub mod routes {
         }
         Ok(Json(page_state(id).await?).into_response())
     }
+
+    type ApiResult<T> = Result<T, DbError>;
+
+    async fn alias_page_state(id: u64) -> ApiResult<Note> {
+        Ok(Note { id })
+    }
+
+    /// A generic result alias must substitute its argument instead of leaking the alias's `T`.
+    #[handler(path(id, "The note id."))]
+    pub async fn alias_helper(Path(id): Path<u64>) -> Result<impl IntoResponse, DbError> {
+        if id == 0 {
+            return Ok(NotFound(()).into_response());
+        }
+        Ok(Json(alias_page_state(id).await?).into_response())
+    }
 }
 "#,
     )
@@ -274,6 +290,8 @@ pub mod routes {
     assert!(statuses("/branching/{id}").contains(&"404".to_string()));
     assert!(statuses("/branching-helper/{id}").contains(&"200".to_string()));
     assert!(statuses("/branching-helper/{id}").contains(&"404".to_string()));
+    assert!(statuses("/alias-helper/{id}").contains(&"200".to_string()));
+    assert!(statuses("/alias-helper/{id}").contains(&"404".to_string()));
     assert!(
         operation("/branching/{id}")
             .get("x-roundhouse-unverified-response")
@@ -285,6 +303,12 @@ pub mod routes {
             .get("x-roundhouse-unverified-response")
             .is_none(),
         "a fallible helper behind `.into_response()` is documented"
+    );
+    assert!(
+        operation("/alias-helper/{id}")
+            .get("x-roundhouse-unverified-response")
+            .is_none(),
+        "a generic result alias is substituted, not left as `T`"
     );
 
     let direct = &operation("/direct")["responses"]["200"]["content"]["application/json"]["schema"];
