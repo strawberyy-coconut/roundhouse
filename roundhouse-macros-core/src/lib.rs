@@ -46,6 +46,11 @@ pub fn expand_http_status_wrappers(input: TokenStream) -> TokenStream {
 /// A custom `DocumentedResponse` / `DocumentedError` impl depends on documentation-only types.
 /// Wrapping it with `#[roundhouse::build_only]` keeps the impl out of a production build that
 /// compiles only the `contract` feature, without a hand-written `cfg`.
+/// The marker file the generated documentation slice writes into its package directory.
+///
+/// Kept in one place so the macro crate and `roundhouse-build` agree on the name.
+pub const SLICE_MARKER: &str = ".roundhouse-slice";
+
 pub fn expand_build_only(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !attr.is_empty() {
         return syn::Error::new(

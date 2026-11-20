@@ -15,14 +15,33 @@ src/lib.rs + api! + routes! + #[handler] + #[roundhouse::schema]
         ├─ prepare: analyze src                   -> target/roundhouse/handlers.json
         │     opaque return sites only; named types need no index
         │
-        ├─ target/roundhouse/harness             generated per prepare/check
-        │     compiles the app with ROUNDHOUSE_HANDLER_INDEX
+        ├─ target/roundhouse/slice               generated per prepare/check
+        │     copies the documentation surface (or `harness`, linked mode)
+        │     compiles with ROUNDHOUSE_HANDLER_INDEX
         │     calls <crate>::__roundhouse_contract() from api!
         │
         ▼
   .roundhouse/contract.json      runtime: operations, plans, response table, $defs
   .roundhouse/openapi.json       documentation: OpenAPI 3.1
 ```
+
+Two harness modes share `prepare`. **Slice** is the default for a package without a library
+target and is opt-in elsewhere with `ROUNDHOUSE_HARNESS=slice`; it generates a crate that contains
+only the documentation surface and does not depend on the application package. **Linked** is the
+existing mode, selected with `ROUNDHOUSE_HARNESS=linked`; it depends on the application crate and
+recompiles it. `auto` (the default) selects slice for bin-only packages and linked otherwise.
+
+The slice records its mode with a `.roundhouse-slice` marker file in the generated package; the
+macros read the marker from `CARGO_MANIFEST_DIR` and keep emitting the runtime surface everywhere
+else. The generated manifest sets `[lints.rust]` allows for unused imports and dead code that the
+pruning creates.
+
+Slice limitations: `include!`, `env!("CARGO_MANIFEST_DIR")`, `OUT_DIR`, `CARGO_BIN_NAME`, and
+values produced by the application's own build script are not reproduced. The slicer reports the
+first four when it can see them. Applications that depend on them select
+`ROUNDHOUSE_HARNESS=linked`. `include_str!`/`include_bytes!` targets are copied to the same
+relative path. A package with several binary targets should keep a library target; the slice uses
+the library entry, and a bin-only package uses its single binary.
 
 A `build.rs` should contain:
 
@@ -32,6 +51,7 @@ fn main() {
     println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-changed=Cargo.lock");
     println!("cargo:rerun-if-env-changed=ROUNDHOUSE_AUTO_CONTRACT");
+    println!("cargo:rerun-if-env-changed=ROUNDHOUSE_HARNESS");
     println!("cargo:rerun-if-env-changed=CI");
     roundhouse_build::prepare().expect("roundhouse contract generation failed");
 }
@@ -42,12 +62,15 @@ does not need its own recursion or CI guard. `roundhouse_build::prepare()` write
 `prepare_to(path)` writes the same artifacts elsewhere and never skips. `ARTIFACT_DIR` is
 `.roundhouse`.
 
-`prepare` first runs the handler analyzer over the application library and writes
-`target/roundhouse/handlers.json`. It then creates the harness under `target/roundhouse`, with the
-application crate as a dependency and `roundhouse` with the `build` feature. Feature unification
-makes the application's `api!` block visible for that build only. The harness target directory is
-`target/roundhouse`; nothing outside `target/` and `.roundhouse/` is written. There is no generated
-`src/bin` file and no generated feature.
+`prepare` first runs the handler analyzer over the application sources and writes
+`target/roundhouse/handlers.json`. It then creates the harness under `target/roundhouse` with
+`roundhouse` and the `build` feature. In slice mode the harness contains a line-preserving copy of
+the documentation surface: handler signatures, schema types, documentation impls and the route
+tables. It enables a documentation-only expansion mode in `#[handler]` and `routes!`, so handler
+bodies and runtime dispatch are not compiled. In linked mode the harness depends on the
+application crate instead. The harness target directory is `target/roundhouse`; nothing outside
+`target/` and `.roundhouse/` is written. There is no generated `src/bin` file and no generated
+feature.
 
 The analyzer only selects the concrete type at an opaque handler's tail and `return` sites. It
 never decides a status or schema; `DocumentedResponse` / `DocumentedError` own those. `#[handler]`
@@ -141,11 +164,12 @@ cargo roundhouse diff [--against <contract.json>] [--check]
   (or `path`), running `cargo init --lib` when there is no manifest. **`new`** follows `cargo new`:
   it creates `path` first. A new package gets a library target (`src/lib.rs`), a thin
   `src/main.rs`, `.roundhouse/`, the runtime dependencies and the test-only contract dependency.
+  Existing bin-only packages are supported.
 - **Adopting an existing package** adds `.roundhouse/` and, unless `--no-build-script` is
   passed, the `roundhouse-build` build-dependency and a guarded `build.rs`; it also prints the
   `api!` snippet. Existing sources and runtime dependencies are left alone. An existing hand-written
-  `build.rs` is never overwritten; the roundhouse block is printed for manual insertion. An
-  existing package without a library target is refused with the library guidance.
+  `build.rs` is never overwritten; the roundhouse block is printed for manual insertion. A package
+  with only a binary target is accepted; its slice harness uses `src/main.rs` as the crate root.
 - **Contract builds seed missing artifacts.** Before the harness compiles the application,
   `prepare` writes empty, valid `contract.json`/`openapi.json` when they do not exist. This lets
   `include_contract!` compile on a clean checkout; the real artifacts replace the placeholders

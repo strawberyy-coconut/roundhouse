@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- Packages with only a binary target can generate a contract. The harness now compiles a
+  generated documentation slice under `target/roundhouse/slice` instead of depending on the
+  application package. `ROUNDHOUSE_HARNESS=slice|linked|auto` selects the mode; `auto` uses the
+  slice for bin-only packages and the linked harness elsewhere. The slice keeps handler
+  signatures, schema types, documentation impls and route tables, and enables a documentation-only
+  expansion in `#[handler]`/`routes!` so handler bodies are not compiled.
+- `cargo roundhouse init` accepts an existing bin-only package.
+
 ### Breaking
 
 - Feature names are capability-first: `build` (build the contract and OpenAPI document),

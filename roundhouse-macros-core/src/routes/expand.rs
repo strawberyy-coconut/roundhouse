@@ -111,13 +111,22 @@ pub(super) fn emit_module(
     let hidden = options.hidden;
     let anonymous = options.anonymous;
 
+    let slice = crate::util::slice_mode();
     let layer_fn = format_ident!("__roundhouse_module_layer_{module_id}");
     let layer_value = if options.layer.is_some() {
-        quote!(::core::option::Option::Some(#layer_fn))
+        if slice {
+            quote!(::core::option::Option::Some(
+                #krate::registry::__slice_module_layer
+            ))
+        } else {
+            quote!(::core::option::Option::Some(#layer_fn))
+        }
     } else {
         quote!(::core::option::Option::None)
     };
-    if let Some(expr) = &options.layer {
+    if let Some(expr) = &options.layer
+        && !slice
+    {
         let body = match options.layer_mode {
             LayerMode::Full => quote!(router.layer(#expr)),
             LayerMode::Route => quote!(router.route_layer(#expr)),
@@ -325,25 +334,37 @@ pub(super) fn expand_entry(
     let anonymous = entry.anonymous;
     let line = entry.path.span().start().line as u32;
 
+    let slice = crate::util::slice_mode();
     let route_fn = format_ident!("__roundhouse_route_{index}");
     let layer_fn = format_ident!("__roundhouse_layer_{index}");
     let doc_fn = format_ident!("__roundhouse_entry_doc_{index}");
     let record_name = format_ident!("__ROUNDHOUSE_ROUTE_{index}");
 
     let layer_value = if entry.layer.is_some() {
-        quote!(::core::option::Option::Some(#layer_fn))
+        if slice {
+            quote!(::core::option::Option::Some(
+                #krate::registry::__slice_route_layer
+            ))
+        } else {
+            quote!(::core::option::Option::Some(#layer_fn))
+        }
     } else {
         quote!(::core::option::Option::None)
     };
     let layer = match &entry.layer {
-        Some(expr) => quote! {
+        Some(expr) if !slice => quote! {
             fn #layer_fn(
                 method_router: #krate::axum::routing::MethodRouter,
             ) -> #krate::axum::routing::MethodRouter {
                 method_router.layer(#expr)
             }
         },
-        None => quote! {},
+        _ => quote! {},
+    };
+    let handler_value = if slice {
+        quote!(#krate::registry::__slice_dispatch)
+    } else {
+        quote!(#route_fn)
     };
     let doc_value = if entry.doc.is_some() || entry.prose.is_some() {
         quote!(#krate::__roundhouse_doc_value!(#doc_fn))
@@ -384,6 +405,20 @@ pub(super) fn expand_entry(
         quote! {}
     };
 
+    let runtime_route = if slice {
+        quote!()
+    } else {
+        quote! {
+            fn #route_fn()
+                -> ::std::boxed::Box<dyn ::core::any::Any + ::core::marker::Send + ::core::marker::Sync>
+            {
+                let method_router: #krate::axum::routing::MethodRouter<#shim_state> =
+                    #krate::axum::routing::#method_ident(#route_handler);
+                ::std::boxed::Box::new(method_router)
+            }
+        }
+    };
+
     let defs = quote! {
         #(#attrs)*
         #[allow(non_camel_case_types)]
@@ -404,13 +439,7 @@ pub(super) fn expand_entry(
         };
 
         #(#attrs)*
-        fn #route_fn()
-            -> ::std::boxed::Box<dyn ::core::any::Any + ::core::marker::Send + ::core::marker::Sync>
-        {
-            let method_router: #krate::axum::routing::MethodRouter<#shim_state> =
-                #krate::axum::routing::#method_ident(#route_handler);
-            ::std::boxed::Box::new(method_router)
-        }
+        #runtime_route
 
         #(#attrs)*
         #layer
@@ -441,7 +470,7 @@ pub(super) fn expand_entry(
                 anonymous: #anonymous,
                 state: #state,
                 state_name: #state_name,
-                handler: #route_fn,
+                handler: #handler_value,
                 layer: #layer_value,
                 docs: <#marker_type as #krate::doc::DocSource>::operation,
                 doc: #doc_value,

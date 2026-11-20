@@ -33,7 +33,8 @@
 //!
 //! ## Quick start
 //!
-//! Contract generation reads a library target, so keep the declarations in `src/lib.rs` and the
+//! Contract generation reads the crate root: keep the declarations in `src/lib.rs` (or
+//! `src/main.rs` for a bin-only package) and the
 //! server in a thin `src/main.rs`:
 //!
 //! ```ignore

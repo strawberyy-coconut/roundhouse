@@ -3,6 +3,20 @@ use quote::{format_ident, quote};
 use syn::parse::ParseStream;
 use syn::{LitStr, Path, Type};
 
+/// Whether the expanding crate is the generated documentation slice.
+///
+/// The slice is a generated package under `target/roundhouse/slice`. It carries a marker file in
+/// its package directory. A normal application build never has that file, so the macros keep
+/// emitting the runtime surface there.
+pub fn slice_mode() -> bool {
+    let Some(directory) = std::env::var_os("CARGO_MANIFEST_DIR") else {
+        return false;
+    };
+    std::path::Path::new(&directory)
+        .join(crate::SLICE_MARKER)
+        .exists()
+}
+
 /// The path to the `roundhouse` crate as the *expanding* crate names it.
 ///
 /// Expansions must not hardcode `::roundhouse`: a renamed dependency

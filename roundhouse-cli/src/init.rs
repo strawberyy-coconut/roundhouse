@@ -79,11 +79,10 @@ fn finish(
     no_build_script: bool,
 ) -> Result<(), Box<dyn Error>> {
     let name = package_name(directory)?;
-    if !fresh && !has_library_target(directory) {
+    if !fresh && !has_target(directory) {
         return Err(error(
-            "contract generation requires a library target; add src/lib.rs or move the route \
-             modules into a lib and keep main.rs as a thin binary, then run `cargo roundhouse \
-             init` again",
+            "contract generation needs a library or binary target; add src/lib.rs or src/main.rs, \
+             then run `cargo roundhouse init` again",
         ));
     }
 
@@ -126,8 +125,13 @@ fn finish(
             );
         }
     } else {
+        let entry = if directory.join("src/lib.rs").is_file() {
+            "src/lib.rs"
+        } else {
+            "src/main.rs"
+        };
         println!(
-            "\nadd this to src/lib.rs if it is not already there:\n\n{}\nThen run `cargo build` (or `cargo roundhouse prepare`).",
+            "\nadd this to {entry} if it is not already there:\n\n{}\nThen run `cargo build` (or `cargo roundhouse prepare`).",
             api_snippet(&name)
         );
     }
@@ -175,14 +179,14 @@ fn absolute(path: PathBuf) -> Result<PathBuf, Box<dyn Error>> {
     }
 }
 
-fn has_library_target(directory: &Path) -> bool {
-    if directory.join("src/lib.rs").is_file() {
+fn has_target(directory: &Path) -> bool {
+    if directory.join("src/lib.rs").is_file() || directory.join("src/main.rs").is_file() {
         return true;
     }
     fs::read_to_string(directory.join("Cargo.toml"))
         .ok()
         .and_then(|manifest| manifest.parse::<DocumentMut>().ok())
-        .is_some_and(|manifest| manifest.get("lib").is_some())
+        .is_some_and(|manifest| manifest.get("lib").is_some() || manifest.get("bin").is_some())
 }
 
 fn package_name(directory: &Path) -> Result<String, Box<dyn Error>> {
@@ -402,6 +406,7 @@ fn build_script_body() -> &'static str {
 println!("cargo:rerun-if-changed=Cargo.toml");
 println!("cargo:rerun-if-changed=Cargo.lock");
 println!("cargo:rerun-if-env-changed=ROUNDHOUSE_AUTO_CONTRACT");
+println!("cargo:rerun-if-env-changed=ROUNDHOUSE_HARNESS");
 println!("cargo:rerun-if-env-changed=CI");
 // `prepare` skips the nested harness build, respects ROUNDHOUSE_AUTO_CONTRACT, and builds the
 // committed artifact in CI unless ROUNDHOUSE_AUTO_CONTRACT=1 opts back in.

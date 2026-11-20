@@ -168,7 +168,7 @@ fn new_creates_the_directory_before_scaffolding() {
 }
 
 #[test]
-fn init_refuses_a_bin_only_package() {
+fn init_accepts_a_bin_only_package() {
     let dir = temp_dir("bin-only");
     fs::create_dir_all(dir.join("src")).expect("create src");
     fs::write(
@@ -179,19 +179,23 @@ fn init_refuses_a_bin_only_package() {
     fs::write(dir.join("src/main.rs"), "fn main() {}\n").expect("write main");
 
     let output = run(&dir, &["init"]);
-    assert!(!output.status.success(), "a bin-only package is refused");
-    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("requires a library target") && stderr.contains("src/lib.rs"),
-        "the error explains the library convention: {stderr}"
+        output.status.success(),
+        "a bin-only package is accepted: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        !dir.join("build.rs").exists(),
-        "no build script was written"
+        dir.join("build.rs").is_file(),
+        "the build script was written"
     );
     assert!(
-        !dir.join(".roundhouse").exists(),
-        "no artifact directory was created"
+        dir.join(".roundhouse").is_dir(),
+        "the artifact directory was created"
+    );
+    let manifest = fs::read_to_string(dir.join("Cargo.toml")).expect("read manifest");
+    assert!(
+        manifest.contains("roundhouse-build"),
+        "the build dependency was added"
     );
 
     fs::remove_dir_all(&dir).expect("clean the temporary project");

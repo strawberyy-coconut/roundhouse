@@ -16,7 +16,9 @@ cargo install --path roundhouse-cli
 ```
 
 Contract generation itself runs through the `roundhouse-build` build-dependency that the
-scaffolding adds to the application.
+scaffolding adds to the application. The default `slice` harness generates a documentation-only
+package and does not depend on the application; `ROUNDHOUSE_HARNESS=linked` restores the mode
+that compiles the application crate directly.
 
 `cargo roundhouse new` creates a package with a library target, a thin binary, the runtime and
 build dependencies, `.roundhouse/` and a guarded `build.rs`:
@@ -29,6 +31,8 @@ cargo run
 
 Run `cargo roundhouse init` instead to adopt an existing package in the current directory. It uses
 `cargo init --lib` when there is no manifest, so `init` and `new` follow Cargo's conventions.
+Existing packages with only a binary target are supported: the contract harness compiles a
+generated documentation slice and does not depend on the application crate.
 
 `contract` is the production feature: it embeds the committed contract, validates requests
 and serves `openapi.json` without utoipa.
@@ -37,8 +41,10 @@ Rust 1.88 or newer is required. The default features are `build`, `validation`, 
 
 ## Quick start
 
-Contract generation reads a library target, so the application lives in `src/lib.rs` with a thin
-`src/main.rs`.
+Contract generation starts at the crate root. A library (`src/lib.rs`) with a thin `src/main.rs`
+is the recommended layout because the binary can reuse the app; a package with only `src/main.rs`
+also works, because the harness compiles a generated documentation slice instead of depending on
+the application.
 
 ```rust
 // src/lib.rs

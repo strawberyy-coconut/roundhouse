@@ -76,7 +76,7 @@ pub fn analyze(package_root: &Path) -> Result<HandlerIndex, Box<dyn Error>> {
     let source_root = package_root.join("src");
     if !source_root.is_dir() {
         return Err(format!(
-            "{} has no `src` directory; contract generation needs a library target",
+            "{} has no `src` directory; contract generation needs a Rust source tree",
             package_root.display()
         )
         .into());

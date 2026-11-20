@@ -257,35 +257,46 @@ pub fn expand(item: ItemFn, args: HandlerArgs) -> TokenStream {
     } else {
         quote!(#name(#(#shim_idents),*))
     };
-    // The shim is generic over the router state. `routes!` chooses `S` from the table's
-    // `state = ...` option, or falls back to `HandlerSpec::State`. A handler's `State<T>`
-    // arguments then use axum's `FromRef` contract through `SubstateOf`.
-    quote! {
-        #item
+    // The generated documentation slice needs signatures and the documentation traits, but never
+    // the handler body or the runtime shim. The signature and body tokens still reach this macro,
+    // so the analyzer index key (`handler_key`) matches the application source exactly.
+    let runtime = if crate::util::slice_mode() {
+        quote!()
+    } else {
+        // The shim is generic over the router state. `routes!` chooses `S` from the table's
+        // `state = ...` option, or falls back to `HandlerSpec::State`. A handler's `State<T>`
+        // arguments then use axum's `FromRef` contract through `SubstateOf`.
+        quote! {
+            #item
 
-        impl #marker_type {
-            /// The generated route entry point. `routes!` instantiates the policy and state.
-            #[doc(hidden)]
-            #[allow(dead_code, clippy::too_many_arguments)]
-            #vis async fn __roundhouse_shim<P, S>(
-                __rh_ctx: #krate::__private::ValidationContext,
-                __rh_state: #krate::axum::extract::State<S>,
-                #(#shim_params),*
-            ) -> #krate::axum::response::Response
-            where
-                P: #krate::__private::ShimPolicyFor<S>,
-                S: ::core::clone::Clone + ::core::marker::Send + ::core::marker::Sync + 'static,
-                #(#substate_bounds,)*
-            {
-                let _ = (&__rh_auth, &__rh_state);
-                #(#shim_unwraps)*
-                if __rh_ctx.enabled() {
-                    #(#shim_checks)*
+            impl #marker_type {
+                /// The generated route entry point. `routes!` instantiates the policy and state.
+                #[doc(hidden)]
+                #[allow(dead_code, clippy::too_many_arguments)]
+                #vis async fn __roundhouse_shim<P, S>(
+                    __rh_ctx: #krate::__private::ValidationContext,
+                    __rh_state: #krate::axum::extract::State<S>,
+                    #(#shim_params),*
+                ) -> #krate::axum::response::Response
+                where
+                    P: #krate::__private::ShimPolicyFor<S>,
+                    S: ::core::clone::Clone + ::core::marker::Send + ::core::marker::Sync + 'static,
+                    #(#substate_bounds,)*
+                {
+                    let _ = (&__rh_auth, &__rh_state);
+                    #(#shim_unwraps)*
+                    if __rh_ctx.enabled() {
+                        #(#shim_checks)*
+                    }
+                    let __rh_response = #shim_call;
+                    #krate::axum::response::IntoResponse::into_response(__rh_response)
                 }
-                let __rh_response = #shim_call;
-                #krate::axum::response::IntoResponse::into_response(__rh_response)
             }
         }
+    };
+
+    quote! {
+        #runtime
 
         #[doc(hidden)]
         #[allow(non_camel_case_types)]

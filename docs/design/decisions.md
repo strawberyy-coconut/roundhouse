@@ -97,7 +97,7 @@ already-erased `Response` or trait object.
 
 ## D5a — Opaque returns use a verified handler index
 
-**Decision.** `prepare` analyzes the application library before the contract harness runs and
+**Decision.** `prepare` analyzes the application sources before the contract harness runs and
 writes `target/roundhouse/handlers.json`. `#[handler]` reads the index at expansion time and
 emits typed `DocumentedResponse` / `DocumentedError` calls into its generated `DocSource`.
 
@@ -274,6 +274,34 @@ unless `ROUNDHOUSE_AUTO_CONTRACT=1`, so a hand-written build script gets the sam
 `roundhouse-build` is the build-dependency; `roundhouse-cli` is only the binary.
 
 **Rejected.** A generated `src/bin/roundhouse-contract.rs`; a generated Cargo feature.
+
+## D15 — The harness compiles a documentation slice, not the application
+
+**Decision.** `prepare` generates a documentation-only package under `target/roundhouse/slice`.
+It contains a line-preserving copy of the application's documentation surface: `api!`,
+`routes!`, handler signatures, schema types, `Documented*` impls and the imports they use.
+`#[handler]` and `routes!` expose a documentation mode selected by the slice's marker file; it
+emits the documentation traits but not handler bodies, router dispatch or layer application.
+`ROUNDHOUSE_HARNESS` selects `slice`, `linked` or `auto`.
+
+**Why.** A package with only a binary target has no library for the harness to depend on, and a
+library package compiled a second time in the harness wastes work. The contract build only ever
+evaluates metadata: `Contract::build` resolves the route tree and documentation traits and never
+calls `Record::handler`. Handler bodies, `IntoResponse`, database code and the application's
+private dependencies are not part of the document.
+
+**Consequences.** Bin-only packages generate contracts. The harness has no dependency edge to the
+application package. The slice copies source text rather than re-emitting tokens, because
+`#[handler]` keys its analyzer index by a hash of the handler signature and body; re-emitting
+would change the key. Dropped items are blanked and stubs are padded to the original line count,
+so `file!()`/`line!()` keep committed source locations stable. Types in schema positions are
+copied in full; a type reached only through a hand-written documentation impl can be stubbed.
+Build-script environment values and custom cfg are not reproduced; those applications use
+`ROUNDHOUSE_HARNESS=linked`.
+
+**Rejected.** Depending on the application binary target; generating a `src/bin` file inside the
+application; having `api!` generate the harness (macro expansion runs after the artifacts are
+needed and cannot spawn a nested cargo build safely).
 
 ## Open questions
 

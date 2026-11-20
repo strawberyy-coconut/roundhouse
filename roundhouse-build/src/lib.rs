@@ -10,9 +10,9 @@
 //! Inspection commands (`check`, `explain`, `verify`, `diff`) belong to developers and CI, and
 //! live in the `roundhouse-cli` binary.
 //!
-//! Missing artifacts are seeded with empty placeholders before the harness runs. The harness
-//! compiles the application as a dependency first, so `include_contract!` must be readable even
-//! on a clean checkout; successful generation replaces the placeholders.
+//! Missing artifacts are seeded with empty placeholders before the harness runs, so
+//! `include_contract!` is readable even on a clean checkout; successful generation replaces the
+//! placeholders.
 //!
 //! A `build.rs` should call [`prepare`] so the artifacts are refreshed before rustc reads
 //! `include_contract!`:
@@ -21,6 +21,7 @@
 //! fn main() {
 //!     println!("cargo:rerun-if-changed=src");
 //!     println!("cargo:rerun-if-env-changed=ROUNDHOUSE_AUTO_CONTRACT");
+//!     println!("cargo:rerun-if-env-changed=ROUNDHOUSE_HARNESS");
 //!     println!("cargo:rerun-if-env-changed=CI");
 //!     roundhouse_build::prepare().expect("roundhouse contract generation failed");
 //! }
@@ -40,11 +41,14 @@
 //! ```
 //!
 //! The generated harness lives under `target/roundhouse`; nothing outside `target/` and
-//! `.roundhouse/` is written. Generation is one strict build: a handler with no documented
-//! success fails `prepare` instead of being guessed. The harness run sets
+//! `.roundhouse/` is written. The default `slice` harness copies the documentation surface into a
+//! generated package and never depends on the application, so a bin-only package works and the
+//! application is not compiled twice. `ROUNDHOUSE_HARNESS=linked` restores the compatibility mode
+//! that depends on the application crate. Generation is one strict build: a handler with no
+//! documented success fails `prepare` instead of being guessed. The harness run sets
 //! `ROUNDHOUSE_BUILDING_CONTRACT`, so an application build script does not recurse.
 //!
-//! Before the harness runs, [`analyze`] parses the library and writes
+//! Before the harness runs, [`analyze`] parses the sources and writes
 //! `target/roundhouse/handlers.json`. `#[handler]` reads that index to document opaque
 //! `impl IntoResponse` returns; the generated typed calls are verified by the compiler. [`prepare`]
 //! also exports the index path with `cargo:rustc-env`, so the crate's own compile sees the same
@@ -58,7 +62,11 @@ use std::process::Command;
 
 use serde_json::Value;
 
+use crate::dependency::{Dependency, RoundhouseDependency};
+
 pub mod analyze;
+pub mod dependency;
+pub mod slice;
 
 /// The directory `prepare` writes to by default.
 pub const ARTIFACT_DIR: &str = ".roundhouse";
@@ -143,10 +151,9 @@ pub fn prepare() -> Result<(), Box<dyn Error>> {
 /// A `build.rs` can call this directly; Cargo runs build scripts with the package root as the
 /// working directory.
 ///
-/// Before the harness runs, missing artifacts are seeded with empty placeholders. The harness
-/// compiles the application as a dependency first, so `include_contract!` must be able to read
-/// its files even on a clean checkout. The real artifacts replace the placeholders once the
-/// contract build succeeds.
+/// Before the harness runs, missing artifacts are seeded with empty placeholders, so
+/// `include_contract!` can read its files even on a clean checkout. The real artifacts replace
+/// the placeholders once the contract build succeeds.
 pub fn prepare_to(out: PathBuf) -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&out)?;
     ensure_artifacts(&out)?;
@@ -184,11 +191,49 @@ fn generate(out: &Path, index_path: &Path, cwd: &Path) -> Result<(), Box<dyn Err
 
 /// Build and run the contract binary under `target/roundhouse`.
 ///
-/// The harness depends on the application crate and on `roundhouse` with the `build` feature.
-/// Feature unification makes the application's `api!` block visible for this build only. Nothing
-/// outside `target/` is written.
+/// Two harness modes exist. The linked mode depends on the application crate and compiles it
+/// again; it is the compatibility path. The slice mode generates a documentation-only crate under
+/// `target/roundhouse/slice` and never depends on the application package. Nothing outside
+/// `target/` is written.
 fn run_contract_harness(out: &Path, index_path: &Path, cwd: &Path) -> Result<(), Box<dyn Error>> {
     let package = package_info()?;
+    match harness_mode(&package)? {
+        HarnessMode::Linked => run_linked_harness(out, index_path, cwd, &package),
+        HarnessMode::Slice => run_slice_harness(out, index_path, cwd, &package),
+    }
+}
+
+enum HarnessMode {
+    Linked,
+    Slice,
+}
+
+fn harness_mode(package: &PackageInfo) -> Result<HarnessMode, Box<dyn Error>> {
+    match std::env::var("ROUNDHOUSE_HARNESS").as_deref() {
+        Ok("linked") => Ok(HarnessMode::Linked),
+        Ok("slice") => Ok(HarnessMode::Slice),
+        Ok("auto") | Err(std::env::VarError::NotPresent) => {
+            if package.has_lib {
+                Ok(HarnessMode::Linked)
+            } else {
+                Ok(HarnessMode::Slice)
+            }
+        }
+        Ok(other) => Err(error(format!(
+            "unknown ROUNDHOUSE_HARNESS value `{other}`; expected `auto`, `linked` or `slice`"
+        ))),
+        Err(std::env::VarError::NotUnicode(value)) => Err(error(format!(
+            "ROUNDHOUSE_HARNESS is not valid UTF-8: {value:?}"
+        ))),
+    }
+}
+
+fn run_linked_harness(
+    out: &Path,
+    index_path: &Path,
+    cwd: &Path,
+    package: &PackageInfo,
+) -> Result<(), Box<dyn Error>> {
     let source_root = package.manifest_dir.clone();
     let roundhouse = roundhouse_dependency()?;
     let harness = cwd.join("target").join("roundhouse").join("harness");
@@ -223,7 +268,7 @@ fn run_contract_harness(out: &Path, index_path: &Path, cwd: &Path) -> Result<(),
     fs::write(harness.join("Cargo.toml"), manifest)?;
     fs::write(
         harness.join("src/main.rs"),
-        generated_bin(&package.lib_name),
+        generated_bin(&package.crate_name),
     )?;
 
     let status = Command::new(cargo())
@@ -248,6 +293,117 @@ fn run_contract_harness(out: &Path, index_path: &Path, cwd: &Path) -> Result<(),
         ));
     }
     Ok(())
+}
+
+fn run_slice_harness(
+    out: &Path,
+    index_path: &Path,
+    cwd: &Path,
+    package: &PackageInfo,
+) -> Result<(), Box<dyn Error>> {
+    let roundhouse = roundhouse_dependency()?;
+    let slice_root = cwd.join("target").join("roundhouse").join("slice");
+    let mut extra_dependencies = std::collections::BTreeSet::new();
+    let mut last_stderr = String::new();
+
+    for _ in 0..3 {
+        if slice_root.exists() {
+            fs::remove_dir_all(&slice_root)?;
+        }
+        fs::create_dir_all(&slice_root)?;
+
+        let input = slice::Input {
+            root: &package.manifest_dir,
+            entry: &package.entry,
+            package_name: &package.name,
+            version: &package.version,
+            edition: &package.edition,
+            crate_name: &package.crate_name,
+            index_path: Some(index_path),
+            roundhouse: &roundhouse,
+            dependencies: &package.dependencies,
+            features: &package.features,
+            all_features: &package.all_features,
+        };
+        let output = slice::generate(&input, &extra_dependencies)?;
+        for (relative, contents) in output.files {
+            let path = slice_root.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(path, contents)?;
+        }
+
+        let output = Command::new(cargo())
+            .args(["run", "--quiet", "--manifest-path"])
+            .arg(slice_root.join("Cargo.toml"))
+            .args(["--bin", "contract", "--"])
+            .arg(out)
+            .arg(&slice_root)
+            .current_dir(cwd)
+            .env("CARGO_TARGET_DIR", cwd.join("target").join("roundhouse"))
+            .env("ROUNDHOUSE_BUILDING_CONTRACT", "1")
+            .env("ROUNDHOUSE_AUTO_CONTRACT", "0")
+            .env("ROUNDHOUSE_HANDLER_INDEX", index_path)
+            .output()?;
+        if output.status.success() {
+            return Ok(());
+        }
+
+        last_stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        let mut added = false;
+        for missing in missing_crates(&last_stderr) {
+            for dependency in &package.dependencies {
+                let key = dependency.key();
+                let matches = missing == key.replace('-', "_")
+                    || missing == dependency.name.replace('-', "_");
+                if matches && extra_dependencies.insert(key.to_string()) {
+                    added = true;
+                }
+            }
+        }
+        if !added {
+            break;
+        }
+    }
+
+    eprint!("{last_stderr}");
+    Err(error(format!(
+        "the documentation-slice harness failed; the generated package is at {} \
+         (set ROUNDHOUSE_HARNESS=linked to use the application crate directly)",
+        slice_root.display()
+    )))
+}
+
+/// The crates the slice compiler could not find.
+///
+/// The slice starts with the dependencies its retained source names. A path hidden inside a macro
+/// or an attribute can be missed; a compile error names the crate, and the caller retries with it
+/// added from the application's dependency list.
+fn missing_crates(stderr: &str) -> std::collections::BTreeSet<String> {
+    let mut names = std::collections::BTreeSet::new();
+    for line in stderr.lines() {
+        for marker in [
+            "can't find crate for `",
+            "unlinked crate `",
+            "unresolved import `",
+        ] {
+            let Some(rest) = line.split(marker).nth(1) else {
+                continue;
+            };
+            let name = rest
+                .split('`')
+                .next()
+                .unwrap_or_default()
+                .split("::")
+                .next()
+                .unwrap_or_default();
+            if !name.is_empty() {
+                names.insert(name.to_string());
+            }
+        }
+    }
+    names
 }
 
 fn roundhouse_dependency() -> Result<RoundhouseDependency, Box<dyn Error>> {
@@ -283,11 +439,6 @@ fn roundhouse_dependency() -> Result<RoundhouseDependency, Box<dyn Error>> {
         })
         .flatten();
     Ok(RoundhouseDependency { path, version })
-}
-
-struct RoundhouseDependency {
-    path: Option<PathBuf>,
-    version: String,
 }
 
 fn package_info() -> Result<PackageInfo, Box<dyn Error>> {
@@ -329,36 +480,141 @@ fn package_info() -> Result<PackageInfo, Box<dyn Error>> {
             )
         })?;
 
-    let name = package["name"]
-        .as_str()
-        .ok_or_else(|| error("package name is missing from `cargo metadata`"))?
-        .to_string();
-    let lib_name = package["targets"]
+    let name = string_field(package, "name")?;
+    let version = string_field(package, "version")?;
+    let edition = string_field(package, "edition")?;
+
+    let targets = package["targets"]
         .as_array()
-        .and_then(|targets| {
-            targets.iter().find_map(|target| {
-                let is_lib = target["kind"]
-                    .as_array()
-                    .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("lib")));
-                is_lib.then(|| target["name"].as_str()).flatten()
-            })
-        })
-        .ok_or_else(|| {
-            error(
-                "contract generation requires a library target; add src/lib.rs or move the route \
-                 modules into a lib and keep main.rs as a thin binary",
-            )
-        })?
-        .to_string();
+        .ok_or_else(|| error("the package has no targets"))?;
+    let lib_target = targets.iter().find(|target| {
+        target["kind"]
+            .as_array()
+            .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("lib")))
+    });
+    let bin_target = targets.iter().find(|target| {
+        target["kind"]
+            .as_array()
+            .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("bin")))
+    });
+    let has_lib = lib_target.is_some();
+    let target = lib_target.or(bin_target).ok_or_else(|| {
+        error("contract generation needs a library or binary target; neither was found")
+    })?;
+    let crate_name = string_field(target, "name")?.replace('-', "_");
+    let entry = PathBuf::from(string_field(target, "src_path")?);
+
+    let all_features: Vec<String> = package["features"]
+        .as_object()
+        .map(|features| features.keys().cloned().collect())
+        .unwrap_or_default();
+    let features = active_features(package, &all_features);
+    let dependencies = package_dependencies(package);
 
     Ok(PackageInfo {
         name,
-        lib_name,
+        version,
+        edition,
+        has_lib,
+        crate_name,
+        entry,
         manifest_dir: manifest_path
             .parent()
             .ok_or_else(|| error("the package manifest has no parent directory"))?
             .to_path_buf(),
+        features,
+        all_features,
+        dependencies,
     })
+}
+
+fn string_field(value: &Value, field: &str) -> Result<String, Box<dyn Error>> {
+    value[field]
+        .as_str()
+        .map(ToString::to_string)
+        .ok_or_else(|| error(format!("`{field}` is missing from `cargo metadata`")))
+}
+
+/// The features enabled for the current build.
+///
+/// A build script sees `CARGO_FEATURE_<NAME>` for every enabled feature. The explicit
+/// `cargo roundhouse prepare` path has no such environment, so it uses the package's default
+/// feature set.
+fn active_features(package: &Value, all: &[String]) -> Vec<String> {
+    let has_feature_env =
+        std::env::vars_os().any(|(key, _)| key.to_string_lossy().starts_with("CARGO_FEATURE_"));
+    if has_feature_env {
+        return all
+            .iter()
+            .filter(|feature| {
+                let key = format!("CARGO_FEATURE_{}", feature.to_uppercase().replace('-', "_"));
+                std::env::var_os(key).is_some()
+            })
+            .cloned()
+            .collect();
+    }
+    package["features"]["default"]
+        .as_array()
+        .map(|features| {
+            features
+                .iter()
+                .filter_map(|feature| feature.as_str().map(ToString::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn package_dependencies(package: &Value) -> Vec<Dependency> {
+    let Some(dependencies) = package["dependencies"].as_array() else {
+        return Vec::new();
+    };
+    dependencies
+        .iter()
+        .filter_map(|dependency| {
+            let kind = dependency["kind"].as_str().unwrap_or("normal").to_string();
+            if kind != "normal" {
+                return None;
+            }
+            let name = dependency["name"].as_str()?.to_string();
+            let source = dependency["source"].as_str();
+            let path = dependency["path"].as_str().map(PathBuf::from);
+            let (git, rev) = match source {
+                Some(source) if source.starts_with("git+") => {
+                    let source = source.trim_start_matches("git+");
+                    let (url, fragment) = match source.split_once('#') {
+                        Some((url, fragment)) => (url, Some(fragment.to_string())),
+                        None => (source, None),
+                    };
+                    let url = url.split('?').next().unwrap_or(url).to_string();
+                    (Some(url), fragment)
+                }
+                _ => (None, None),
+            };
+            Some(Dependency {
+                name,
+                rename: dependency["rename"].as_str().map(ToString::to_string),
+                req: dependency["req"].as_str().unwrap_or("*").to_string(),
+                path,
+                git,
+                rev,
+                kind,
+                optional: dependency["optional"].as_bool().unwrap_or(false),
+                default_features: dependency["uses_default_features"]
+                    .as_bool()
+                    .unwrap_or(true),
+                features: dependency["features"]
+                    .as_array()
+                    .map(|features| {
+                        features
+                            .iter()
+                            .filter_map(|feature| feature.as_str().map(ToString::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                target: dependency["target"].as_str().map(ToString::to_string),
+            })
+        })
+        .collect()
 }
 
 fn generated_bin(lib_name: &str) -> String {
@@ -393,8 +649,15 @@ fn error(message: impl Into<String>) -> Box<dyn Error> {
 
 struct PackageInfo {
     name: String,
-    lib_name: String,
+    version: String,
+    edition: String,
+    has_lib: bool,
+    crate_name: String,
+    entry: PathBuf,
     manifest_dir: PathBuf,
+    features: Vec<String>,
+    all_features: Vec<String>,
+    dependencies: Vec<Dependency>,
 }
 
 #[cfg(test)]
@@ -412,6 +675,18 @@ mod tests {
         assert!(bin.contains("contract.build()?"));
         assert!(bin.contains("write_to_with_root"));
         assert!(bin.contains("std::env::args().nth(2)"));
+    }
+
+    #[test]
+    fn missing_crates_are_read_from_compiler_errors() {
+        let stderr = "error[E0432]: unresolved import `serde`\n\
+                      error: can't find crate for `sqlx`\n\
+                      error: use of unresolved module or unlinked crate `chrono`\n";
+        let names = missing_crates(stderr);
+        assert!(names.contains("serde"));
+        assert!(names.contains("sqlx"));
+        assert!(names.contains("chrono"));
+        assert_eq!(names.len(), 3);
     }
 
     #[test]
